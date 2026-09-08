@@ -1,0 +1,54 @@
+goos: linux
+goarch: amd64
+pkg: callbacks
+cpu: Intel(R) N150
+BenchmarkNative 	 9491025	       636.3 ns/op	     512 B/op	       3 allocs/op
+BenchmarkNative 	 9476055	       651.7 ns/op	     512 B/op	       3 allocs/op
+BenchmarkNative 	 9269437	       646.7 ns/op	     512 B/op	       3 allocs/op
+BenchmarkNative 	 9273252	       667.5 ns/op	     512 B/op	       3 allocs/op
+BenchmarkNative 	 9066046	       663.4 ns/op	     512 B/op	       3 allocs/op
+goos: linux
+goarch: amd64
+pkg: callbacks
+cpu: Intel(R) N150
+BenchmarkCostWithoutCaching 	 2080941	      2915 ns/op	      2231 cost-ns/op	       684.1 native-ns/op	    1256 B/op	      18 allocs/op
+BenchmarkCostWithoutCaching 	 2162090	      2780 ns/op	      2136 cost-ns/op	       644.5 native-ns/op	    1256 B/op	      18 allocs/op
+BenchmarkCostWithoutCaching 	 2118292	      2818 ns/op	      2172 cost-ns/op	       646.1 native-ns/op	    1256 B/op	      18 allocs/op
+BenchmarkCostWithoutCaching 	 2165014	      2777 ns/op	      2097 cost-ns/op	       679.8 native-ns/op	    1256 B/op	      18 allocs/op
+BenchmarkCostWithoutCaching 	 2123919	      2795 ns/op	      2106 cost-ns/op	       689.2 native-ns/op	    1256 B/op	      18 allocs/op
+goos: linux
+goarch: amd64
+pkg: callbacks
+cpu: Intel(R) N150
+BenchmarkCostNaive 	 3458962	      1867 ns/op	      1053 cost-ns/op	       814.4 native-ns/op	     576 B/op	       5 allocs/op
+BenchmarkCostNaive 	 2938737	      1997 ns/op	      1189 cost-ns/op	       808.6 native-ns/op	     576 B/op	       5 allocs/op
+BenchmarkCostNaive 	 3058464	      1986 ns/op	      1155 cost-ns/op	       831.4 native-ns/op	     576 B/op	       5 allocs/op
+BenchmarkCostNaive 	 2897244	      2104 ns/op	      1250 cost-ns/op	       853.1 native-ns/op	     576 B/op	       5 allocs/op
+BenchmarkCostNaive 	 2824641	      2104 ns/op	      1231 cost-ns/op	       873.3 native-ns/op	     576 B/op	       5 allocs/op
+goos: linux
+goarch: amd64
+pkg: callbacks
+cpu: Intel(R) N150
+BenchmarkCostAmortizedCache 	 6261970	       921.4 ns/op	        57.41 cost-ns/op	       863.9 native-ns/op	     512 B/op	       3 allocs/op
+BenchmarkCostAmortizedCache 	 6468235	       917.2 ns/op	        43.03 cost-ns/op	       874.2 native-ns/op	     512 B/op	       3 allocs/op
+BenchmarkCostAmortizedCache 	 6408289	       931.6 ns/op	        61.87 cost-ns/op	       869.7 native-ns/op	     512 B/op	       3 allocs/op
+BenchmarkCostAmortizedCache 	 6589189	       930.2 ns/op	        67.67 cost-ns/op	       862.5 native-ns/op	     512 B/op	       3 allocs/op
+BenchmarkCostAmortizedCache 	 6614869	       805.5 ns/op	       118.5 cost-ns/op	       687.1 native-ns/op	     512 B/op	       3 allocs/op
+goos: linux
+goarch: amd64
+pkg: callbacks
+cpu: Intel(R) N150
+BenchmarkProgramNative 	 4405176	      1437 ns/op	     688 B/op	       6 allocs/op
+BenchmarkProgramNative 	 4251501	      1506 ns/op	     688 B/op	       6 allocs/op
+BenchmarkProgramNative 	 4415042	      1368 ns/op	     688 B/op	       6 allocs/op
+BenchmarkProgramNative 	 4177921	      1406 ns/op	     688 B/op	       6 allocs/op
+BenchmarkProgramNative 	 3626403	      1647 ns/op	     688 B/op	       6 allocs/op
+goos: linux
+goarch: amd64
+pkg: callbacks
+cpu: Intel(R) N150
+BenchmarkProgramCached 	 3628567	      1654 ns/op	       264.2 cost-ns/op	      1390 native-ns/op	     712 B/op	       6 allocs/op
+BenchmarkProgramCached 	 3882202	      1558 ns/op	       151.1 cost-ns/op	      1407 native-ns/op	     712 B/op	       6 allocs/op
+BenchmarkProgramCached 	 3811959	      1567 ns/op	       161.6 cost-ns/op	      1405 native-ns/op	     712 B/op	       6 allocs/op
+BenchmarkProgramCached 	 3769570	      1614 ns/op	       196.9 cost-ns/op	      1418 native-ns/op	     712 B/op	       6 allocs/op
+BenchmarkProgramCached 	 3822333	      1579 ns/op	       198.8 cost-ns/op	      1380 native-ns/op	     712 B/op	       6 allocs/op

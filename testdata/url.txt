@@ -1,0 +1,13 @@
+// url: parse, read fields, chain a method, mutate a field.
+u := url.Parse("https://user@example.com/p/q?x=1");
+assert.Equal(tb, "https", u.Scheme);
+assert.Equal(tb, "example.com", u.Host);
+assert.Equal(tb, "/p/q", u.Path);
+assert.Equal(tb, "x=1", u.RawQuery);
+
+u.Path = "/rewritten";
+assert.Equal(tb, "https://user@example.com/rewritten?x=1", u.String());
+
+vals := url.ParseQuery("a=1&b=2");
+assert.Equal(tb, "1", vals.Get("a"));
+assert.Equal(tb, "2", vals.Get("b"));

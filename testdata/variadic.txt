@@ -1,0 +1,5 @@
+// variadic: spread a slice into a variadic parameter, and pass a
+// message through assert's own variadic tail.
+parts := strings.Fields("a b c");
+joined := path.Join(parts...);
+assert.Equal(tb, "a/b/c", joined, "path.Join over spread fields");

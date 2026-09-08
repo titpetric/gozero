@@ -1,0 +1,7 @@
+// fmt: variadic pack, a literal and a scalar variable into ...any.
+var n int64;
+n = 7;
+s := fmt.Sprintf("n=%d ok=%v", n, true);
+assert.Equal(tb, "n=7 ok=true", s);
+
+assert.Equal(tb, "a b", fmt.Sprint("a", " ", "b"));

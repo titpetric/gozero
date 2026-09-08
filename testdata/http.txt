@@ -1,0 +1,14 @@
+// http: build a request, read and write its fields, check the context
+// arrives without being written in the source.
+req := http.NewRequestWithContext("GET", "https://example.com/a/b");
+assert.Equal(tb, "GET", req.Method);
+assert.Equal(tb, "/a/b", req.URL.Path);
+
+req.Method = "POST";
+assert.Equal(tb, "POST", req.Method);
+
+req.Host = "override.example.com";
+assert.Equal(tb, "override.example.com", req.Host);
+
+ctx := req.Context();
+assert.Equal(tb, "fixture", ctxValue(ctx));

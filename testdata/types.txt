@@ -1,0 +1,11 @@
+// types: var declarations, inference, numeric conversion, zero values.
+var count int32;
+count = 41;
+assert.Equal(tb, "41", fmt.Sprintf("%d", count));
+
+x = 2.5;
+assert.Equal(tb, "2.5", fmt.Sprintf("%v", x));
+
+var u url.URL;
+assert.Equal(tb, "", u.Path);
+assert.True(tb, true);
