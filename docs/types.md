@@ -9,13 +9,13 @@ a program has to be able to name them: `var x int64` needs `int64`, and
 return value. This is how those names get into the runtime and what
 happens to them at compile and execution time.
 
-Nothing here is registered twice. Binding a function is the only step a
+Binding a function is the only step a
 caller normally takes; everything the signature implies follows from it.
 
 ## Three stages
 
-**Binding** is the caller's act: `rt.Bind("http.NewRequest",
-http.NewRequest)` puts one callable in the runtime under one name.
+**Binding**: `rt.Bind("http.NewRequest", http.NewRequest)` puts one
+callable in the runtime under one name.
 
 **Discovery** is what the runtime does with that signature. It walks the
 type graph reachable from the function and records every type it finds,
@@ -95,21 +95,6 @@ the same graph from different entry points.
 `NewRequest` and `NewRequestWithContext`, so the client side of the
 package is reached through the types those name rather than through a
 constructor of its own.
-
-### An interface that only one binding names
-
-`http.Handler` is not mentioned by any signature in `net/http`'s
-constructors. It arrives because `pprof.Handler` returns one:
-
-```go
-rt.Bind("pprof.Handler", pprof.Handler)  // func(string) http.Handler
-```
-
-After that, `var h http.Handler` resolves. The same interface also comes
-in through `http.FileServer` and `http.StripPrefix`, which return and
-take one. This is the general shape of the thing: a type becomes
-nameable because some function the host bound has an opinion about it,
-not because anyone declared it.
 
 ### Watching it happen
 
