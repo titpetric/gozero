@@ -1,6 +1,6 @@
 ---
 title: Design
-date: 2026-09-07T16:48:32+02:00
+date: "2026-09-07T16:48:32+02:00"
 ---
 
 gozero executes imperative programs against bound Go functions. A
@@ -179,14 +179,14 @@ rt := gozero.NewRuntime()
 err := rt.Bind("NewRequest", http.NewRequest)
 err = rt.BindScope("json", map[string]any{"NewEncoder": json.NewEncoder})
 err = rt.BindType("io.Closer", (*io.Closer)(nil))
-rt.SetLogger(logger)                  // discovery reports at debug level
+rt.SetLogger(logger) // discovery reports at debug level
 
-fn, err := rt.Compile(src)            // cached per source string
+fn, err := rt.Compile(src) // cached per source string
 v, err := rt.Eval[*http.Request](src, stack)
 v, err = fn.Exec[*http.Request](stack)
 v, err = fn.ExecContext[*http.Request](ctx, stack)
-err = fn.Scan(&dest, stack)           // dest bound to the name "dest"
-err = rt.Supports(src)                // nil when every call is direct
+err = fn.Scan(&dest, stack) // dest bound to the name "dest"
+err = rt.Supports(src)      // nil when every call is direct
 ```
 
 `Eval`, `Exec` and `Scan` are generic methods, which needs the go1.27
@@ -206,8 +206,7 @@ paid once per source string.
 ## Open edges
 
 - A call returned directly, `return f(x)`, does not reach the direct
-  tier: a returned value needs a slot. The named form, `v := f(x);
-  return v`, does. The planner could give a trailing returned call a
+  tier: a returned value needs a slot. The named form, `v := f(x); return v`, does. The planner could give a trailing returned call a
   slot of its own.
 - `jit.go` holds the original single-statement tier, still used for a
   flat non-variadic call. Some of its shapes are unreachable from any

@@ -1,6 +1,6 @@
 ---
 title: Go, call overheads and JIT
-date: 2026-09-03T15:34:51+02:00
+date: "2026-09-03T15:34:51+02:00"
 ---
 
 What does it cost to call Go functions from a small interpreted
@@ -59,8 +59,7 @@ Run with `var dest bytes.Buffer` and `fn.Scan(&dest, nil)`, it leaves
   types of the two bindings when the program compiles, so an unknown
   method is a compile error and not an execution one.
 - Chaining and nesting compile to the same four steps. The one line
-  form is `json.NewEncoder(dest).Encode(http.NewRequest("GET",
-  "/").Cookies());`.
+  form is `json.NewEncoder(dest).Encode(http.NewRequest("GET", "/").Cookies());`.
 
 ## Bindings
 
@@ -90,8 +89,8 @@ rt := NewRuntime()
 rt.BindScope("http", map[string]any{"NewRequest": http.NewRequest})
 rt.BindScope("json", map[string]any{"NewEncoder": json.NewEncoder})
 
-fn, err := rt.Compile(src)          // cached per source string
-err = fn.Scan(&dest, stack)         // dest is bound to the name "dest"
+fn, err := rt.Compile(src)  // cached per source string
+err = fn.Scan(&dest, stack) // dest is bound to the name "dest"
 req, err := fn.Exec[*http.Request](stack)
 req, err := rt.Eval[*http.Request](src, stack)
 ```
@@ -115,10 +114,10 @@ native baseline timed inline in the same process.
 
 | Benchmark          | sec/op  | B/op | allocs/op | cost-sec/op |
 |--------------------|--------:|-----:|----------:|------------:|
-| Native             | 651.7n  |  512 |         3 |           - |
+| Native             |  651.7n |  512 |         3 |           - |
 | CostWithoutCaching | 2.795us | 1256 |        18 |     2.136us |
 | CostNaive          | 1.997us |  576 |         5 |     1.189us |
-| CostAmortizedCache | 921.4n  |  512 |         3 |      61.87n |
+| CostAmortizedCache |  921.4n |  512 |         3 |      61.87n |
 | ProgramNative      | 1.437us |  688 |         6 |           - |
 | ProgramCached      | 1.579us |  712 |         6 |      196.9n |
 
@@ -227,11 +226,11 @@ hoisted out of the loop costs 1924ns against 2009ns with it, one
 Preallocating is not possible, because a frame cannot outlive one run
 of a concurrent program. Pooling measures well:
 
-| Frame per run                | sec/op  | allocs/op |
-|------------------------------|--------:|----------:|
-| unsafeNew                    | 62.57n  |         1 |
-| sync.Pool, cleared on reuse  | 22.85n  |         0 |
-| sync.Pool, not cleared       | 20.39n  |         0 |
+| Frame per run               | sec/op | allocs/op |
+|-----------------------------|-------:|----------:|
+| unsafeNew                   | 62.57n |         1 |
+| sync.Pool, cleared on reuse | 22.85n |         0 |
+| sync.Pool, not cleared      | 20.39n |         0 |
 
 That is 40ns and one allocation, and it is not currently claimable.
 Pooling and the aliasing described above are mutually exclusive: an

@@ -1,0 +1,37 @@
+// structs: composite literals, T{} and &T{}, keyed and positional
+// elements, nested literals, and field writes on the result.
+u := url.URL{Scheme: "https", Host: "example.com", Path: "/a"};
+assert.Equal(tb, "https", u.Scheme);
+assert.Equal(tb, "/a", u.Path);
+
+p := &url.URL{Scheme: "https", Host: "h", Path: "/p"};
+assert.Equal(tb, "https://h/p", p.String());
+
+// Positional elements fill the fields in declaration order.
+s = url.URL{"https"};
+assert.Equal(tb, "https", s.Scheme);
+
+// Nested literals, a call as an element, and a numeric literal
+// converting to its field's width.
+r := &http.Request{Method: "POST", URL: &url.URL{Path: "/n"}, ProtoMajor: 1};
+assert.Equal(tb, "POST", r.Method);
+assert.Equal(tb, "/n", r.URL.Path);
+assert.Equal(tb, "int", fmt.Sprintf("%T", r.ProtoMajor));
+
+c := &http.Request{URL: url.Parse("https://h/c")};
+assert.Equal(tb, "/c", c.URL.Path);
+
+// The value a literal builds is addressable, so its fields assign.
+w := url.URL{};
+w.Path = "/w";
+assert.Equal(tb, "/w", w.Path);
+
+// A literal in argument position, and the trailing comma form.
+assert.Equal(tb, "/arg", fmt.Sprint(&url.URL{Path: "/arg"}));
+
+m := &url.URL{
+	Scheme: "https",
+	Host:   "h",
+	Path:   "/m",
+};
+assert.Equal(tb, "https://h/m", m.String());

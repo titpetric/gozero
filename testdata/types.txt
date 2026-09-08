@@ -9,3 +9,16 @@ assert.Equal(tb, "2.5", fmt.Sprintf("%v", x));
 var u url.URL;
 assert.Equal(tb, "", u.Path);
 assert.True(tb, true);
+
+// A conversion hint fixes a literal's type at the assignment, the
+// way a var declaration would.
+y = int32(7);
+assert.Equal(tb, "int32", fmt.Sprintf("%T", y));
+assert.Equal(tb, "7", fmt.Sprintf("%d", y));
+
+f = float32(1.5);
+assert.Equal(tb, "float32", fmt.Sprintf("%T", f));
+
+// The hinted type sticks: a later assignment converts to it.
+y = 9;
+assert.Equal(tb, "int32", fmt.Sprintf("%T", y));

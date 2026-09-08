@@ -86,6 +86,12 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 	stmts := make([]plannedStmt, 0, len(p.stmts))
 	for i := range p.stmts {
 		s := &p.stmts[i]
+		if s.assign != nil {
+			// A composite literal builds its value per run and no node
+			// builds one, so the program stays on the reflect evaluator.
+			// Skipping it instead would read the name as unset.
+			return nil, fmt.Errorf("a composite literal is not in the table")
+		}
 		if s.retArg != nil {
 			// Only a name that already has a slot returns on this
 			// tier. A field read, a literal or a stack name in return

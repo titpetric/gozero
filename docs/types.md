@@ -1,6 +1,6 @@
 ---
 title: Type binding, hydration and discovery
-date: 2026-09-05T17:44:56+02:00
+date: "2026-09-05T17:44:56+02:00"
 ---
 
 The VM calls Go functions it was handed. Those functions have types, and
@@ -21,8 +21,7 @@ callable in the runtime under one name.
 type graph reachable from the function and records every type it finds,
 so a later `var` statement can name any of them.
 
-**Hydration** is what a program does with a discovered type: `var u
-url.URL` produces the zero value of `url.URL` in a slot, without the
+**Hydration** is what a program does with a discovered type: `var u url.URL` produces the zero value of `url.URL` in a slot, without the
 host ever having registered `url.URL` or written a constructor for it.
 
 ## Discovery
@@ -30,13 +29,13 @@ host ever having registered `url.URL` or written a constructor for it.
 `Bind` calls `discover` on the function's `reflect.Type`, which records
 the type and recurses into everything reachable from it:
 
-| Kind | Reached |
-|------|---------|
-| func | every parameter and every result |
-| pointer, slice, array, chan | the element type |
-| map | the key and the element type |
-| struct | every exported field's type |
-| any | every method's signature |
+| Kind                        | Reached                          |
+|-----------------------------|----------------------------------|
+| func                        | every parameter and every result |
+| pointer, slice, array, chan | the element type                 |
+| map                         | the key and the element type     |
+| struct                      | every exported field's type      |
+| any                         | every method's signature         |
 
 Struct fields are in that list because a program can read a field.
 `req.Header` has to make `http.Header` nameable, and `http.Header` is
@@ -69,19 +68,19 @@ source uses.
 Binding ten standard library constructors, counting only what each
 contributes beyond the predeclared seed:
 
-| Binding | Types | Notable |
-|---|---:|---|
-| `http.NewRequestWithContext` | 111 | `*http.Request` `*url.URL` `url.Values` `io.Reader` |
-| `http.NewRequest` | 86 | `*http.Request` `*url.URL` `url.Values` `io.Reader` |
-| `http.FileServer` | 32 | `http.Handler` `http.FileSystem` |
-| `http.NewServeMux` | 31 | `*http.ServeMux` `http.Handler` |
-| `pprof.Handler` | 25 | `http.Handler` |
-| `url.Parse` | 25 | `*url.URL` `url.Values` |
-| `http.StripPrefix` | 25 | `http.Handler` |
-| `json.NewDecoder` | 13 | `io.Reader` |
-| `json.NewEncoder` | 9 | `*json.Encoder` `io.Writer` |
-| `url.ParseQuery` | 9 | `url.Values` |
-| all together | 118 | |
+| Binding                      | Types | Notable                                             |
+|------------------------------|------:|-----------------------------------------------------|
+| `http.NewRequestWithContext` |   111 | `*http.Request` `*url.URL` `url.Values` `io.Reader` |
+| `http.NewRequest`            |    86 | `*http.Request` `*url.URL` `url.Values` `io.Reader` |
+| `http.FileServer`            |    32 | `http.Handler` `http.FileSystem`                    |
+| `http.NewServeMux`           |    31 | `*http.ServeMux` `http.Handler`                     |
+| `pprof.Handler`              |    25 | `http.Handler`                                      |
+| `url.Parse`                  |    25 | `*url.URL` `url.Values`                             |
+| `http.StripPrefix`           |    25 | `http.Handler`                                      |
+| `json.NewDecoder`            |    13 | `io.Reader`                                         |
+| `json.NewEncoder`            |     9 | `*json.Encoder` `io.Writer`                         |
+| `url.ParseQuery`             |     9 | `url.Values`                                        |
+| all together                 |   118 |                                                     |
 
 `http.NewRequestWithContext` reaches more than `http.NewRequest` for one
 reason: `context.Context` is a parameter, and its methods pull in
@@ -184,8 +183,7 @@ x = 5;          int64, nothing to infer from
 x = 5.5;        float64
 ```
 
-A declared type is not overridden by use. `var x int64; x = 5;
-takesInt(x);` reports `cannot use int64 as int` rather than quietly
+A declared type is not overridden by use. `var x int64; x = 5; takesInt(x);` reports `cannot use int64 as int` rather than quietly
 converting, because the declaration is the statement of intent.
 
 ### Literals at the call

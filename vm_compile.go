@@ -113,6 +113,23 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			if err := checkName(name); err != nil {
 				return nil, err
 			}
+			// u = url.URL{...} binds the name to the literal's own type,
+			// built fresh on every run.
+			if s.lit.kind == argStruct {
+				sa, st, err := c.compileStructLit(slots, env, *s.lit)
+				if err != nil {
+					return nil, fmt.Errorf("compile: %s: %w", name, err)
+				}
+				if prev, ok := env[name]; ok && prev != st {
+					if !st.AssignableTo(prev) {
+						return nil, fmt.Errorf("compile: %s: cannot use %s as %s", name, st, prev)
+					}
+					st = prev
+				}
+				slot := newSlot(name, st)
+				p.stmts = append(p.stmts, vmStmt{assign: sa, out: []int{slot}})
+				continue
+			}
 			t, ok := env[name]
 			if !ok {
 				t = c.inferLiteralType(prog, name, *s.lit)
@@ -127,6 +144,44 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			slot := newSlot(name, t)
 			p.stmts = append(p.stmts, vmStmt{lit: v, out: []int{slot}})
 			continue
+		}
+
+		// x = int32(0) is a conversion hint. The right-hand side parses
+		// as a call; a path that names a registered type rather than a
+		// binding cannot be called, so it fixes the literal's type
+		// instead, the way a var declaration would. The var form stays:
+		// the hint only covers a name assigned a literal.
+		if s.call != nil && !s.ret && len(s.lhs) > 0 {
+			if t, ok := c.conversionType(s.call); ok {
+				if len(s.lhs) != 1 {
+					return nil, fmt.Errorf("compile: a conversion assigns to exactly one name")
+				}
+				name := s.lhs[0]
+				if err := checkName(name); err != nil {
+					return nil, err
+				}
+				a, err := conversionArg(s.call)
+				if err != nil {
+					return nil, fmt.Errorf("compile: %s = %s(...): %w", name, joinPath(s.call.path), err)
+				}
+				v, err := literalValue(t, a)
+				if err != nil {
+					return nil, fmt.Errorf("compile: %s: %w", name, err)
+				}
+				// A declared type is not overridden by a hint. A hint
+				// converting into an interface slot keeps the slot's
+				// type, like any literal assigned to one.
+				st := t
+				if prev, ok := env[name]; ok && prev != t {
+					if !t.AssignableTo(prev) {
+						return nil, fmt.Errorf("compile: %s: cannot use %s as %s", name, t, prev)
+					}
+					st = prev
+				}
+				slot := newSlot(name, st)
+				p.stmts = append(p.stmts, vmStmt{lit: v, out: []int{slot}})
+				continue
+			}
 		}
 
 		if s.retVal != nil {
@@ -164,8 +219,18 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 	}
 
 	for i := range p.stmts {
-		if p.stmts[i].call != nil {
-			p.assignFrame(p.stmts[i].call)
+		s := &p.stmts[i]
+		if s.call != nil {
+			p.assignFrame(s.call)
+		}
+		if s.assign != nil {
+			p.assignArg(s.assign)
+		}
+		if s.fieldSet != nil {
+			p.assignArg(s.fieldSet.val)
+		}
+		if s.retArg != nil {
+			p.assignArg(s.retArg)
 		}
 	}
 	return p, nil
@@ -179,25 +244,69 @@ func (p *vmProgram) assignFrame(c *vmCall) {
 	c.off = p.frame
 	p.frame += len(c.args)
 	for _, a := range c.args {
-		for a.kind == vaField {
-			a = a.src
+		p.assignArg(a)
+	}
+}
+
+// assignArg walks one argument for assignFrame: a nested call needs
+// its own frame window whether it sits in an argument list, a struct
+// element, or a field assignment's value.
+func (p *vmProgram) assignArg(a *vmArg) {
+	for a.kind == vaField {
+		a = a.src
+	}
+	switch a.kind {
+	case vaCall:
+		p.assignFrame(a.sub)
+	case vaStruct:
+		for i := range a.elems {
+			p.assignArg(a.elems[i].val)
 		}
-		switch a.kind {
-		case vaCall:
-			p.assignFrame(a.sub)
-		case vaStack, vaDest:
-			// Only a non-empty interface is worth pre-converting: for
-			// an empty one reflect packs an eface directly and never
-			// reaches implements.
-			if a.typ.Kind() == reflect.Interface && a.typ.NumMethod() > 0 {
-				if conv, ok := ifaceConvs[a.typ]; ok {
-					a.conv = conv
-					a.iface = p.nifaces
-					p.nifaces++
-				}
+	case vaStack, vaDest:
+		// Only a non-empty interface is worth pre-converting: for
+		// an empty one reflect packs an eface directly and never
+		// reaches implements.
+		if a.typ.Kind() == reflect.Interface && a.typ.NumMethod() > 0 {
+			if conv, ok := ifaceConvs[a.typ]; ok {
+				a.conv = conv
+				a.iface = p.nifaces
+				p.nifaces++
 			}
 		}
 	}
+}
+
+// conversionType reports whether a call is a conversion hint: no
+// method chain, and a path that names a registered type. A binding
+// wins over a type of the same name, which keeps every program that
+// compiled before hints existed meaning what it meant.
+func (c *Compiler) conversionType(e *callExpr) (reflect.Type, bool) {
+	if len(e.chain) != 0 {
+		return nil, false
+	}
+	name := joinPath(e.path)
+	if _, bound := c.bindings[name]; bound {
+		return nil, false
+	}
+	return c.lookupType(name)
+}
+
+// conversionArg is the single literal a conversion hint wraps. A name
+// or a nested call is rejected: a value already has a type, and the
+// hint exists to give one to a literal that has none.
+func conversionArg(e *callExpr) (arg, error) {
+	if len(e.args) != 1 {
+		return arg{}, fmt.Errorf("a conversion takes exactly one argument, got %d", len(e.args))
+	}
+	a := e.args[0]
+	if a.spread {
+		return arg{}, fmt.Errorf("a conversion argument cannot be spread")
+	}
+	switch a.kind {
+	case argString, argInt, argFloat, argBool, argNil:
+		return a, nil
+	}
+	return arg{}, fmt.Errorf("a conversion takes a literal")
 }
 
 // inferLiteralType picks the type of a name a literal is assigned to,
@@ -316,6 +425,17 @@ func (c *Compiler) compileFieldSet(slots map[string]int, env map[string]reflect.
 	}
 
 	if s.lit != nil {
+		if s.lit.kind == argStruct {
+			sa, st, err := c.compileStructLit(slots, env, *s.lit)
+			if err != nil {
+				return nil, fmt.Errorf("compile: %s: %w", fs.field, err)
+			}
+			if !st.AssignableTo(t) {
+				return nil, fmt.Errorf("compile: %s: cannot assign %s to %s", fs.field, st, t)
+			}
+			fs.val = sa
+			return fs, nil
+		}
 		v, err := literalValue(t, *s.lit)
 		if err != nil {
 			return nil, fmt.Errorf("compile: %s: %w", fs.field, err)
@@ -355,9 +475,9 @@ func (c *Compiler) compileRetVal(slots map[string]int, env map[string]reflect.Ty
 		pt = reflect.TypeFor[bool]()
 	case argNil:
 		return nil, fmt.Errorf("compile: return nil returns no value, use return;")
-	case argPath:
-		// compileArg resolves the fields and checks assignability
-		// against pt, so any is what lets the field keep its own type.
+	case argPath, argStruct:
+		// compileArg resolves these and checks assignability against
+		// pt, so any is what lets the value keep its own type.
 	}
 	return c.compileArg(slots, env, "return", 0, pt, a)
 }

@@ -40,6 +40,7 @@ const (
 	vaCall                   // a nested call
 	vaField                  // a struct field read off another value
 	vaCtx                    // the execution context, auto-filled
+	vaStruct                 // a composite literal, built fresh per evaluation
 )
 
 var ctxType = reflect.TypeFor[context.Context]()
@@ -80,6 +81,22 @@ type vmArg struct {
 	src   *vmArg
 	index []int
 	deref bool
+
+	// vaStruct: styp is the struct type the literal builds, addr marks
+	// the &T{} form, and elems are the field writes. The value is built
+	// on every evaluation, the way a Go composite literal allocates
+	// each time the expression runs; a value shared between runs would
+	// share its mutations.
+	styp  reflect.Type
+	addr  bool
+	elems []vmElem
+}
+
+// vmElem is one element of a compiled composite literal: the field it
+// fills and the value.
+type vmElem struct {
+	index []int
+	val   *vmArg
 }
 
 // assignCache is one remembered answer to "is this concrete type
@@ -124,6 +141,12 @@ type vmStmt struct {
 	// lit is the value of a literal assignment, "x = 123", already
 	// converted to the slot's type.
 	lit reflect.Value
+
+	// assign is an assignment whose value is built per run rather than
+	// precomputed: a composite literal, "u = url.URL{...}". lit cannot
+	// carry it, because runs sharing one prebuilt value would share
+	// the struct.
+	assign *vmArg
 
 	// retArg is a return statement's value when it is not a call:
 	// a name, a field read, or a literal.
@@ -226,6 +249,14 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 		s := &p.stmts[i]
 		if s.lit.IsValid() {
 			slots[s.out[0]] = s.lit
+			continue
+		}
+		if s.assign != nil {
+			v, err := s.assign.get(ctx, slots, frame, ifaces, stack, dest)
+			if err != nil {
+				return nil, err
+			}
+			slots[s.out[0]] = v
 			continue
 		}
 		if s.fieldSet != nil {
@@ -336,6 +367,23 @@ func (a *vmArg) get(ctx context.Context, slots, frame []reflect.Value, ifaces []
 			v = v.Elem()
 		}
 		return v.FieldByIndex(a.index), nil
+	case vaStruct:
+		// New rather than a copied prototype, so every evaluation is its
+		// own allocation and the result is addressable: a field of the
+		// value a slot holds can be assigned afterwards.
+		pv := reflect.New(a.styp)
+		sv := pv.Elem()
+		for i := range a.elems {
+			v, err := a.elems[i].val.get(ctx, slots, frame, ifaces, stack, dest)
+			if err != nil {
+				return reflect.Value{}, err
+			}
+			sv.FieldByIndex(a.elems[i].index).Set(v)
+		}
+		if a.addr {
+			return pv, nil
+		}
+		return sv, nil
 	case vaDest:
 		if dest == nil {
 			return reflect.Zero(a.typ), fmt.Errorf("exec: dest is only set by Scan")

@@ -1,6 +1,6 @@
 ---
 title: What flatstack solved first
-date: 2026-09-05T16:06:34+02:00
+date: "2026-09-05T16:06:34+02:00"
 ---
 
 [phpscript](https://github.com/titpetric/phpscript) is a PHP interpreter
@@ -24,11 +24,11 @@ repository later made, in the same order.
 backend can be swapped by changing one import. The substance is
 `flatstack/engine/`:
 
-| File | Lines | What |
-|------|------:|------|
-| `program.go` | 193 | opcodes, instruction, `Program`, the `Host` interface |
-| `compiler.go` | 1128 | model AST to bytecode |
-| `vm.go` | 1152 | the execution loop |
+| File          | Lines | What                                                  |
+|---------------|------:|-------------------------------------------------------|
+| `program.go`  |   193 | opcodes, instruction, `Program`, the `Host` interface |
+| `compiler.go` |  1128 | model AST to bytecode                                 |
+| `vm.go`       |  1152 | the execution loop                                    |
 
 Two structural decisions carry the rest. `Host` is an interface of
 around thirty methods holding every PHP value semantic, so the engine
@@ -77,12 +77,12 @@ producer into its reader.
 **Gain**, measured by interleaving two test binaries because the machine
 was drifting 30% between runs:
 
-| | flat list and frame | closure tree |
-|---|---|---|
-| ns/op, four runs | 2253, 1928, 1934, 1850 | 1811, 1734, 1750, 1742 |
-| median | 1931n | 1746n |
-| spread | 403n | 77n |
-| B/op | 712 | 688, native's exact figure |
+|                  | flat list and frame    | closure tree               |
+|------------------|------------------------|----------------------------|
+| ns/op, four runs | 2253, 1928, 1934, 1850 | 1811, 1734, 1750, 1742     |
+| median           | 1931n                  | 1746n                      |
+| spread           | 403n                   | 77n                        |
+| B/op             | 712                    | 688, native's exact figure |
 
 ## Lesson 2: clear a pooled buffer to capacity, not length
 

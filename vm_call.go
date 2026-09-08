@@ -269,6 +269,17 @@ func (c *Compiler) compileArg(slots map[string]int, env map[string]reflect.Type,
 		cur.typ = pt
 		return cur, nil
 
+	case argStruct:
+		sa, st, err := c.compileStructLit(slots, env, a)
+		if err != nil {
+			return nil, fmt.Errorf("compile: %s argument %d: %w", name, pos+1, err)
+		}
+		if !st.AssignableTo(pt) {
+			return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, st, pt)
+		}
+		sa.typ = pt
+		return sa, nil
+
 	case argVar:
 		if a.str == "dest" {
 			return &vmArg{kind: vaDest, name: "dest", typ: pt, iface: -1}, nil

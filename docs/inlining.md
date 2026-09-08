@@ -1,6 +1,6 @@
 ---
 title: Inlining and the vm/native gap
-date: 2026-09-07T10:02:54+02:00
+date: "2026-09-07T10:02:54+02:00"
 ---
 
 `BenchmarkFixtures` compared across two builds of the same tree: the
@@ -10,25 +10,25 @@ Intel N150, go1.27, one 1s run per benchmark.
 
 ## With inlining (default build)
 
-| fixture | vm | native | ratio |
-|---|---|---|---|
-| fmt | 1002ns, 152 B, 7 allocs | 801ns, 48 B, 4 | 1.3x |
-| http | 2227ns, 616 B, 9 allocs | 2038ns, 640 B, 9 | 1.1x |
-| json | 2798ns, 1016 B, 17 allocs | 2170ns, 728 B, 14 | 1.3x |
-| types | 1775ns, 272 B, 9 allocs | 1308ns, 38 B, 4 | 1.4x |
-| url | 3413ns, 816 B, 15 allocs | 2802ns, 384 B, 12 | 1.2x |
-| variadic | 425ns, 69 B, 3 allocs | 359ns, 69 B, 3 | 1.2x |
+| fixture  | vm                        | native            | ratio |
+|----------|---------------------------|-------------------|-------|
+| fmt      | 1002ns, 152 B, 7 allocs   | 801ns, 48 B, 4    | 1.3x  |
+| http     | 2227ns, 616 B, 9 allocs   | 2038ns, 640 B, 9  | 1.1x  |
+| json     | 2798ns, 1016 B, 17 allocs | 2170ns, 728 B, 14 | 1.3x  |
+| types    | 1775ns, 272 B, 9 allocs   | 1308ns, 38 B, 4   | 1.4x  |
+| url      | 3413ns, 816 B, 15 allocs  | 2802ns, 384 B, 12 | 1.2x  |
+| variadic | 425ns, 69 B, 3 allocs     | 359ns, 69 B, 3    | 1.2x  |
 
 ## Without inlining (-gcflags=all=-l)
 
-| fixture | vm | native | ratio |
-|---|---|---|---|
-| fmt | 1702ns, 152 B, 7 allocs | 1060ns, 48 B, 4 | 1.6x |
-| http | 3327ns, 616 B, 9 allocs | 2776ns, 640 B, 9 | 1.2x |
-| json | 5235ns, 1016 B, 17 allocs | 4013ns, 984 B, 16 | 1.3x |
-| types | 2499ns, 272 B, 9 allocs | 1608ns, 38 B, 4 | 1.6x |
-| url | 4864ns, 816 B, 15 allocs | 4495ns, 784 B, 14 | 1.1x |
-| variadic | 610ns, 69 B, 3 allocs | 619ns, 69 B, 3 | 1.0x |
+| fixture  | vm                        | native            | ratio |
+|----------|---------------------------|-------------------|-------|
+| fmt      | 1702ns, 152 B, 7 allocs   | 1060ns, 48 B, 4   | 1.6x  |
+| http     | 3327ns, 616 B, 9 allocs   | 2776ns, 640 B, 9  | 1.2x  |
+| json     | 5235ns, 1016 B, 17 allocs | 4013ns, 984 B, 16 | 1.3x  |
+| types    | 2499ns, 272 B, 9 allocs   | 1608ns, 38 B, 4   | 1.6x  |
+| url      | 4864ns, 816 B, 15 allocs  | 4495ns, 784 B, 14 | 1.1x  |
+| variadic | 610ns, 69 B, 3 allocs     | 619ns, 69 B, 3    | 1.0x  |
 
 ## What the difference says
 

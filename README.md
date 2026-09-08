@@ -22,11 +22,12 @@ The design as it stands is in [docs/DESIGN.md](docs/DESIGN.md). The
 chapters below are the investigations that got it here, in the order
 they happened; each ends with what it taught.
 
-| Content | Date |
-|---------|------|
-| [Go, call overheads and JIT](docs/overheads.md) | 2026-09-03 |
-| [What flatstack solved first](docs/flatstack.md) | 2026-09-05 |
-| [Type binding, hydration and discovery](docs/types.md) | 2026-09-05 |
+| Content                                                   | Date       |
+|-----------------------------------------------------------|------------|
+| [Go, call overheads and JIT](docs/overheads.md)           | 2026-09-03 |
+| [What flatstack solved first](docs/flatstack.md)          | 2026-09-05 |
+| [Type binding, hydration and discovery](docs/types.md)    | 2026-09-05 |
 | [Fixture tests, programs evaluated hot](docs/fixtures.md) | 2026-09-06 |
-| [Inlining and the vm/native gap](docs/inlining.md) | 2026-09-07 |
-| [Design](docs/DESIGN.md) | 2026-09-07 |
+| [Inlining and the vm/native gap](docs/inlining.md)        | 2026-09-07 |
+| [Design](docs/DESIGN.md)                                  | 2026-09-07 |
+| [Changelog](docs/changelog.md)                            | 2026-09-08 |

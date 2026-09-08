@@ -1,6 +1,6 @@
 ---
 title: Fixture tests, programs evaluated hot
-date: 2026-09-06T12:31:21+02:00
+date: "2026-09-06T12:31:21+02:00"
 ---
 
 The programs under `testdata/` are the VM's test suite and its use case
@@ -50,7 +50,7 @@ pass vacuously.
 
 Adding a test is adding a file. Scope it the way the existing ones are
 scoped, one concern per file: `http.txt`, `url.txt`, `json.txt`,
-`fmt.txt`, `types.txt`, `variadic.txt`.
+`fmt.txt`, `types.txt`, `structs.txt`, `variadic.txt`.
 
 ## The assert bindings
 
@@ -99,14 +99,14 @@ the request, and back out.
 context from `tb.Context()` on both sides. All six fixtures run fully
 on the direct-call tier. Pinned core, inlining disabled:
 
-| fixture | vm | native | ratio |
-|---|---|---|---|
-| fmt | 1.7us, 7 allocs | 1.1us, 4 | 1.6x |
-| http | 3.3us, 9 allocs | 2.8us, 9 | 1.2x |
-| json | 5.2us, 17 allocs | 4.0us, 16 | 1.3x |
-| types | 2.5us, 9 allocs | 1.6us, 4 | 1.6x |
-| url | 4.9us, 15 allocs | 4.5us, 14 | 1.1x |
-| variadic | 0.6us, 3 allocs | 0.6us, 3 | 1.0x |
+| fixture  | vm               | native    | ratio |
+|----------|------------------|-----------|-------|
+| fmt      | 1.7us, 7 allocs  | 1.1us, 4  | 1.6x  |
+| http     | 3.3us, 9 allocs  | 2.8us, 9  | 1.2x  |
+| json     | 5.2us, 17 allocs | 4.0us, 16 | 1.3x  |
+| types    | 2.5us, 9 allocs  | 1.6us, 4  | 1.6x  |
+| url      | 4.9us, 15 allocs | 4.5us, 14 | 1.1x  |
+| variadic | 0.6us, 3 allocs  | 0.6us, 3  | 1.0x  |
 
 http and variadic reach allocation parity with their mirrors; json and
 url are within one allocation, which is the frame. The fixtures that lean

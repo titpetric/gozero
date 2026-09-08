@@ -5,7 +5,7 @@ vars:
   # get inlined into the loop body and measure nothing, while the reflect path
   # crosses non-inlinable boundaries either way, so the multipliers come out of
   # a comparison that was never fair.
-  benchflags: -run XXX -bench . -benchmem -benchtime 10s -count 3 -gcflags=all=-l
+  benchflags: -run XXX -bench . -benchmem -benchtime 1s -count 3 -gcflags=all=-l
 
   # Every benchmark is pinned to one core at top priority. This machine runs
   # other work, and unpinned the same native call read anywhere from 509n to
@@ -18,8 +18,9 @@ vars:
   # A discarded run before the measured ones, to bring the CPU up to speed.
   # Whichever package goes first otherwise absorbs the ramp: internal/parse
   # read 1036n to 1887n as the first package of a sweep against 615n behind
-  # three seconds of load. 200ms of warmup was not enough, 3s is.
-  warmup: -run XXX -bench . -benchtime 3s -gcflags=all=-l
+  # three seconds of load. 200ms of warmup was not enough, 3s is. One
+  # benchmark suffices: the point is 3s of load, not coverage.
+  warmup: -run XXX -bench '^BenchmarkNative$' -benchtime 3s -gcflags=all=-l
 
 env:
   vars:
@@ -32,28 +33,28 @@ jobs:
       - task: fmt
       - task: lint
       - task: test
-      - task: bench
 
   fmt:
     desc: Format the module
     passthru: true
     steps:
-      - run: splint --fix ./...
+      - cmd: splint --fix ./...
+      - task: mdox:fmt
 
   lint:
     desc: Vet
     steps:
-      - run: go vet ./...
+      - go vet ./...
 
   test:
     desc: Run the tests
     steps:
-      - run: go test -count 1 -cover ./...
+      - go test -count 1 -cover ./...
       - name: race
         env:
           vars:
             CGO_ENABLED: "1"
-        run: go test -count 1 -race ./...
+        cmd: go test -count 1 -race ./...
 
   test:discovery:
     aliases: [discovery]
@@ -64,40 +65,40 @@ jobs:
     # untruncated form, since the output is what the job is for.
     passthru: true
     steps:
-      - run: go test -count 1 -run '^TestDiscovery$' -v .
+      - go test -count 1 -run '^TestDiscovery$' -v .
 
   bench:
     desc: Run every benchmark with inlining disabled
-    # 3 benchmarks at -benchtime 10s and -count 3 is around 90s of
+    # 24 leaf benchmarks at -benchtime 1s and -count 3 is around 90s of
     # measurement plus compilation. The count is there so benchstat can
     # report variance.
     timeout: 600s
     passthru: true
     steps:
       - name: warmup
-        run: ${{ pin }} go test ${{ warmup }} . > /dev/null
+        cmd: ${{ pin }} go test ${{ warmup }} . > /dev/null
       - name: bench ${{ pkg }}
         for: pkg in packages
-        run: ${{ pin }} go test ${{ benchflags }} ./${{ pkg }}/
+        cmd: ${{ pin }} go test ${{ benchflags }} ./${{ pkg }}/
 
   bench:save:
     aliases: [save]
     desc: Write bench.txt and summarise it with benchstat
     timeout: 600s
     steps:
-      - run: rm -f bench.txt
+      - rm -f bench.txt
       - name: warmup
-        run: ${{ pin }} go test ${{ warmup }} . > /dev/null
+        cmd: ${{ pin }} go test ${{ warmup }} . > /dev/null
       - name: bench ${{ pkg }}
         for: pkg in packages
-        run: ${{ pin }} go test ${{ benchflags }} ./${{ pkg }}/ >> bench.txt
+        cmd: ${{ pin }} go test ${{ benchflags }} ./${{ pkg }}/ >> bench.txt
       - task: bench:report
 
   bench:report:
     aliases: [report]
     desc: Summarise bench.txt
     steps:
-      - run: benchstat bench.txt
+      - benchstat bench.txt
 
   bench:profile:
     aliases: [profile]
@@ -105,5 +106,5 @@ jobs:
     timeout: 300s
     steps:
       - name: warmup
-        run: ${{ pin }} go test ${{ warmup }} . > /dev/null
-      - run: ${{ pin }} go test -run XXX -bench 'BenchmarkCostAmortizedCache$' -benchmem -benchtime 10s -gcflags=all=-l -cpuprofile cpu.out -memprofile mem.out .
+        cmd: ${{ pin }} go test ${{ warmup }} . > /dev/null
+      - ${{ pin }} go test -run XXX -bench 'BenchmarkCostAmortizedCache$' -benchmem -benchtime 10s -gcflags=all=-l -cpuprofile cpu.out -memprofile mem.out .

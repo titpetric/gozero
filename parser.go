@@ -12,12 +12,14 @@ import (
 //	         | "return" [ arg ] term
 //	         | [ name { "," name } ( ":=" | "=" ) ] rhs term
 //	term    := ";" | EOL | EOF
-//	rhs     := expr | string | number | "true" | "false" | "nil"
+//	rhs     := expr | string | number | "true" | "false" | "nil" | composite
 //	typeref := { "*" | "[]" } path
 //	expr    := path "(" [ args ] ")" { "." ident "(" [ args ] ")" }
 //	path    := ident { "." ident }
 //	args    := arg { "," arg }
-//	arg     := string | number | path | expr
+//	arg     := string | number | path | expr | composite
+//	composite := [ "&" ] path "{" [ elem { "," elem } [ "," ] ] "}"
+//	elem    := [ ident ":" ] arg
 
 // Parser turns a program into a list of statements. A path is resolved
 // by the compiler, not here: http.NewRequest is one bound name,
@@ -63,7 +65,19 @@ const (
 	// first segment is a name and the rest are field selectors; the
 	// compiler resolves them, because only it knows the types.
 	argPath
+	// argStruct is a composite literal, url.URL{Path: "/"} or
+	// &http.Request{}. The path names the type; the compiler resolves
+	// it, because only it holds the registry.
+	argStruct
 )
+
+// structElem is one element of a composite literal: the field name
+// when the element is keyed, empty when it is positional, and the
+// value.
+type structElem struct {
+	name string
+	val  arg
+}
 
 // arg is one parsed argument: a literal, a name, or a nested call.
 type arg struct {
@@ -77,6 +91,10 @@ type arg struct {
 	// spread marks "xs...": the value expands into a variadic
 	// parameter.
 	spread bool
+	// argStruct: path names the type, elems are the elements, and addr
+	// marks the &T{} form.
+	elems []structElem
+	addr  bool
 }
 
 // link is one ".Method(args)" step chained onto a call.
@@ -140,7 +158,7 @@ func (p *program) flatCall() (*callExpr, bool) {
 		return nil, false
 	}
 	for _, a := range s.call.args {
-		if a.kind == argCall {
+		if a.kind == argCall || a.kind == argStruct {
 			return nil, false
 		}
 	}
@@ -430,6 +448,18 @@ func (p *Parser) arg() (arg, error) {
 		return p.stringLit(c)
 	case c == '-' || (c >= '0' && c <= '9'):
 		return p.numberLit()
+	case c == '&':
+		// & only prefixes a composite literal: there are no other
+		// addressable expressions in the grammar.
+		p.pos++
+		path, err := p.path()
+		if err != nil {
+			return arg{}, err
+		}
+		if !p.consume('{') {
+			return arg{}, fmt.Errorf("parse: expected a composite literal after '&' at offset %d", p.pos)
+		}
+		return p.composite(path, true)
 	default:
 		save := p.pos
 		path, err := p.path()
@@ -443,6 +473,10 @@ func (p *Parser) arg() (arg, error) {
 				return arg{}, err
 			}
 			return arg{kind: argCall, sub: sub}, nil
+		}
+		if p.peek() == '{' {
+			p.consume('{')
+			return p.composite(path, false)
 		}
 		if len(path) != 1 {
 			return arg{kind: argPath, path: path}, nil
@@ -459,5 +493,39 @@ func (p *Parser) arg() (arg, error) {
 			return arg{kind: argNil}, nil
 		}
 		return arg{kind: argVar, str: path[0]}, nil
+	}
+}
+
+// composite reads the elements of a composite literal after the
+// opening brace. An element is "Field: value" or a bare value; the
+// compiler checks the two forms are not mixed, because only it can
+// name the fields. A trailing comma before the closing brace is
+// legal, as it is in Go.
+func (p *Parser) composite(path []string, addr bool) (arg, error) {
+	a := arg{kind: argStruct, path: path, addr: addr}
+	for {
+		p.skipSpace()
+		if p.consume('}') {
+			return a, nil
+		}
+		if len(a.elems) > 0 && !p.consume(',') {
+			return arg{}, fmt.Errorf("parse: expected ',' or '}' at offset %d", p.pos)
+		}
+		if p.consume('}') {
+			return a, nil
+		}
+		var e structElem
+		save := p.pos
+		if name := p.ident(); name != "" && p.consume(':') {
+			e.name = name
+		} else {
+			p.pos = save
+		}
+		v, err := p.arg()
+		if err != nil {
+			return arg{}, err
+		}
+		e.val = v
+		a.elems = append(a.elems, e)
 	}
 }

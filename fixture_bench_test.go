@@ -107,6 +107,45 @@ func (f *testFixtures) testTypes(tb testing.TB) {
 	assertTrue(tb, true, "")
 }
 
+func (f *testFixtures) testStructs(tb testing.TB) {
+	u := url.URL{Scheme: "https", Host: "example.com", Path: "/a"}
+	assertEqual(tb, "https", u.Scheme, "")
+	assertEqual(tb, "/a", u.Path, "")
+
+	p := &url.URL{Scheme: "https", Host: "h", Path: "/p"}
+	assertEqual(tb, "https://h/p", p.String(), "")
+
+	// The fixture's positional url.URL{"https"} fills Scheme; Go
+	// requires every field positionally, so the keyed form stands in.
+	s := url.URL{Scheme: "https"}
+	assertEqual(tb, "https", s.Scheme, "")
+
+	r := &http.Request{Method: "POST", URL: &url.URL{Path: "/n"}, ProtoMajor: 1}
+	assertEqual(tb, "POST", r.Method, "")
+	assertEqual(tb, "/n", r.URL.Path, "")
+	assertEqual(tb, "int", fmt.Sprintf("%T", r.ProtoMajor), "")
+
+	cu, err := url.Parse("https://h/c")
+	if err != nil {
+		tb.Fatal(err)
+	}
+	c := &http.Request{URL: cu}
+	assertEqual(tb, "/c", c.URL.Path, "")
+
+	w := url.URL{}
+	w.Path = "/w"
+	assertEqual(tb, "/w", w.Path, "")
+
+	assertEqual(tb, "/arg", fmt.Sprint(&url.URL{Path: "/arg"}), "")
+
+	m := &url.URL{
+		Scheme: "https",
+		Host:   "h",
+		Path:   "/m",
+	}
+	assertEqual(tb, "https://h/m", m.String(), "")
+}
+
 func (f *testFixtures) testVariadic(tb testing.TB) {
 	parts := strings.Fields("a b c")
 	joined := path.Join(parts...)
@@ -123,6 +162,7 @@ func BenchmarkFixtures(b *testing.B) {
 		"url":      (*testFixtures).testURL,
 		"json":     (*testFixtures).testJSON,
 		"fmt":      (*testFixtures).testFmt,
+		"structs":  (*testFixtures).testStructs,
 		"types":    (*testFixtures).testTypes,
 		"variadic": (*testFixtures).testVariadic,
 	}
