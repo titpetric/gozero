@@ -97,7 +97,15 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 			return nil, nil, fmt.Errorf("compile: cannot call %s on a value of unknown type", l.name)
 		}
 		if m, ok := currType.MethodByName(l.name); ok {
-			call, err := c.compileCall(slots, env, m.Func, currType.String()+"."+l.name, recv, l.args)
+			fn := m.Func
+			if !fn.IsValid() {
+				// An interface type's Method carries no Func: there is
+				// no concrete code to point at until a dynamic value is
+				// behind the receiver. The wrapper dispatches on it, so
+				// ctx.Err() compiles like any method call.
+				fn = ifaceMethodFunc(currType, m)
+			}
+			call, err := c.compileCall(slots, env, fn, currType.String()+"."+l.name, recv, l.args)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -122,6 +130,36 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 		return nil, nil, fmt.Errorf("compile: %q is not callable", joinPath(e.path))
 	}
 	return curr, currType, nil
+}
+
+// ifaceMethodFunc builds a callable func value for a method of an
+// interface type. MethodByName on an interface returns the signature
+// without a receiver and a zero Func, so the call site gets a
+// synthesized func whose first parameter is the interface and whose
+// body dispatches on the dynamic value, exactly what the compiled
+// method call on a concrete receiver gets from Method.Func. A nil
+// receiver panics inside reflect the way a nil interface method call
+// panics in Go, and arrives as *PanicError through the guard.
+func ifaceMethodFunc(t reflect.Type, m reflect.Method) reflect.Value {
+	mt := m.Type
+	in := make([]reflect.Type, 0, mt.NumIn()+1)
+	in = append(in, t)
+	for i := 0; i < mt.NumIn(); i++ {
+		in = append(in, mt.In(i))
+	}
+	out := make([]reflect.Type, 0, mt.NumOut())
+	for i := 0; i < mt.NumOut(); i++ {
+		out = append(out, mt.Out(i))
+	}
+	idx := m.Index
+	variadic := mt.IsVariadic()
+	return reflect.MakeFunc(reflect.FuncOf(in, out, variadic), func(args []reflect.Value) []reflect.Value {
+		if variadic {
+			// MakeFunc hands the variadic tail packed as a slice.
+			return args[0].Method(idx).CallSlice(args[1:])
+		}
+		return args[0].Method(idx).Call(args[1:])
+	})
 }
 
 // compileCall validates one call against a func value. recv is the

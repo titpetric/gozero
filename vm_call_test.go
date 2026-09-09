@@ -2,6 +2,9 @@ package gozero
 
 import (
 	"bytes"
+	"context"
+	"errors"
+	"io"
 	"net/http"
 	"testing"
 )
@@ -60,4 +63,54 @@ func TestProgramUnknownMethod(t *testing.T) {
 		t.Fatal("expected a compile error for the unknown method")
 	}
 	t.Log(err)
+}
+
+// TestInterfaceMethodCall checks a method resolved on an
+// interface-typed name. MethodByName on an interface type returns a
+// zero Func, which used to reach compileCall and panic; the compiler
+// now synthesizes the dispatch with ifaceMethodFunc.
+func TestInterfaceMethodCall(t *testing.T) {
+	rt := NewRuntime()
+	if err := rt.Bind("ctxOf", func(ctx context.Context) context.Context { return ctx }); err != nil {
+		t.Fatal(err)
+	}
+
+	// Done on a cancellable context is a real channel, reached through
+	// two interface method calls on a name the program bound.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fn, err := rt.Compile(`ctx := ctxOf(); d := ctx.Done(); return d`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := fn.ExecContext[<-chan struct{}](ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d == nil {
+		t.Fatal("Done() = nil, want the cancellable context's channel")
+	}
+
+	// Err returns only an error, so the error contract applies: on a
+	// cancelled context the statement ends the program with the
+	// cancellation cause instead of binding a value.
+	cancel()
+	if _, err := rt.EvalContext[any](ctx, `ctxOf().Err();`, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+}
+
+// TestInterfaceMethodOnNil pins Go parity for a method call on a nil
+// interface: a panic inside reflect, arriving as *PanicError through
+// the guard rather than unwinding the caller.
+func TestInterfaceMethodOnNil(t *testing.T) {
+	rt := NewRuntime()
+	if err := rt.Bind("nilWriter", func() io.Writer { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	_, err := rt.Eval[any](`w := nilWriter(); w.Write();`, nil)
+	var pe *PanicError
+	if !errors.As(err, &pe) {
+		t.Fatalf("err = %v, want *PanicError", err)
+	}
 }

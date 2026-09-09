@@ -36,7 +36,7 @@ rt.BindScope("chans", map[string]any{
 **As values.** A channel made by a binding flows through slots and
 arguments like any pointer-shaped value:
 
-```gozero
+```go
 c := chans.Make()
 chans.Send(c, "x")
 v := chans.Recv(c)
@@ -96,13 +96,15 @@ cancellation, the common reason to write `select`, is expressible
 today with no syntax.
 
 One defect the probe found, independent of channels: `ctx.Done()`
-itself does not compile. A method called on an interface-typed name
-reaches `compileCall` through `MethodByName`, which returns a nil
-`Func` for interface types, and `Compile` panics on the zero
-`reflect.Value`. Every interface-typed name has the problem
-(`ctx.Err()`, a method on an `io.Reader` slot); channels only make
+itself did not compile. A method called on an interface-typed name
+reached `compileCall` through `MethodByName`, which returns a nil
+`Func` for interface types, and `Compile` panicked on the zero
+`reflect.Value`. Every interface-typed name had the problem
+(`ctx.Err()`, a method on an `io.Reader` slot); channels only made
 it visible because contexts are where interface-typed names are
-common.
+common. Fixed since: `ifaceMethodFunc` synthesizes the dispatch on
+the dynamic value, so `ctx.Done()` compiles like any method call
+([changelog](../changelog.md)).
 
 ## What syntax would cost
 
@@ -196,5 +198,5 @@ the most common reason to want any of them: `<-ctx.Done()` inside a
 select is one `Recv(ctx, ch)` binding with the context auto-filled
 and the error contract as the cancellation path. Typed channel
 bindings with a context parameter are the recorded position; the
-interface-method compile panic the probe found is a defect in method
-resolution, not in channels.
+interface-method compile panic the probe found was a defect in
+method resolution, fixed since.

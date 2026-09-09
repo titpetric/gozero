@@ -175,13 +175,11 @@ func (r *Runtime) compileUncached(stmt string) (CompiledFunc, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The unlock is deferred so a panic inside the compiler cannot leak
+	// the read lock; a leaked one deadlocks the next cache store.
 	r.mu.RLock()
-	fn, err := r.compiler.Compile(call)
-	r.mu.RUnlock()
-	if err != nil {
-		return nil, err
-	}
-	return fn, nil
+	defer r.mu.RUnlock()
+	return r.compiler.Compile(call)
 }
 
 // Eval compiles (or reuses the cached compilation of) stmt and executes
