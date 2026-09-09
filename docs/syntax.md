@@ -281,8 +281,9 @@ the program before the next statement, the way `set -e` ends a shell
 script.
 
 What the syntax deliberately leaves out - conditionals, loops,
-closures and operator expressions - and what each would cost the
-design is researched feature by feature in [design/](design/):
-[conditions](design/conditions.md), [loops](design/loops.md),
-[closures](design/closures.md),
-[expressions](design/expressions.md).
+closures, operator expressions and channels - and what each would
+cost the design is researched feature by feature in
+[design/](design/): [conditions](design/conditions.md),
+[loops](design/loops.md), [closures](design/closures.md),
+[expressions](design/expressions.md),
+[channels](design/channels.md).

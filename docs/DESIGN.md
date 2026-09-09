@@ -243,6 +243,6 @@ paid once per source string.
 - Pooling the frame remains foreclosed by slot aliasing; the unexplored
   approaches are recorded at the end of
   [overheads.md](overheads.md).
-- Extending the syntax with conditionals, loops, closures or operator
-  expressions is researched and declined, feature by feature, in
-  [design/](design/).
+- Extending the syntax with conditionals, loops, closures, operator
+  expressions or channels is researched and declined, feature by
+  feature, in [design/](design/).
