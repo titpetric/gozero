@@ -108,9 +108,12 @@ the results of `Eval` and `Exec`, so both are instantiated explicitly;
 ## Overhead
 
 Medians of five runs, each benchmark in its own process, pinned to one
-core with inlining disabled, Intel N150, go1.27.0. The raw sweep is
-[`bench.txt`](../bench.txt). cost-sec/op is the measured loop minus a
-native baseline timed inline in the same process.
+core with inlining disabled, Intel N150, go1.27.0. cost-sec/op is the
+measured loop minus a native baseline timed inline in the same
+process. [`bench.txt`](../bench.txt) held this sweep when the chapter
+was written; the `atkins save` job has since repurposed the file for
+its combined count-3 sweep of every benchmark, where the amortized
+cost figures read in the same tens of nanoseconds.
 
 | Benchmark          | sec/op  | B/op | allocs/op | cost-sec/op |
 |--------------------|--------:|-----:|----------:|------------:|

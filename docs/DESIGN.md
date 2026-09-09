@@ -197,8 +197,8 @@ because `Compile` wraps what it returns.
 ## Costs
 
 A cached single call costs tens of nanoseconds over native with the
-same allocations ([overheads.md](overheads.md)); the six-fixture suite
-runs at 1.0x-1.6x of handwritten mirrors with inlining disabled and
+same allocations ([overheads.md](overheads.md)); the seven-fixture
+suite runs at 1.1x-1.6x of handwritten mirrors with inlining disabled and
 closer with it on ([fixtures.md](fixtures.md),
 [inlining.md](inlining.md)). Parse and compile cost about 2us and are
 paid once per source string.

@@ -96,21 +96,26 @@ the request, and back out.
 
 `BenchmarkFixtures` runs every fixture against a handwritten mirror: a
 `testFixtures` method doing the same work with the same assertions,
-context from `tb.Context()` on both sides. All six fixtures run fully
-on the direct-call tier. Pinned core, inlining disabled:
+context from `tb.Context()` on both sides. All seven fixtures run
+fully on the direct-call tier, structs since composite literals landed
+on it ([changelog](changelog.md)). Pinned core, inlining disabled:
 
 | fixture  | vm               | native    | ratio |
 |----------|------------------|-----------|-------|
-| fmt      | 1.7us, 7 allocs  | 1.1us, 4  | 1.6x  |
-| http     | 3.3us, 9 allocs  | 2.8us, 9  | 1.2x  |
-| json     | 5.2us, 17 allocs | 4.0us, 16 | 1.3x  |
-| types    | 2.5us, 9 allocs  | 1.6us, 4  | 1.6x  |
-| url      | 4.9us, 15 allocs | 4.5us, 14 | 1.1x  |
-| variadic | 0.6us, 3 allocs  | 0.6us, 3  | 1.0x  |
+| fmt      | 1.6us, 7 allocs  | 1.0us, 4  | 1.6x  |
+| http     | 3.0us, 9 allocs  | 2.7us, 9  | 1.1x  |
+| json     | 4.4us, 17 allocs | 3.8us, 16 | 1.2x  |
+| structs  | 8.2us, 26 allocs | 5.4us, 19 | 1.5x  |
+| types    | 5.3us, 21 allocs | 3.5us, 11 | 1.5x  |
+| url      | 4.7us, 15 allocs | 4.2us, 14 | 1.1x  |
+| variadic | 0.6us, 3 allocs  | 0.5us, 3  | 1.1x  |
 
 http and variadic reach allocation parity with their mirrors; json and
-url are within one allocation, which is the frame. The fixtures that lean
-on formatting and assertion plumbing sit under 2x. For the bridge cost
+url are within one allocation, which is the frame. structs sits seven
+over: a literal in argument or interface position allocates a fresh
+struct where Go's escape analysis keeps the mirror's on the stack. The
+fixtures that lean on formatting and assertion plumbing sit under 2x.
+For the bridge cost
 of a call the shape table cannot express, and for the work-only
 comparison without assertions, see the benchmarks in
 `fixture_bench_test.go`. For how these numbers move when inlining is
@@ -154,8 +159,8 @@ write put in the slot.
 - Context plumbing is provable end to end from inside a fixture: the
   value attached by the runner comes back out of the request only if
   the auto-filled parameter carried it.
-- Against handwritten mirrors the fixtures run at 1.0x-1.6x with
-  allocation parity on two of six, and the assert helper's comparable
+- Against handwritten mirrors the fixtures run at 1.1x-1.6x with
+  allocation parity on two of seven, and the assert helper's comparable
   fast path is worth an allocation per assertion.
 - A struct held by value lives in the frame: field access is an offset,
   and a whole-struct value only needs transport when a binding takes
