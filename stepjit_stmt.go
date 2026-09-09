@@ -12,6 +12,9 @@ func (c *jitCompiler) stmtNode(s plannedStmt, jp *jitProgram) (nodeE, error) {
 	if s.fieldSet != nil {
 		return c.fieldSetNode(s.fieldSet)
 	}
+	if s.assign != nil {
+		return c.structAssignNode(s)
+	}
 	var n node
 	if s.lit.IsValid() {
 		field, ok := c.slotOf[s.out]
@@ -161,6 +164,12 @@ func (c *jitCompiler) fieldSetNode(fs *vmFieldSet) (nodeE, error) {
 		}
 		if v.class != cl {
 			return nil, fmt.Errorf("a %s result cannot fill a %s field", v.class, cl)
+		}
+		val = v
+	case vaStruct:
+		v, err := c.structArgNode(fs.val, sf.Type, cl)
+		if err != nil {
+			return nil, err
 		}
 		val = v
 	default:

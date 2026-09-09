@@ -66,14 +66,26 @@ func TestStructLiteral(t *testing.T) {
 	}
 }
 
-// TestStructLiteralSupports checks that a program with a composite
-// literal is declined by the direct tier with a reason, rather than
-// mishandled: no JIT node builds a struct, so it runs on reflect.
+// TestStructLiteralSupports checks that a composite literal reaches
+// the direct tier: assigned to a name, in argument position, and as a
+// field assignment's value. A literal in return position stays on the
+// reflect evaluator like every returned expression, and is declined
+// with a reason rather than mishandled.
 func TestStructLiteralSupports(t *testing.T) {
 	rt, _ := typeRuntime(t)
-	err := rt.Supports(`u = url.URL{Path: "/"}; json.NewEncoder(dest).Encode(u.Path);`)
+	for _, src := range []string{
+		`u = url.URL{Path: "/"}; json.NewEncoder(dest).Encode(u.Path);`,
+		`p = &url.URL{Path: "/"}; json.NewEncoder(dest).Encode(p.Path);`,
+		`takesAny(&url.URL{Path: "/a"});`,
+		`r := &http.Request{}; r.URL = &url.URL{Path: "/f"}; json.NewEncoder(dest).Encode(r.URL.Path);`,
+	} {
+		if err := rt.Supports(src); err != nil {
+			t.Errorf("%s: %v", src, err)
+		}
+	}
+	err := rt.Supports(`return url.URL{Path: "/"};`)
 	if err == nil {
-		t.Fatal("a composite literal should not reach the direct tier")
+		t.Fatal("a returned literal should not reach the direct tier")
 	}
 	t.Log(err)
 }

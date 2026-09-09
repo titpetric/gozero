@@ -75,6 +75,9 @@ func (c *jitCompiler) argNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 	case vaConst:
 		return constNode(a.val, cl)
 
+	case vaStruct:
+		return c.structArgNode(a, pt, cl)
+
 	case vaCtx:
 		// The execution context is already the exact interface type the
 		// parameter wants, so the two words copy straight through.

@@ -11,7 +11,8 @@ import (
 func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 	counts := map[string]int{}
 	var walkCall func(*vmCall)
-	walkArg := func(a *vmArg) {
+	var walkArg func(*vmArg)
+	walkArg = func(a *vmArg) {
 		for a.kind == vaField {
 			a = a.src
 		}
@@ -28,6 +29,10 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 			if sub := c.splices[a]; sub != nil {
 				walkCall(sub)
 			}
+		case vaStruct:
+			for i := range a.elems {
+				walkArg(a.elems[i].val)
+			}
 		}
 	}
 	walkCall = func(call *vmCall) {
@@ -38,6 +43,9 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 	for _, s := range plan.stmts {
 		if s.call != nil {
 			walkCall(s.call)
+		}
+		if s.assign != nil {
+			walkArg(s.assign)
 		}
 		if s.fieldSet != nil {
 			walkArg(s.fieldSet.val)
@@ -55,6 +63,9 @@ type plannedStmt struct {
 
 	// lit is a literal assignment, which has no call to compile.
 	lit reflect.Value
+
+	// assign is a composite literal assignment, built per evaluation.
+	assign *vmArg
 
 	// fieldSet is a field assignment, compiled to a typed store.
 	fieldSet *vmFieldSet
@@ -87,10 +98,12 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 	for i := range p.stmts {
 		s := &p.stmts[i]
 		if s.assign != nil {
-			// A composite literal builds its value per run and no node
-			// builds one, so the program stays on the reflect evaluator.
-			// Skipping it instead would read the name as unset.
-			return nil, fmt.Errorf("a composite literal is not in the table")
+			out := -1
+			if len(s.out) > 0 {
+				out = s.out[0]
+			}
+			stmts = append(stmts, plannedStmt{assign: s.assign, out: out})
+			continue
 		}
 		if s.retArg != nil {
 			// Only a name that already has a slot returns on this
@@ -138,11 +151,12 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 		if s.call != nil {
 			countReads(reads, s.call)
 		}
+		if s.assign != nil {
+			countArgReads(reads, s.assign)
+		}
 		if s.fieldSet != nil {
 			reads[s.fieldSet.base]++
-			if sub := s.fieldSet.val.sub; sub != nil {
-				countReads(reads, sub)
-			}
+			countArgReads(reads, s.fieldSet.val)
 		}
 	}
 
@@ -210,14 +224,25 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 // field read still pointed at the dropped slot.
 func countReads(reads map[int]int, c *vmCall) {
 	for _, a := range c.args {
-		for a.kind == vaField {
-			a = a.src
-		}
-		switch a.kind {
-		case vaSlot:
-			reads[a.slot]++
-		case vaCall:
-			countReads(reads, a.sub)
+		countArgReads(reads, a)
+	}
+}
+
+// countArgReads walks one argument for countReads. A composite
+// literal's elements read names like any argument does, so a producer
+// must not be spliced away while an element still points at its slot.
+func countArgReads(reads map[int]int, a *vmArg) {
+	for a.kind == vaField {
+		a = a.src
+	}
+	switch a.kind {
+	case vaSlot:
+		reads[a.slot]++
+	case vaCall:
+		countReads(reads, a.sub)
+	case vaStruct:
+		for i := range a.elems {
+			countArgReads(reads, a.elems[i].val)
 		}
 	}
 }

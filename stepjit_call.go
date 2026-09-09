@@ -323,6 +323,27 @@ func (c *jitCompiler) bridgeArg(a *vmArg) (func(unsafe.Pointer, context.Context,
 			return nil, err
 		}
 		return c.nodeToValue(a.typ, fieldNode)
+
+	case vaStruct:
+		// The literal builds directly and the bridge reads the block in
+		// place; reflect copies it into the callee's frame like any
+		// argument.
+		n, err := c.structNode(a)
+		if err != nil {
+			return nil, err
+		}
+		styp, addr, f := a.styp, a.addr, n.P
+		return func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (reflect.Value, error) {
+			v, err := f(fr, ctx, st, d)
+			if err != nil {
+				return reflect.Value{}, err
+			}
+			pv := reflect.NewAt(styp, v)
+			if addr {
+				return pv, nil
+			}
+			return pv.Elem(), nil
+		}, nil
 	}
 	return nil, fmt.Errorf("a bridged argument of kind %d is not supported", a.kind)
 }

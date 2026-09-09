@@ -7,6 +7,28 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-08 19:30 +02:00: composite literals on the direct tier
+
+A composite literal no longer sends the program to the reflect
+evaluator. The step JIT compiles a literal to typed stores at field
+offsets, the technique the frame already uses, so every element write
+keeps its write barrier and the block behind `&T{}` comes from the
+same allocator with the struct's own pointer map.
+
+A value literal assigned to a name builds in place in its frame slot
+and allocates nothing; a name assigned a second literal is cleared
+first, so the fresh value starts from zero the way Go's does. `&T{}`,
+a literal in argument position, and a literal filling an interface
+allocate one fresh struct per evaluation, which is the allocation the
+Go compiler makes for a literal that escapes. A literal in return
+position stays on the reflect evaluator, like every returned
+expression.
+
+The structs fixture benchmark, previously the only fixture off the
+direct tier, went from 27.2us and 72 allocations per run to 7.0us and
+26 against 5.9us and 19 native: from 4.6x native to 1.4x, in line
+with the other fixtures.
+
 ## 2026-09-08 10:29 +02:00: composite literals
 
 A struct is allocated the way Go writes it: `T{}`, `&T{}`, keyed and

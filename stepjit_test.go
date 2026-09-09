@@ -119,6 +119,38 @@ func TestStepJITMatchesReflect(t *testing.T) {
 			u := record(req.URL);
 			json.NewEncoder(dest).Encode(u);
 		`,
+		"struct literal in the frame": `
+			u := url.URL{Scheme: "https", Host: "h", Path: "/a"};
+			json.NewEncoder(dest).Encode(u.Host);
+		`,
+		"struct literal behind a pointer": `
+			p := &url.URL{Path: "/p"};
+			u := record(p);
+			json.NewEncoder(dest).Encode(u);
+		`,
+		"nested literal with a call element": `
+			r := &http.Request{Method: "POST", URL: url.Parse("https://h/c")};
+			u := record(r);
+			json.NewEncoder(dest).Encode(u);
+		`,
+		"literal in argument position": `
+			u := record(&url.URL{Path: "/arg"});
+			json.NewEncoder(dest).Encode(u);
+		`,
+		"value literal into any": `
+			u := record(url.URL{Path: "/v"});
+			json.NewEncoder(dest).Encode(u);
+		`,
+		"field write on a literal": `
+			u := url.URL{};
+			u.Path = "/w";
+			json.NewEncoder(dest).Encode(u.Path);
+		`,
+		"literal rewritten starts from zero": `
+			u := url.URL{Path: "/first"};
+			u = url.URL{Host: "h"};
+			json.NewEncoder(dest).Encode(u.Path);
+		`,
 	} {
 		stack := map[string]any{"link": "https://example.com/from-stack"}
 		jit, slow := compilePair(t, rt, src)
