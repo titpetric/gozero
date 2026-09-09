@@ -48,7 +48,7 @@ func TestBoolLiteral(t *testing.T) {
 		{`wantBool(false);`, false},
 		{`wantAny(true);`, true},
 		{`var b bool; b = true; wantBool(b);`, true},
-		{`b = true; wantBool(b);`, true},
+		{`b := true; wantBool(b);`, true},
 		{`var b bool; wantBool(b);`, false},
 	} {
 		*seen = "sentinel"

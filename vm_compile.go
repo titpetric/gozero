@@ -55,6 +55,27 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 		return nil
 	}
 
+	// Declaration is := or var; a plain = assigns to a name that already
+	// exists. The rule is Go's and holds for every statement kind: the
+	// initial prototype let a literal define its name with =, which left
+	// a typo one silent new name away from a stale read.
+	checkDecl := func(name string, define bool) error {
+		_, ok := slots[name]
+		if !ok && !define {
+			return fmt.Errorf("compile: %s is not defined, use := or var", name)
+		}
+		return nil
+	}
+	// The other half of the rule: := must declare something.
+	checkNew := func(lhs []string) error {
+		for _, name := range lhs {
+			if _, ok := slots[name]; !ok {
+				return nil
+			}
+		}
+		return fmt.Errorf("compile: no new variables on left side of :=")
+	}
+
 	// A name declared with var fixes its type before anything else is
 	// compiled, so a literal assigned to it converts to that type.
 	declared := map[string]reflect.Type{}
@@ -113,6 +134,14 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			if err := checkName(name); err != nil {
 				return nil, err
 			}
+			if err := checkDecl(name, s.define); err != nil {
+				return nil, err
+			}
+			if s.define {
+				if err := checkNew(s.lhs); err != nil {
+					return nil, err
+				}
+			}
 			// u = url.URL{...} binds the name to the literal's own type,
 			// built fresh on every run.
 			if s.lit.kind == argStruct {
@@ -160,6 +189,14 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 				if err := checkName(name); err != nil {
 					return nil, err
 				}
+				if err := checkDecl(name, s.define); err != nil {
+					return nil, err
+				}
+				if s.define {
+					if err := checkNew(s.lhs); err != nil {
+						return nil, err
+					}
+				}
 				a, err := conversionArg(s.call)
 				if err != nil {
 					return nil, fmt.Errorf("compile: %s = %s(...): %w", name, joinPath(s.call.path), err)
@@ -205,13 +242,18 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			return nil, fmt.Errorf("compile: %s returns %d values, cannot assign %d", call.name, call.nres, len(s.lhs))
 		}
 
+		if s.define && len(s.lhs) > 0 {
+			if err := checkNew(s.lhs); err != nil {
+				return nil, err
+			}
+		}
 		out := make([]int, 0, len(s.lhs))
 		for i, name := range s.lhs {
 			if err := checkName(name); err != nil {
 				return nil, err
 			}
-			if _, ok := slots[name]; !ok && !s.define {
-				return nil, fmt.Errorf("compile: %s is not defined, use := or var", name)
+			if err := checkDecl(name, s.define); err != nil {
+				return nil, err
 			}
 			out = append(out, newSlot(name, c.resultType(call, i)))
 		}
@@ -274,134 +316,6 @@ func (p *vmProgram) assignArg(a *vmArg) {
 			}
 		}
 	}
-}
-
-// conversionType reports whether a call is a conversion hint: no
-// method chain, and a path that names a registered type. A binding
-// wins over a type of the same name, which keeps every program that
-// compiled before hints existed meaning what it meant.
-func (c *Compiler) conversionType(e *callExpr) (reflect.Type, bool) {
-	if len(e.chain) != 0 {
-		return nil, false
-	}
-	name := joinPath(e.path)
-	if _, bound := c.bindings[name]; bound {
-		return nil, false
-	}
-	return c.lookupType(name)
-}
-
-// conversionArg is the single literal a conversion hint wraps. A name
-// or a nested call is rejected: a value already has a type, and the
-// hint exists to give one to a literal that has none.
-func conversionArg(e *callExpr) (arg, error) {
-	if len(e.args) != 1 {
-		return arg{}, fmt.Errorf("a conversion takes exactly one argument, got %d", len(e.args))
-	}
-	a := e.args[0]
-	if a.spread {
-		return arg{}, fmt.Errorf("a conversion argument cannot be spread")
-	}
-	switch a.kind {
-	case argString, argInt, argFloat, argBool, argNil:
-		return a, nil
-	}
-	return arg{}, fmt.Errorf("a conversion takes a literal")
-}
-
-// inferLiteralType picks the type of a name a literal is assigned to,
-// when no var statement fixed it. The first place the program passes
-// the name to a binding decides, because that is the only type the
-// value has to satisfy. Failing that the literal keeps the width the
-// parser gave it.
-func (c *Compiler) inferLiteralType(prog *program, name string, lit arg) reflect.Type {
-	for si := range prog.stmts {
-		if call := prog.stmts[si].call; call != nil {
-			if t := c.useType(call, name); t != nil {
-				return t
-			}
-		}
-	}
-	switch lit.kind {
-	case argFloat:
-		return reflect.TypeFor[float64]()
-	case argString:
-		return reflect.TypeFor[string]()
-	case argBool:
-		return reflect.TypeFor[bool]()
-	case argNil:
-		// nil alone names no type; the any it would infer to is never
-		// what the program meant, so the caller reports it.
-		return nil
-	}
-	return reflect.TypeFor[int64]()
-}
-
-// useType is the parameter type a call gives to name, looking through
-// nested calls. Only a call whose whole path is a binding is
-// considered: a method's receiver type may itself depend on a type not
-// worked out yet.
-func (c *Compiler) useType(e *callExpr, name string) reflect.Type {
-	if b, ok := c.bindings[joinPath(e.path)]; ok && len(e.chain) == 0 {
-		ft := b.rv.Type()
-		fixed := ft.NumIn()
-		if ft.IsVariadic() {
-			fixed--
-		}
-		i := 0
-		for _, a := range e.args {
-			// Mirror compileCall: a context parameter consumes no
-			// written argument.
-			for i < fixed && ft.In(i) == ctxType {
-				i++
-			}
-			var pt reflect.Type
-			switch {
-			case i < fixed:
-				pt = ft.In(i)
-			case ft.IsVariadic():
-				pt = ft.In(fixed).Elem()
-			default:
-				return nil
-			}
-			if a.kind == argVar && a.str == name {
-				// An empty interface accepts anything, so it says
-				// nothing about what the name should be.
-				if pt.Kind() == reflect.Interface && pt.NumMethod() == 0 {
-					return nil
-				}
-				return pt
-			}
-			i++
-		}
-	}
-	for _, a := range e.args {
-		if a.kind == argCall {
-			if t := c.useType(a.sub, name); t != nil {
-				return t
-			}
-		}
-	}
-	for _, l := range e.chain {
-		for _, a := range l.args {
-			if a.kind == argCall {
-				if t := c.useType(a.sub, name); t != nil {
-					return t
-				}
-			}
-		}
-	}
-	return nil
-}
-
-// staticType is the compile-time type of an argument when it has one:
-// a program-bound name. Everything else answers nil, which for the
-// context rule means auto-fill.
-func (c *Compiler) staticType(env map[string]reflect.Type, a arg) reflect.Type {
-	if a.kind == argVar {
-		return env[a.str]
-	}
-	return nil
 }
 
 // compileFieldSet compiles req.Method = value. The base is a

@@ -26,7 +26,7 @@ rt.BindScope("http", map[string]any{"NewRequest": http.NewRequest})
 rt.BindScope("json", map[string]any{"NewEncoder": json.NewEncoder})
 ```
 
-```gozero
+```go
 req := http.NewRequest("GET", "/")
 json.NewEncoder(dest).Encode(req.Cookies())
 ```
@@ -92,9 +92,12 @@ checks everything checkable before the program ever runs:
 - A name that would shadow a binding or keyword is rejected, because
   path resolution prefers the binding and the name could never be
   read back.
-- A name assigned a literal with no declared type takes its type from
-  the first binding parameter the program passes it to, falling back
-  to the literal's own width.
+- Declaration is Go's rule: `:=` or `var` declares, `=` assigns to a
+  declared name and errors otherwise, and a `:=` that declares
+  nothing new errors too.
+- A name declared `:=` with a literal takes its type from the first
+  binding parameter the program passes it to, falling back to the
+  literal's own width.
 
 Two implicit rules shape the emitted form: a trailing error result is
 stripped from every call's result list and checked after the call,
@@ -124,7 +127,7 @@ every type it finds becomes nameable in a `var` statement. Binding
 `url.Parse` makes this compile, with no registration of
 `url.URL` anywhere:
 
-```gozero
+```go
 var u url.URL
 assert.Equal(tb, "", u.Path)
 ```

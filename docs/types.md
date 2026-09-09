@@ -162,8 +162,8 @@ already its zero value with no instruction; on the reflect tier it is a
 
 ### Inference
 
-There is no short declaration for a literal, so `x = 123` has to work
-out what `x` is. Three rules, in order:
+A short declaration carries no type, so `x := 123` has to work out
+what `x` is. Three rules, in order:
 
 1. A `var` statement fixes it.
 2. Otherwise the first binding the program passes the name to decides,
@@ -175,12 +175,18 @@ out what `x` is. Three rules, in order:
 var x int32;
 x = 7;          int32, from the declaration
 
-x = 5;
+x := 5;
 takesInt(x);    int, from the use
 
-x = 5;          int64, nothing to infer from
-x = 5.5;        float64
+x := 5;         int64, nothing to infer from
+x := 5.5;       float64
 ```
+
+Declaration is `:=` or `var`; a plain `=` assigns to a declared name
+and is a compile error otherwise. This chapter originally read the
+other way, because the prototype let `x = 123` declare `x`; the form
+was removed when the declaration rule was made Go's
+([changelog](changelog.md)).
 
 A declared type is not overridden by use. `var x int64; x = 5; takesInt(x);` reports `cannot use int64 as int` rather than
 converting, because the declaration is the statement of intent.
@@ -233,7 +239,7 @@ json.NewEncoder(dest).Encode(x);
 var b bool;
 json.NewEncoder(dest).Encode(b);
 
-x = 1;
+x := 1;
 json.NewEncoder(dest).Encode(x);
 
 var x int64;
@@ -273,8 +279,10 @@ a benchmark.
   stays a compile error.
 - Scalars reach the direct-call tier because each width is its own
   layout class: the cast needs the exact Go type.
-- Two claims aged out of this chapter: a scalar boxed into an
+- Three claims aged out of this chapter: a scalar boxed into an
   interface no longer always allocates, since bits under 256 alias a
-  static cell (2026-09-07); and a call outside the shape table no
+  static cell (2026-09-07); a call outside the shape table no
   longer sends the whole program to reflect, it compiles to a per-call
-  bridge while its neighbours stay direct (2026-09-06).
+  bridge while its neighbours stay direct (2026-09-06); and `x = 123`
+  no longer declares, since `:=` became the required short declaration
+  (2026-09-09).

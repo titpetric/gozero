@@ -8,7 +8,7 @@ p := &url.URL{Scheme: "https", Host: "h", Path: "/p"};
 assert.Equal(tb, "https://h/p", p.String());
 
 // Positional elements fill the fields in declaration order.
-s = url.URL{"https"};
+s := url.URL{"https"};
 assert.Equal(tb, "https", s.Scheme);
 
 // Nested literals, a call as an element, and a numeric literal

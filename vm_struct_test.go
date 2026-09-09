@@ -12,16 +12,16 @@ import (
 func TestStructLiteral(t *testing.T) {
 	rt, seen := typeRuntime(t)
 	for _, tc := range []struct{ name, src, want string }{
-		{"empty value", `u = url.URL{}; json.NewEncoder(dest).Encode(u.Path);`, "\"\"\n"},
-		{"keyed", `u = url.URL{Path: "/x", Host: "h"}; json.NewEncoder(dest).Encode(u.Path);`, "\"/x\"\n"},
-		{"pointer", `u = &url.URL{Path: "/p"}; json.NewEncoder(dest).Encode(u.Path);`, "\"/p\"\n"},
-		{"positional", `u = url.URL{"https"}; json.NewEncoder(dest).Encode(u.Scheme);`, "\"https\"\n"},
-		{"nested", `r = &http.Request{Method: "POST", URL: &url.URL{Path: "/n"}}; json.NewEncoder(dest).Encode(r.URL.Path);`, "\"/n\"\n"},
+		{"empty value", `u := url.URL{}; json.NewEncoder(dest).Encode(u.Path);`, "\"\"\n"},
+		{"keyed", `u := url.URL{Path: "/x", Host: "h"}; json.NewEncoder(dest).Encode(u.Path);`, "\"/x\"\n"},
+		{"pointer", `u := &url.URL{Path: "/p"}; json.NewEncoder(dest).Encode(u.Path);`, "\"/p\"\n"},
+		{"positional", `u := url.URL{"https"}; json.NewEncoder(dest).Encode(u.Scheme);`, "\"https\"\n"},
+		{"nested", `r := &http.Request{Method: "POST", URL: &url.URL{Path: "/n"}}; json.NewEncoder(dest).Encode(r.URL.Path);`, "\"/n\"\n"},
 		{"field write after", `u := url.URL{}; u.Path = "/w"; json.NewEncoder(dest).Encode(u.Path);`, "\"/w\"\n"},
-		{"literal converts to field width", `r = &http.Request{ProtoMajor: 1}; json.NewEncoder(dest).Encode(r.ProtoMajor);`, "1\n"},
-		{"call as element", `r = &http.Request{URL: url.Parse("http://h/c")}; json.NewEncoder(dest).Encode(r.URL.Path);`, "\"/c\"\n"},
+		{"literal converts to field width", `r := &http.Request{ProtoMajor: 1}; json.NewEncoder(dest).Encode(r.ProtoMajor);`, "1\n"},
+		{"call as element", `r := &http.Request{URL: url.Parse("http://h/c")}; json.NewEncoder(dest).Encode(r.URL.Path);`, "\"/c\"\n"},
 		{"method on the value", `u := &url.URL{Path: "/m"}; json.NewEncoder(dest).Encode(u.String());`, "\"/m\"\n"},
-		{"trailing comma multiline", "u = url.URL{\n\tPath: \"/t\",\n};\njson.NewEncoder(dest).Encode(u.Path);", "\"/t\"\n"},
+		{"trailing comma multiline", "u := url.URL{\n\tPath: \"/t\",\n};\njson.NewEncoder(dest).Encode(u.Path);", "\"/t\"\n"},
 	} {
 		got, err := runProgram(t, rt, tc.src)
 		if err != nil {
@@ -74,8 +74,8 @@ func TestStructLiteral(t *testing.T) {
 func TestStructLiteralSupports(t *testing.T) {
 	rt, _ := typeRuntime(t)
 	for _, src := range []string{
-		`u = url.URL{Path: "/"}; json.NewEncoder(dest).Encode(u.Path);`,
-		`p = &url.URL{Path: "/"}; json.NewEncoder(dest).Encode(p.Path);`,
+		`u := url.URL{Path: "/"}; json.NewEncoder(dest).Encode(u.Path);`,
+		`p := &url.URL{Path: "/"}; json.NewEncoder(dest).Encode(p.Path);`,
 		`takesAny(&url.URL{Path: "/a"});`,
 		`r := &http.Request{}; r.URL = &url.URL{Path: "/f"}; json.NewEncoder(dest).Encode(r.URL.Path);`,
 	} {
@@ -97,10 +97,10 @@ func TestStructLiteralErrors(t *testing.T) {
 	for _, tc := range []struct{ name, src string }{
 		{"unknown type", `u = nope.Thing{};`},
 		{"not a struct", `x = int64{};`},
-		{"unknown field", `u = url.URL{Nope: 1};`},
-		{"duplicate field", `u = url.URL{Path: "/", Path: "/y"};`},
-		{"mixed keyed and positional", `u = url.URL{Path: "/", "x"};`},
-		{"value type mismatch", `u = url.URL{Path: 5};`},
+		{"unknown field", `u := url.URL{Nope: 1};`},
+		{"duplicate field", `u := url.URL{Path: "/", Path: "/y"};`},
+		{"mixed keyed and positional", `u := url.URL{Path: "/", "x"};`},
+		{"value type mismatch", `u := url.URL{Path: 5};`},
 		{"pointer where value declared", `var u url.URL; u = &url.URL{};`},
 	} {
 		_, err := rt.Compile(tc.src)

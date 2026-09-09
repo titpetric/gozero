@@ -3,7 +3,7 @@ var count int32;
 count = 41;
 assert.Equal(tb, "41", fmt.Sprintf("%d", count));
 
-x = 2.5;
+x := 2.5;
 assert.Equal(tb, "2.5", fmt.Sprintf("%v", x));
 
 var u url.URL;
@@ -12,11 +12,11 @@ assert.True(tb, true);
 
 // A conversion hint fixes a literal's type at the assignment, the
 // way a var declaration would.
-y = int32(7);
+y := int32(7);
 assert.Equal(tb, "int32", fmt.Sprintf("%T", y));
 assert.Equal(tb, "7", fmt.Sprintf("%d", y));
 
-f = float32(1.5);
+f := float32(1.5);
 assert.Equal(tb, "float32", fmt.Sprintf("%T", f));
 
 // The hinted type sticks: a later assignment converts to it.

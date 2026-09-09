@@ -7,6 +7,54 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-09 11:27 +02:00: declaration follows Go's rule
+
+`:=` declares, `var` declares with a type, and `=` assigns to a name
+one of those declared. Both halves are enforced:
+
+```
+x = 5;                  compile error: x is not defined, use := or var
+x := 5; x := 6;         compile error: no new variables on left side of :=
+
+x := 5;                 declares, type from first use or parser width
+y := int32(7); y = 9;   the hint declares; the assignment converts
+var n int64; n = 7;     unchanged
+```
+
+The initial prototype had no short declaration for literals, so
+`x = 5` declared `x` and the typo guard existed only for call
+results; a misspelled assignment target silently declared a second
+name while the later read of the real one saw a stale value. The
+literal, composite-literal and conversion-hint paths now run the
+same check the call path always had, plus Go's reverse rule that a
+`:=` must declare something. `testdata/` and the inference examples
+in [types.md](types.md) are migrated; reassignment after `var` or a
+hint is unchanged.
+
+## 2026-09-09 11:00 +02:00: methods on interface-typed names
+
+`ctx := ctxOf(); d := ctx.Done();` compiles. `MethodByName` on an
+interface type returns the signature without a receiver and a zero
+`Func`, which used to reach `compileCall` and panic `Compile` on the
+zero `reflect.Value`; every method call on an interface-typed name
+(`ctx.Err()`, a method on an `io.Reader` slot) hit it. The compiler
+now synthesizes the callable with `ifaceMethodFunc`: a
+`reflect.MakeFunc` whose first parameter is the interface and whose
+body dispatches on the dynamic value, so the call compiles like any
+method call on every tier. A method call on a nil interface panics
+the way it does in Go and arrives as `*PanicError` through the
+guard.
+
+Two consequences of the error contract, pinned in
+`TestInterfaceMethodCall`: `ctx.Err()` binds no value, because a
+lone error result is never a value, and as a bare statement it ends
+the program when the context is cancelled - a one-line cancellation
+guard.
+
+The panic also exposed that `compileUncached` held the runtime's
+read lock without a defer, so a compile-time panic leaked it and the
+next cache store deadlocked; the unlock is deferred now.
+
 ## 2026-09-09 10:44 +02:00: docs split, syntax reference, design research
 
 Documentation only; the language and the runtime are unchanged.
