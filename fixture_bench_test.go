@@ -105,6 +105,17 @@ func (f *testFixtures) testTypes(tb testing.TB) {
 	var u url.URL
 	assertEqual(tb, "", u.Path, "")
 	assertTrue(tb, true, "")
+
+	y := int32(7)
+	assertEqual(tb, "int32", fmt.Sprintf("%T", y), "")
+	assertEqual(tb, "7", fmt.Sprintf("%d", y), "")
+
+	// The fixture names it f; the receiver holds that name here.
+	fl := float32(1.5)
+	assertEqual(tb, "float32", fmt.Sprintf("%T", fl), "")
+
+	y = 9
+	assertEqual(tb, "int32", fmt.Sprintf("%T", y), "")
 }
 
 func (f *testFixtures) testStructs(tb testing.TB) {
