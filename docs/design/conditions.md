@@ -35,8 +35,8 @@ if strings.EqualFold(method, "GET") {
 `bool` is already a layout class (`lBool` in stepjit.go), so the
 condition costs nothing new on any tier: the JIT evaluates a `nodeN`
 and branches on its bits, the reflect evaluator calls `Bool()`. An
-if-node holds two statement lists and runs one of them. The machinery
-is small; the damage is elsewhere.
+if-node holds two statement lists and runs one of them; the machinery
+is small.
 
 ## What it costs the design
 
@@ -56,7 +56,7 @@ or a done flag every node checks - threaded through all seven node
 types. The reflect evaluator needs the same change. Both tiers change
 shape for the feature's least common case.
 
-**Branches poison the write counts.** The interface-aliasing
+**Branches make write counts conditional.** The interface-aliasing
 optimization in stepjit_arg.go is legal only for a slot written
 exactly once; that is what lets an interface argument point into the
 frame instead of copying. A slot assigned inside a branch is
@@ -78,8 +78,8 @@ reassignment at a different type already trips.
 
 ## The boolean-production problem
 
-The harder question is not `if` but its operand. Real conditions are
-mostly comparisons, and `x == 5` is an expression
+The operand is a harder question than the `if` itself. Real
+conditions are mostly comparisons, and `x == 5` is an expression
 ([expressions.md](expressions.md)). Without operators, every
 predicate is a call:
 
@@ -90,10 +90,10 @@ if strings.Contains(host, ":") { ... }
 
 This stays inside the current design: `eq` is a binding, typed by its
 signature, and the AST holds a call it already knows how to compile.
-The cons are real:
+The cons:
 
-- `eq(x, 5)` is legal Go but not the Go anyone writes; the language
-  reads as itself only until the first comparison.
+- `eq(x, 5)` is legal Go, but Go writes `x == 5`; every comparison
+  site reads differently from the Go it mirrors.
 - A generic `eq(a, b any) bool` erases the type safety the bindings
   provide: both sides box to `any`, scalars allocate or hit the
   static-cell path, and a type mismatch that `==` would reject at
@@ -121,11 +121,9 @@ already behave for a failed `http.NewRequest`. Cons:
   the program", so two-way branching needs two programs or a binding
   that takes both continuations, which needs
   [closures](closures.md).
-- The branch policy lives in the host. The program cannot express a
-  condition the host did not anticipate as a binding, which is either
-  the sandbox working as designed or a limitation, depending on who
-  is writing the program.
-- Abusing error for control flow makes a real failure and a declined
+- The branch policy lives in the host: the program cannot express a
+  condition the host did not bind.
+- An error used for control flow makes a real failure and a declined
   branch look identical to the caller.
 
 **Branch combinators (`iff(cond, then)`).** Pure abstraction of the
@@ -133,7 +131,7 @@ request into userland: the binding receives a bool and something to
 run. Without closures there is nothing to pass as the something;
 with closures this is Tcl, where control flow is a library and
 evaluation order is whatever the binding does. Both halves are
-userland control flow, which is the stated non-goal. Rejected.
+userland control flow, the stated non-goal. Rejected.
 
 ## In other imperative settings
 
@@ -142,13 +140,13 @@ on the exit status of a command, and `[` is a command; gozero's error
 contract is the same shape with `set -e` built in. testify is the
 same move inside Go tests: `assert.Equal(t, want, got)` is a
 comparison as a call, and the fixture suite under `testdata/` already
-runs on it. An `http.Handler` body is naturally imperative and mostly
-condition-free - build, encode, write - which is why handlers fit the
-current language. Middleware is where conditions genuinely live
+runs on it. An `http.Handler` body is imperative and mostly
+condition-free (build, encode, write), so handlers fit the current
+language. Middleware is where the conditions are
 (header equality, path prefixes, status classes), and the guard
 binding covers the abort-or-continue half of it today; the half it
-does not cover is choosing between two continuations, which is not a
-conditions problem but a closures problem.
+does not cover, choosing between two continuations, is a closures
+problem.
 
 ## Verdict
 

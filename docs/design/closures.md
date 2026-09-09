@@ -7,9 +7,9 @@ A closure is the one extension the architecture is already shaped
 for. A compiled program is a Go closure - `CompiledFunc` is a func
 value built at runtime over the bindings - so a func literal inside a
 program is a smaller instance of the thing the compiler already
-builds. The question is not whether the machinery exists but what
-capture does to the frame, and what closures unlock that the design
-elsewhere declines.
+builds. The machinery exists; the open questions are what capture
+does to the frame, and what closures make expressible that the
+design elsewhere declines.
 
 ## How it would look
 
@@ -30,9 +30,8 @@ slices.SortFunc(xs, func(a, b) {
 
 The types of `w`, `r`, `a`, `b` come from `http.HandlerFunc` and
 `SortFunc`'s signature, the way every other type in the language
-comes from a binding. That is the same rule the compiler applies to
-arguments today, extended to parameters, and it is why closures fit:
-they add no type surface.
+comes from a binding. That is the rule the compiler already applies
+to arguments, extended to parameters; closures add no type surface.
 
 Materialization has a stdlib answer on each tier. Generally,
 `reflect.MakeFunc` wraps the compiled body in a func of any
@@ -81,7 +80,7 @@ concurrently, or more than once. Re-entrancy is new: a closure
 running while its defining program still runs shares the frame with
 it.
 
-## The trap
+## Userland control flow
 
 Closures make the other three features expressible without further
 syntax:
@@ -95,9 +94,9 @@ That is Tcl: control flow as library calls, evaluation order and
 branch semantics defined by whatever the binding does, different per
 host. It is the userland control flow this design rejects in
 [conditions.md](conditions.md) and [loops.md](loops.md), and closures
-would make it available whether or not it is endorsed. A language
-that ships closures ships this pattern; the only defense is the
-binding set, and a host that binds `iff` has chosen it.
+would make it available whether or not it is endorsed. The pattern
+comes with the feature; the binding set is the only control over it,
+and a host that binds `iff` has chosen it.
 
 ## Alternatives
 
@@ -137,22 +136,21 @@ a calling convention.
 Imperative Go leans on closures exactly where this language wants to
 go: `http.HandlerFunc`, middleware as `func(next Handler) Handler`,
 `sort.Slice`, `t.Cleanup`, range-over-func bodies. testify is the
-counterexample worth noticing - assertion-heavy test code is the one
-imperative style that needs no closures at all, which is why the
-fixture suite works today. Handlers can stay imperative through the
-adapter pattern above. Middleware is the honest pressure point: its
-shape is a function that receives a continuation, and no amount of
-guard bindings gives a program the ability to hold `next` and decide
-when to call it. Closures are the feature middleware actually asks
-for; conditions were only its symptom.
+counterexample: assertion-heavy test code needs no closures, and the
+fixture suite runs without them today. Handlers stay imperative
+through the adapter pattern above. Middleware is the case that needs
+full capture: its shape is a function that receives a continuation,
+and guard bindings cover the abort half only. Holding `next` and
+deciding when to call it takes a closure; the branch was never the
+missing part.
 
 ## Verdict
 
 Closures are the best-aligned of the four extensions: no new type
 surface, stdlib materialization on both tiers, and they answer the
 middleware question directly. They cost capture-as-aliasing, an
-escaping frame, per-run construction, block grammar - and they
-smuggle in userland control flow. The capture-free alternatives
+escaping frame, per-run construction, block grammar - and they make
+userland control flow expressible. The capture-free alternatives
 (`BindProgram`-style adapters) deliver most of the value as host API
 rather than language, which is where this design prefers its
 capabilities, and is the recommended first step if the pressure

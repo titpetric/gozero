@@ -80,9 +80,9 @@ req := http.NewRequest("GET", "https://example.com/a/b")
 u := url.Parse("https://example.com/p/q?x=1")
 ```
 
-The check does not disappear, it moves: the program stops at the
-first failing call, the way a Go function returns at its first
-`if err != nil`. This is the language's only conditional.
+The program still checks: it stops at the first failing call, the
+way a Go function returns at its first `if err != nil`. This is the
+language's only conditional.
 
 ## Implicit context passing
 
@@ -193,7 +193,7 @@ w := url.URL{}
 w.Path = "/w"
 ```
 
-Identical, which is the point: struct construction is the part of Go
+The two blocks are identical: composite literals are the part of Go
 the language keeps whole. A numeric element converts to its field's
 width, so `ProtoMajor: 1` is an int without a hint.
 
@@ -221,8 +221,8 @@ Names the program never binds resolve against the stack map the host
 passes to `Exec`; an unset or nil entry reads as the parameter's zero
 value, and a set entry is type-checked when it is read, because only
 then is its type known. `dest` is reserved for the pointer `Scan`
-was handed, which is how a program writes its output into a variable
-the host owns:
+was handed, so a program writes its output into a variable the host
+owns:
 
 ```go
 var buf bytes.Buffer
@@ -242,8 +242,7 @@ err := fn.Scan(&buf, map[string]any{"req": req})
 ## Imperative programs in practice
 
 The fixture suite is the reference for the style. A Go test and the
-fixture that replaces it, from [DESIGN.md](DESIGN.md)'s founding
-example:
+fixture that replaces it:
 
 ```go
 req, err := http.NewRequest("GET", "https://example.com/a/b", nil)
