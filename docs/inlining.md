@@ -61,7 +61,7 @@ interface boxes the compiler cannot see through.
 
 So the no-inline ratio is the structural cost of interpreting: one
 indirect call and one boxed transport per node, immune to compiler
-optimisation. The default-build ratio is what a caller sees, and is
+optimisation. The default-build ratio is the one a caller sees, and is
 lower because the interpreter's fixed cost is diluted by library work
 that inlining has already made faster on both sides.
 
@@ -79,8 +79,8 @@ taskset -c 3 go test -run '^$' -bench 'BenchmarkFixtures/' -benchmem -benchtime 
   both directions.
 - The no-inline ratio approximates the structural cost of interpreting,
   one indirect call and one boxed transport per node, immune to the
-  compiler in either build. The default-build ratio is what a caller
-  sees.
+  compiler in either build. The default-build ratio is the one a
+  caller sees.
 - Inlining feeds escape analysis: the native mirrors lose allocations
   with it on, the vm's counts do not move, because its values travel
   through closures the compiler cannot see through.

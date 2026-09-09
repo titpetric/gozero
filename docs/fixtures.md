@@ -119,7 +119,7 @@ For the bridge cost
 of a call the shape table cannot express, and for the work-only
 comparison without assertions, see the benchmarks in
 `fixture_bench_test.go`. For how these numbers move when inlining is
-enabled, which is what a caller sees, see [inlining.md](inlining.md).
+enabled, the build a caller sees, see [inlining.md](inlining.md).
 
 Two details of the direct tier show up in these columns. A scalar
 whose bits fit a byte boxes into a static cell rather than a fresh
@@ -155,7 +155,7 @@ write put in the slot.
   call are already bound.
 - A variadic API binds into the hot path by wrapping it at the arity
   the scripts use and letting zero-fill make the tail optional; the
-  fixed shape is what keeps an assertion a direct call.
+  fixed shape keeps an assertion a direct call.
 - Context plumbing is provable end to end from inside a fixture: the
   value attached by the runner comes back out of the request only if
   the auto-filled parameter carried it.

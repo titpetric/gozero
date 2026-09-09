@@ -121,7 +121,7 @@ Binding a function registers more than a callable. The runtime walks
 the type graph reachable from the signature - parameters, results,
 pointees, elements, exported struct fields, interface methods - and
 every type it finds becomes nameable in a `var` statement. Binding
-`url.Parse` is what makes this compile, with no registration of
+`url.Parse` makes this compile, with no registration of
 `url.URL` anywhere:
 
 ```gozero
@@ -150,8 +150,9 @@ whole program is built from whichever each call reaches:
    scalars box into static cells.
 2. The reflect bridge. A call whose signature is outside the table
    compiles to a per-call `reflect.Value.Call` with pre-typed
-   arguments, while its neighbours stay direct. The floor, not a cliff:
-   one slow call does not send the program to the evaluator.
+   arguments, while its neighbours stay direct. The bridge is a floor,
+   not a cliff: one slow call does not send the program to the
+   evaluator.
 3. The reflect evaluator. The general implementation of the same
    semantics, used when the program as a whole cannot build a closure
    tree, and the reference the JIT is tested against: the equivalence

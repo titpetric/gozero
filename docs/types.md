@@ -41,10 +41,9 @@ Struct fields are in that list because a program can read a field.
 `req.Header` has to make `http.Header` nameable, and `http.Header` is
 reachable from `*http.Request` only through the field.
 
-Recursion stops on a type already in the registry, which is also what
-keeps a recursive type from looping. Depth is capped at five, which is
-what it takes to get from a binding to a field of the struct behind its
-result:
+Recursion stops on a type already in the registry, which also keeps a
+recursive type from looping. Depth is capped at five, the distance
+from a binding to a field of the struct behind its result:
 
 ```
 http.NewRequest            depth 1  the func
@@ -183,7 +182,7 @@ x = 5;          int64, nothing to infer from
 x = 5.5;        float64
 ```
 
-A declared type is not overridden by use. `var x int64; x = 5; takesInt(x);` reports `cannot use int64 as int` rather than quietly
+A declared type is not overridden by use. `var x int64; x = 5; takesInt(x);` reports `cannot use int64 as int` rather than
 converting, because the declaration is the statement of intent.
 
 ### Literals at the call
@@ -263,17 +262,17 @@ a benchmark.
   discovery walks the signature's type graph and everything reachable
   from it becomes nameable, struct fields included. Ten stdlib
   constructors contribute 118 types between them, mostly overlapping.
-- A type becomes nameable because some bound function has an opinion
-  about it, not because anyone declared it; `BindType` exists only for
-  the type no binding mentions.
+- A type becomes nameable because some bound function mentions it,
+  not because anyone declared it; `BindType` exists only for the type
+  no binding mentions.
 - Hydration is free at execution: a declared zero value is the zeroed
   frame on the direct tier and a `reflect.Zero` recorded once on the
   other.
 - Literal typing needs three rules (declaration, first use, parser
-  width), and a declared type refusing to be overridden by use is what
-  keeps the mismatch loud.
-- Each scalar width being its own layout class is what lets scalars
-  reach the direct-call tier at all: the cast needs the exact Go type.
+  width), and a declared type is not overridden by use, so a mismatch
+  stays a compile error.
+- Scalars reach the direct-call tier because each width is its own
+  layout class: the cast needs the exact Go type.
 - Two claims aged out of this chapter: a scalar boxed into an
   interface no longer always allocates, since bits under 256 alias a
   static cell (2026-09-07); and a call outside the shape table no

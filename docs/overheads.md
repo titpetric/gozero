@@ -34,8 +34,8 @@ and a non-nil one ends the program.
 Two rules cover the gaps that leaves. Every argument is optional and a
 missing one is the zero value of its parameter type, so a three
 parameter function can be called with two arguments. `dest` is a
-reserved name holding the pointer `Scan` was given, which is how a
-program writes its output.
+reserved name holding the pointer `Scan` was given; the program
+writes its output through it.
 
 ## Is it functional
 
@@ -194,7 +194,7 @@ Notes on each:
   allocation with a correct pointer map and a stable address per field,
   so raw words are read and written at offsets and every store keeps
   its write barrier. A program JITs whole or not at all.
-- Aliasing is what buys allocation parity. An interface argument taken
+- Aliasing buys the allocation parity. An interface argument taken
   from a slot points at the slot instead of a copy, which is only legal
   because the frame outlives the call and the slot is written once.
 - `reflect.New` was 12% of the JIT'd program, mostly its pointer-type
@@ -277,15 +277,15 @@ is the same combinatorial problem as fusing pairs.
 
 - A compiled and cached call costs tens of nanoseconds over native with
   the same allocation count; parsing and compiling dominate everything
-  else at 2.136us, which is what the per-source cache removes.
+  else at 2.136us, and the per-source cache removes that cost.
 - The reflect tier's two big wins were caching assignability per
   argument and handing `reflect.Value.Call` a pre-typed interface
   value, because reflect re-checks both on every call.
-- Aliasing a frame slot for an interface argument is what reaches
-  allocation parity, and it is also what forecloses frame pooling: the
-  callee may keep the pointer into the frame past the run.
+- Aliasing a frame slot for an interface argument reaches allocation
+  parity and forecloses frame pooling in the same move: the callee may
+  keep the pointer into the frame past the run.
 - Cost figures are differences of two noisy numbers. One benchmark per
-  process, a pinned core and `-gcflags=all=-l` are what make them
+  process, a pinned core and `-gcflags=all=-l` make them
   repeatable; the inlining flag also changes what "parity" means, which
   [inlining.md](inlining.md) later measured on its own.
 - Several claims in this chapter were superseded as the experiment

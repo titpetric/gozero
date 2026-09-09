@@ -34,10 +34,10 @@ Two structural decisions carry the rest. `Host` is an interface of
 around thirty methods holding every PHP value semantic, so the engine
 owns only compilation, operand and local storage, jumps and iteration.
 And `Program.localNames` is per program rather than per function, so a
-slot number means the same name in every frame, which is what lets a
-closure capture be copied by number without a name lookup.
+slot number means the same name in every frame and a closure capture
+is copied by number without a name lookup.
 
-## Lesson 1: boxing is what makes pooling possible
+## Lesson 1: boxing makes pooling possible
 
 flatstack pools its per-run storage:
 
@@ -64,8 +64,8 @@ enable pooling would add the allocation pooling just removed. Measured
 here, that is `sync.Pool` at 22.85n plus a box against `unsafeNew` at
 62.57n and no box.
 
-**What it changed.** Not the pooling decision, but the diagnosis behind
-it. Asking why flatstack can pool made the real problem visible: the
+**What it changed.** The pooling decision stayed; the diagnosis behind
+it changed. Asking why flatstack can pool made the real problem visible: the
 frame should not exist. Values that flow from one call to the next
 belong in Go locals, not in storage. The step JIT was rewritten from a
 flat list of steps writing into a `reflect.StructOf` frame into a tree
@@ -176,8 +176,8 @@ boxing is a cost rather than the status quo.
 Recorded because both were found by tests written earlier for other
 reasons, which is the argument for writing them.
 
-`planInline` first recorded its decision by editing the call tree. That
-tree is also what the reflect evaluator runs, so a program that inlined
+`planInline` first recorded its decision by editing the call tree. The
+reflect evaluator runs that same tree, so a program that inlined
 and then failed to JIT reached the fallback with the producer both
 spliced into its reader and still standing as its own statement, and ran
 it twice. It now records splices in a side table.
@@ -189,14 +189,14 @@ aliasing was introduced, failed on the first run of the new code.
 
 ## Learnings
 
-- Boxing is what makes pooling possible: flatstack pools because its
+- Boxing makes pooling possible: flatstack pools because its
   locals are already `any`; these slots hold typed Go values, so
   pooling would add the box it removed. The diagnosis mattered more
   than the decision: the frame should barely exist, and the closure
-  tree with `planInline` is what came of asking why.
+  tree with `planInline` came of asking why.
 - Clear a pooled buffer to capacity, not length; the leak passes every
   test.
-- Publish the tier gate. `Supports` is what stops a benchmark or an
+- Publish the tier gate. `Supports` stops a benchmark or an
   equivalence test measuring an accidental fallback, and it should say
   why, not only whether.
 - A fast path must keep the panic boundary, and the boundary should
@@ -204,5 +204,5 @@ aliasing was introduced, failed on the first run of the new code.
 - Put an allocation ceiling in the test suite; it found the one
   allocation the benchmark flags were hiding.
 - The prior art's central trick, a type switch over concrete
-  signatures, is exactly what does not port to typed Go bindings, and
-  the layout classes are the answer to that.
+  signatures, does not port to typed Go bindings; the layout classes
+  are the answer to that.

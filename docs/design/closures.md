@@ -152,6 +152,5 @@ middleware question directly. They cost capture-as-aliasing, an
 escaping frame, per-run construction, block grammar - and they make
 userland control flow expressible. The capture-free alternatives
 (`BindProgram`-style adapters) deliver most of the value as host API
-rather than language, which is where this design prefers its
-capabilities, and is the recommended first step if the pressure
-becomes real.
+rather than language, and are the recommended first step if the
+pressure becomes real.
