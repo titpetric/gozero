@@ -17,7 +17,7 @@ subset that remains is a bool name, a bool field, or a bool-returning
 call. All three are legal Go and all three are values the compiler
 already types from the bindings:
 
-```gozero
+```go
 ok := strings.HasPrefix(path, "/api")
 if ok {
 	next.ServeHTTP(w, r)
@@ -83,7 +83,7 @@ conditions are mostly comparisons, and `x == 5` is an expression
 ([expressions.md](expressions.md)). Without operators, every
 predicate is a call:
 
-```gozero
+```go
 if eq(status, 200) { ... }
 if strings.Contains(host, ":") { ... }
 ```
@@ -108,7 +108,7 @@ one-armed conditional. A binding that returns a non-nil error ends
 the program; a binding that returns nil lets it continue. Middleware
 written this way needs no `if`:
 
-```gozero
+```go
 auth.Require(w, r)
 next.ServeHTTP(w, r)
 ```

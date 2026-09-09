@@ -12,7 +12,7 @@ language must never grow one.
 
 ## How it would look
 
-```gozero
+```go
 total := price * qty
 if status == 200 && attempts < 3 {
 	...
@@ -84,7 +84,7 @@ rt.BindScope("op", map[string]any{
 })
 ```
 
-```gozero
+```go
 n := op.add(subtotal, tax)
 ok := op.eq(status, 200)
 ```

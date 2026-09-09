@@ -18,7 +18,7 @@ program is, typed entirely by the parameter it fills - no return type
 or parameter type syntax needed when the target signature is known
 from the binding:
 
-```gozero
+```go
 mux.HandleFunc("/health", func(w, r) {
 	w.WriteHeader(200)
 })
@@ -85,7 +85,7 @@ it.
 Closures make the other three features expressible without further
 syntax:
 
-```gozero
+```go
 iff(ok, func() { w.WriteHeader(403) })
 each(req.Cookies(), func(c) { jar.SetCookie(c) })
 ```

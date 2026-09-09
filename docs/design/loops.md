@@ -17,7 +17,7 @@ condition and the increment are operator expressions
 ([expressions.md](expressions.md)). What Go offers without a single
 operator is `range`, and range covers more than it used to:
 
-```gozero
+```go
 for _, c := range req.Cookies() {
 	jar.SetCookie(c)
 }

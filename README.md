@@ -18,6 +18,88 @@ fn, err := rt.Compile(`
 err = fn.Scan(&dest, nil)
 ```
 
+## Syntax
+
+A script is the Go you would have written, minus what the runtime
+does implicitly: a trailing error result ends the program instead of
+being named, a `context.Context` parameter fills from the execution
+context, and a trailing argument left out is the zero value. The
+full surface is in [docs/syntax.md](docs/syntax.md).
+
+<table>
+<tr>
+<th>go</th>
+<th>gozero</th>
+</tr>
+<tr>
+<td>
+
+```go
+req, err := http.NewRequest("GET", "https://example.com/a/b", nil)
+assert.NoError(tb, err)
+assert.Equal(tb, "GET", req.Method)
+
+req.Method = "POST"
+assert.Equal(tb, "POST", req.Method)
+```
+
+</td>
+<td>
+
+```go
+req := http.NewRequest("GET", "https://example.com/a/b")
+assert.Equal(tb, "GET", req.Method)
+
+req.Method = "POST"
+assert.Equal(tb, "POST", req.Method)
+```
+
+</td>
+</tr>
+<tr>
+<td>
+
+```go
+u, err := url.Parse("https://example.com/p?x=1")
+assert.NoError(tb, err)
+
+u.Path = "/rewritten"
+assert.Equal(tb, "https://example.com/rewritten?x=1", u.String())
+```
+
+</td>
+<td>
+
+```go
+u := url.Parse("https://example.com/p?x=1")
+
+u.Path = "/rewritten"
+assert.Equal(tb, "https://example.com/rewritten?x=1", u.String())
+```
+
+</td>
+</tr>
+<tr>
+<td>
+
+```go
+req, err := http.NewRequestWithContext(ctx, "GET", "https://example.com/", nil)
+assert.NoError(tb, err)
+assert.Equal(tb, "/", req.URL.Path)
+```
+
+</td>
+<td>
+
+```go
+req := http.NewRequestWithContext("GET", "https://example.com/")
+assert.Equal(tb, "/", req.URL.Path)
+```
+
+</td>
+</tr>
+</table>
+
 The design as it stands is in [docs/DESIGN.md](docs/DESIGN.md). The
 chapters below are the investigations that got it here, in the order
 they happened; each ends with what it taught.
