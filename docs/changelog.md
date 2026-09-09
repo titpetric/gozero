@@ -7,6 +7,32 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-09 10:44 +02:00: docs split, syntax reference, design research
+
+Documentation only; the language and the runtime are unchanged.
+
+[DESIGN.md](DESIGN.md) now documents the implementation: the
+parse-compile-JIT pipeline, the parser's approach (recursive descent,
+no token stream, nothing resolved), what the compiler checks against
+the bindings' types, and how the three execution tiers relate. The
+language surface moved to [syntax.md](syntax.md): the grammar, the
+implicit rules (error stripping, context auto-fill, zero-filled
+trailing arguments), conversion hints, composite literals, variadic
+pack and spread, `dest` and the stack - each shown as a Go snippet
+and its gozero equivalent side by side, drawn from the `testdata/`
+fixtures.
+
+A new [design/](design/) directory holds the research on the syntax
+the language deliberately leaves out, one document per feature:
+[conditions](design/conditions.md), [loops](design/loops.md),
+[closures](design/closures.md) and
+[expressions](design/expressions.md). Each answers what the feature
+would look like in the Go-subset grammar, which invariants it would
+break (the single-exit control contract, the write-once aliasing
+rule, the straight-line planner), and the alternatives that keep the
+AST call-only, with their cons: guard bindings for branching,
+range-over-func for iteration, operation bindings for math.
+
 ## 2026-09-08 19:30 +02:00: composite literals on the direct tier
 
 A composite literal no longer sends the program to the reflect
