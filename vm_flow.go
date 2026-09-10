@@ -71,7 +71,9 @@ func (p *vmProgram) runBlock(ctx context.Context, slots, frame []reflect.Value, 
 			if err != nil {
 				return sigNone, nil, err
 			}
-			slots[s.out[0]] = p.addrCell(v, s.out[0])
+			if slot := s.out[0]; slot >= 0 {
+				slots[slot] = p.addrCell(v, slot)
+			}
 			continue
 		}
 		if s.fieldSet != nil {
@@ -156,11 +158,13 @@ func (p *vmProgram) runBlock(ctx context.Context, slots, frame []reflect.Value, 
 		}
 		n := 0
 		for j := range out {
-			if j == s.call.errIdx {
+			if j == s.call.errIdx && !s.call.bindErr {
 				continue
 			}
 			if n < len(s.out) {
-				slots[s.out[n]] = p.addrCell(out[j], s.out[n])
+				if slot := s.out[n]; slot >= 0 {
+					slots[slot] = p.addrCell(out[j], slot)
+				}
 			}
 			n++
 		}

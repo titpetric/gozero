@@ -41,6 +41,9 @@ func (pc *progCompiler) checkDecl(sc *cscope, name string, define bool) error {
 // innermost scope; shadowing an outer name counts, as in Go.
 func (pc *progCompiler) checkNew(lhs []string, sc *cscope) error {
 	for _, name := range lhs {
+		if name == "_" {
+			continue // the blank identifier declares nothing
+		}
 		if _, ok := sc.slots[name]; !ok {
 			return nil
 		}

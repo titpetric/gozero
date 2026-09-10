@@ -158,6 +158,28 @@ func (f *testFixtures) testStructs(tb testing.TB) {
 	assertEqual(tb, "https://h/m", m.String(), "")
 }
 
+func (f *testFixtures) testErrs(tb testing.TB) {
+	u, err := url.Parse("https://example.com/x")
+	assertTrue(tb, err == nil, "")
+	assertEqual(tb, "/x", u.Path, "")
+
+	req, rerr := http.NewRequest("bad method", "/", nil)
+	assertTrue(tb, rerr != nil, "")
+	assertTrue(tb, req == nil, "")
+
+	ok := "fallback"
+	if rerr != nil {
+		ok = "handled"
+	}
+	assertEqual(tb, "handled", ok, "")
+
+	_, perr := url.ParseQuery("a=%zz")
+	assertTrue(tb, perr != nil, "")
+
+	q, _ := url.ParseQuery("a=1")
+	assertEqual(tb, "1", q.Get("a"), "")
+}
+
 func (f *testFixtures) testExprs(tb testing.TB) {
 	var a, b int64 = 6, 3
 	assertEqual(tb, int64(9), a+b, "")
@@ -310,6 +332,7 @@ func (f *testFixtures) testChannels(tb testing.TB) {
 // shape the cache exists for.
 func BenchmarkFixtures(b *testing.B) {
 	native := map[string]func(*testFixtures, testing.TB){
+		"errs":     (*testFixtures).testErrs,
 		"exprs":    (*testFixtures).testExprs,
 		"flow":     (*testFixtures).testFlow,
 		"http":     (*testFixtures).testHTTP,

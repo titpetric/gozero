@@ -184,6 +184,18 @@ func (pc *progCompiler) compileOne(sc *cscope, s stmt, dst *[]vmStmt, top bool) 
 			return fmt.Errorf("compile: a literal assigns to exactly one name")
 		}
 		name := s.lhs[0]
+		if name == "_" {
+			// A discard: a pure right-hand side compiles to nothing,
+			// one with calls inside still evaluates for its effects.
+			if isExprKind(s.lit.kind) {
+				node, _, err := c.compileValueExpr(sc, *s.lit, nil)
+				if err != nil {
+					return err
+				}
+				*dst = append(*dst, vmStmt{assign: node, out: []int{-1}})
+			}
+			return nil
+		}
 		if err := pc.checkName(name); err != nil {
 			return err
 		}
@@ -260,6 +272,18 @@ func (pc *progCompiler) compileOne(sc *cscope, s stmt, dst *[]vmStmt, top bool) 
 			return fmt.Errorf("compile: len returns one value")
 		}
 		name := s.lhs[0]
+		if name == "_" {
+			// A discard: a pure right-hand side compiles to nothing,
+			// one with calls inside still evaluates for its effects.
+			if isExprKind(s.lit.kind) {
+				node, _, err := c.compileValueExpr(sc, *s.lit, nil)
+				if err != nil {
+					return err
+				}
+				*dst = append(*dst, vmStmt{assign: node, out: []int{-1}})
+			}
+			return nil
+		}
 		if err := pc.checkName(name); err != nil {
 			return err
 		}
@@ -339,7 +363,12 @@ func (pc *progCompiler) compileOne(sc *cscope, s stmt, dst *[]vmStmt, top bool) 
 	if err != nil {
 		return err
 	}
-	if len(s.lhs) > call.nres {
+	// Naming one more value than the call returns binds the trailing
+	// error as an ordinary value; eliding it keeps the implicit
+	// check-and-abort. Both spellings are legal Go.
+	if len(s.lhs) == call.nres+1 && call.errIdx >= 0 {
+		call.bindErr = true
+	} else if len(s.lhs) > call.nres {
 		return fmt.Errorf("compile: %s returns %d values, cannot assign %d", call.name, call.nres, len(s.lhs))
 	}
 
@@ -348,15 +377,27 @@ func (pc *progCompiler) compileOne(sc *cscope, s stmt, dst *[]vmStmt, top bool) 
 			return err
 		}
 	}
+	ft := call.fn.Type()
 	out := make([]int, 0, len(s.lhs))
 	for i, name := range s.lhs {
+		// The blank identifier discards its value without a slot.
+		if name == "_" {
+			out = append(out, -1)
+			continue
+		}
 		if err := pc.checkName(name); err != nil {
 			return err
 		}
 		if err := pc.checkDecl(sc, name, s.define); err != nil {
 			return err
 		}
-		out = append(out, pc.newSlot(sc, name, c.resultType(call, i), s.define))
+		rt := c.resultType(call, i)
+		if call.bindErr {
+			// The left-hand side maps to every result positionally,
+			// the trailing error included.
+			rt = ft.Out(i)
+		}
+		out = append(out, pc.newSlot(sc, name, rt, s.define))
 	}
 	*dst = append(*dst, vmStmt{call: call, out: out, ret: s.ret})
 	return nil

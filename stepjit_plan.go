@@ -169,6 +169,9 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 		if s.call == nil {
 			continue // a bare "return;" leaves the program without a value
 		}
+		if s.call.bindErr {
+			return nil, fmt.Errorf("an error-binding call is not in the table yet")
+		}
 		if s.ret && i != len(p.stmts)-1 {
 			return nil, fmt.Errorf("a return before the last statement is not a straight line")
 		}

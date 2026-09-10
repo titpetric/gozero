@@ -432,11 +432,26 @@ func (p *Parser) stmt() (stmt, error) {
 		if err != nil {
 			return stmt{}, err
 		}
+		blankOnly := true
+		for _, n := range lhs {
+			if n != "_" {
+				blankOnly = false
+				break
+			}
+		}
 		switch a.kind {
 		case argCall:
 			p.pos = save
 		case argVar, argPath:
-			return stmt{}, fmt.Errorf("parse: cannot assign a name to a name at offset %d", save)
+			// _ = n is Go's discard; anything else on the left reads
+			// as a copy the language does not have.
+			if !blankOnly {
+				return stmt{}, fmt.Errorf("parse: cannot assign a name to a name at offset %d", save)
+			}
+			if !p.terminated() {
+				return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
+			}
+			return stmt{lhs: lhs, define: define, lit: &a}, nil
 		default:
 			if !p.terminated() {
 				return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)

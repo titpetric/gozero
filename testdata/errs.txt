@@ -1,0 +1,22 @@
+// errs: the hybrid error rule. Naming the trailing error binds it as
+// a value the program tests; eliding it keeps the implicit
+// check-and-abort. The blank identifier discards either side.
+u, err := url.Parse("https://example.com/x");
+assert.True(tb, err == nil);
+assert.Equal(tb, "/x", u.Path);
+
+req, rerr := http.NewRequest("bad method", "/");
+assert.True(tb, rerr != nil);
+assert.True(tb, req == nil);
+
+ok := "fallback";
+if rerr != nil {
+	ok = "handled"
+}
+assert.Equal(tb, "handled", ok);
+
+_, perr := url.ParseQuery("a=%zz");
+assert.True(tb, perr != nil);
+
+q, _ := url.ParseQuery("a=1");
+assert.Equal(tb, "1", q.Get("a"));

@@ -149,6 +149,10 @@ type vmCall struct {
 	// spread marks a variadic call whose last argument is the slice
 	// itself, f(xs...): the invocation goes through CallSlice.
 	spread bool
+	// bindErr marks a call whose trailing error the program named on
+	// its left-hand side: the error is a value there, not the
+	// implicit check.
+	bindErr bool
 }
 
 // vmStmt is one statement: a call, the slots its results bind to, and
@@ -342,7 +346,7 @@ func (c *vmCall) invoke(ctx context.Context, slots, frame []reflect.Value, iface
 	} else {
 		out = c.fn.Call(args)
 	}
-	if c.errIdx >= 0 {
+	if c.errIdx >= 0 && !c.bindErr {
 		if e := out[c.errIdx]; !e.IsNil() {
 			return nil, e.Interface().(error)
 		}
