@@ -43,6 +43,22 @@ func (p *Parser) typeRef() (string, error) {
 			}
 			continue
 		}
+		// A map key is a full type reference of its own; the value is
+		// whatever the rest of the loop reads.
+		if p.keyword("map") {
+			if !p.consume('[') {
+				return "", fmt.Errorf("parse: expected '[' after map at offset %d", p.pos)
+			}
+			key, err := p.typeRef()
+			if err != nil {
+				return "", err
+			}
+			if !p.consume(']') {
+				return "", fmt.Errorf("parse: expected ']' after map key at offset %d", p.pos)
+			}
+			prefix += "map[" + key + "]"
+			continue
+		}
 		break
 	}
 	path, err := p.path()

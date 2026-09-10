@@ -159,6 +159,10 @@ type stmt struct {
 // program is a parsed source unit.
 type program struct {
 	stmts []stmt
+	// types are the program's own type declarations, collected apart
+	// from the statements: a declaration compiles to a reflect type,
+	// not to anything that runs.
+	types []typeDecl
 }
 
 // flatCall reports the single call of a one-statement program whose
@@ -193,6 +197,12 @@ func (p *Parser) Parse(src string) (*program, error) {
 		}
 		if p.pos >= len(p.src) {
 			break
+		}
+		if td, ok, err := p.typeDeclSniff(); err != nil {
+			return nil, err
+		} else if ok {
+			prog.types = append(prog.types, td)
+			continue
 		}
 		s, err := p.stmt()
 		if err != nil {

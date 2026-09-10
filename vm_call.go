@@ -29,7 +29,7 @@ import (
 // compileExpr compiles a call and the methods chained onto it,
 // returning the outermost call and the static type of its first
 // non-error result.
-func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type, e *callExpr) (*vmCall, reflect.Type, error) {
+func (c *Compiler) compileExpr(sc *cscope, e *callExpr) (*vmCall, reflect.Type, error) {
 	var (
 		curr     *vmCall
 		currType reflect.Type
@@ -51,12 +51,12 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 	case base >= 0:
 		methods = e.path[base:]
 	default:
-		slot, ok := slots[e.path[0]]
+		slot, ok := sc.slots[e.path[0]]
 		if !ok {
 			return nil, nil, fmt.Errorf("compile: unknown binding %q", joinPath(e.path))
 		}
-		recv = &vmArg{kind: vaSlot, slot: slot, typ: env[e.path[0]], iface: -1}
-		currType = env[e.path[0]]
+		recv = &vmArg{kind: vaSlot, slot: slot, typ: sc.env[e.path[0]], iface: -1}
+		currType = sc.env[e.path[0]]
 		methods = e.path[1:]
 		if len(methods) == 0 && len(e.chain) == 0 {
 			return nil, nil, fmt.Errorf("compile: %s is a value, not a call", e.path[0])
@@ -82,7 +82,7 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 		if len(methods) == 0 {
 			args = e.args
 		}
-		call, err := c.compileCall(slots, env, c.bindings[name].rv, name, nil, args)
+		call, err := c.compileCall(sc, c.bindings[name].rv, name, nil, args)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -105,7 +105,7 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 				// ctx.Err() compiles like any method call.
 				fn = ifaceMethodFunc(currType, m)
 			}
-			call, err := c.compileCall(slots, env, fn, currType.String()+"."+l.name, recv, l.args)
+			call, err := c.compileCall(sc, fn, currType.String()+"."+l.name, recv, l.args)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -123,7 +123,7 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 				if err != nil {
 					return nil, nil, fmt.Errorf("compile: cannot call pointer method %s on %s: %w", l.name, currType, err)
 				}
-				call, err := c.compileCall(slots, env, m.Func, currType.String()+"."+l.name, arecv, l.args)
+				call, err := c.compileCall(sc, m.Func, currType.String()+"."+l.name, arecv, l.args)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -205,7 +205,7 @@ func ifaceMethodFunc(t reflect.Type, m reflect.Method) reflect.Value {
 // compileCall validates one call against a func value. recv is the
 // receiver for a method call and fills parameter 0; src holds the
 // arguments written in the source, which fill the parameters after it.
-func (c *Compiler) compileCall(slots map[string]int, env map[string]reflect.Type, fn reflect.Value, name string, recv *vmArg, src []arg) (*vmCall, error) {
+func (c *Compiler) compileCall(sc *cscope, fn reflect.Value, name string, recv *vmArg, src []arg) (*vmCall, error) {
 	ft := fn.Type()
 
 	call := &vmCall{fn: fn, name: name, errIdx: -1}
@@ -228,7 +228,7 @@ func (c *Compiler) compileCall(slots map[string]int, env map[string]reflect.Type
 	j := 0
 	for i := len(call.args); i < fixed; i++ {
 		pt := ft.In(i)
-		if pt == ctxType && !(j < len(src) && c.staticType(env, src[j]) == ctxType) {
+		if pt == ctxType && !(j < len(src) && c.staticType(sc, src[j]) == ctxType) {
 			call.args = append(call.args, &vmArg{kind: vaCtx, typ: pt, iface: -1})
 			continue
 		}
@@ -241,7 +241,7 @@ func (c *Compiler) compileCall(slots map[string]int, env map[string]reflect.Type
 		if src[j].spread {
 			return nil, fmt.Errorf("compile: %s argument %d: ... spreads only into a variadic parameter", name, j+1)
 		}
-		a, err := c.compileArg(slots, env, name, j, pt, src[j])
+		a, err := c.compileArg(sc, name, j, pt, src[j])
 		if err != nil {
 			return nil, err
 		}
@@ -259,7 +259,7 @@ func (c *Compiler) compileCall(slots map[string]int, env map[string]reflect.Type
 		// f(xs...): the slice is passed whole and the invocation goes
 		// through CallSlice.
 		st := ft.In(fixed)
-		a, err := c.compileArg(slots, env, name, j, st, unspread(rest[0]))
+		a, err := c.compileArg(sc, name, j, st, unspread(rest[0]))
 		if err != nil {
 			return nil, err
 		}
@@ -274,7 +274,7 @@ func (c *Compiler) compileCall(slots map[string]int, env map[string]reflect.Type
 			if a.spread {
 				return nil, fmt.Errorf("compile: %s: ... must be the only variadic argument", name)
 			}
-			va, err := c.compileArg(slots, env, name, j, et, a)
+			va, err := c.compileArg(sc, name, j, et, a)
 			if err != nil {
 				return nil, err
 			}
@@ -295,7 +295,7 @@ func (c *Compiler) compileCall(slots map[string]int, env map[string]reflect.Type
 	return call, nil
 }
 
-func (c *Compiler) compileArg(slots map[string]int, env map[string]reflect.Type, name string, pos int, pt reflect.Type, a arg) (*vmArg, error) {
+func (c *Compiler) compileArg(sc *cscope, name string, pos int, pt reflect.Type, a arg) (*vmArg, error) {
 	var v reflect.Value
 	switch a.kind {
 	case argBool:
@@ -315,7 +315,7 @@ func (c *Compiler) compileArg(slots map[string]int, env map[string]reflect.Type,
 		}
 		v = lit
 	case argCall:
-		sub, st, err := c.compileExpr(slots, env, a.sub)
+		sub, st, err := c.compileExpr(sc, a.sub)
 		if err != nil {
 			return nil, err
 		}
@@ -327,12 +327,12 @@ func (c *Compiler) compileArg(slots map[string]int, env map[string]reflect.Type,
 		}
 		return &vmArg{kind: vaCall, sub: sub, typ: pt, iface: -1}, nil
 	case argPath:
-		slot, ok := slots[a.path[0]]
+		slot, ok := sc.slots[a.path[0]]
 		if !ok {
 			return nil, fmt.Errorf("compile: %s argument %d: %s is not a name bound by the program, so its fields are unknown", name, pos+1, a.path[0])
 		}
-		cur := &vmArg{kind: vaSlot, slot: slot, name: a.path[0], typ: env[a.path[0]], iface: -1}
-		curType := env[a.path[0]]
+		cur := &vmArg{kind: vaSlot, slot: slot, name: a.path[0], typ: sc.env[a.path[0]], iface: -1}
+		curType := sc.env[a.path[0]]
 		for _, seg := range a.path[1:] {
 			f, deref, ok := fieldOf(curType, seg)
 			if !ok {
@@ -348,12 +348,12 @@ func (c *Compiler) compileArg(slots map[string]int, env map[string]reflect.Type,
 		return cur, nil
 
 	case argStruct:
-		sa, st, err := c.compileStructLit(slots, env, a)
+		sa, st, err := c.compileStructLit(sc, a)
 		if err != nil {
 			return nil, fmt.Errorf("compile: %s argument %d: %w", name, pos+1, err)
 		}
 		if !st.AssignableTo(pt) {
-			return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, st, pt)
+			return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, sc.typeName(st), sc.typeName(pt))
 		}
 		sa.typ = pt
 		return sa, nil
@@ -362,8 +362,8 @@ func (c *Compiler) compileArg(slots map[string]int, env map[string]reflect.Type,
 		if a.str == "dest" {
 			return &vmArg{kind: vaDest, name: "dest", typ: pt, iface: -1}, nil
 		}
-		if slot, ok := slots[a.str]; ok {
-			st := env[a.str]
+		if slot, ok := sc.slots[a.str]; ok {
+			st := sc.env[a.str]
 			if st != nil && !st.AssignableTo(pt) {
 				return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, st, pt)
 			}

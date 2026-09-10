@@ -158,6 +158,40 @@ func (f *testFixtures) testStructs(tb testing.TB) {
 	assertEqual(tb, "https://h/m", m.String(), "")
 }
 
+func (f *testFixtures) testTypedecl(tb testing.TB) {
+	type point struct {
+		X int64 `json:"x"`
+		Y int64 `json:"y"`
+	}
+	type base struct{ N int64 }
+	type wrap struct {
+		base
+		M int64
+	}
+
+	p := point{X: 3, Y: 4}
+	assertEqual(tb, int64(3), p.X, "")
+	p.X = 5
+	assertEqual(tb, int64(5), p.X, "")
+
+	q := &point{X: 1}
+	assertEqual(tb, int64(1), q.X, "")
+
+	var w point
+	w.Y = 7
+	assertEqual(tb, int64(7), w.Y, "")
+
+	b := wrap{base: base{N: 3}, M: 4}
+	assertEqual(tb, int64(3), b.N, "")
+	assertEqual(tb, int64(4), b.M, "")
+
+	buf := bytesNewBufferString("")
+	if err := json.NewEncoder(buf).Encode(point{X: 1, Y: 2}); err != nil {
+		tb.Fatal(err)
+	}
+	assertEqual(tb, "{\"x\":1,\"y\":2}\n", buf.String(), "")
+}
+
 func (f *testFixtures) testVariadic(tb testing.TB) {
 	parts := strings.Fields("a b c")
 	joined := path.Join(parts...)
@@ -193,6 +227,7 @@ func BenchmarkFixtures(b *testing.B) {
 		"json":     (*testFixtures).testJSON,
 		"fmt":      (*testFixtures).testFmt,
 		"structs":  (*testFixtures).testStructs,
+		"typedecl": (*testFixtures).testTypedecl,
 		"types":    (*testFixtures).testTypes,
 		"variadic": (*testFixtures).testVariadic,
 		"channels": (*testFixtures).testChannels,

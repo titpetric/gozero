@@ -33,8 +33,15 @@ import (
 // called on.
 func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 	p := &vmProgram{addrTaken: map[int]bool{}}
-	slots := map[string]int{}
-	env := map[string]reflect.Type{}
+	script, err := c.buildScriptTypes(prog)
+	if err != nil {
+		return nil, err
+	}
+	sc := &cscope{
+		slots:  map[string]int{},
+		env:    map[string]reflect.Type{},
+		script: script,
+	}
 
 	// A name that collides with a binding can never be read back:
 	// path resolution prefers the binding, so url := ... with url.Parse
@@ -60,7 +67,7 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 	// initial prototype let a literal define its name with =, which left
 	// a typo one silent new name away from a stale read.
 	checkDecl := func(name string, define bool) error {
-		_, ok := slots[name]
+		_, ok := sc.slots[name]
 		if !ok && !define {
 			return fmt.Errorf("compile: %s is not defined, use := or var", name)
 		}
@@ -69,7 +76,7 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 	// The other half of the rule: := must declare something.
 	checkNew := func(lhs []string) error {
 		for _, name := range lhs {
-			if _, ok := slots[name]; !ok {
+			if _, ok := sc.slots[name]; !ok {
 				return nil
 			}
 		}
@@ -84,7 +91,7 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			if err := checkName(s.varName); err != nil {
 				return nil, err
 			}
-			t, ok := c.lookupType(s.varType)
+			t, ok := c.resolveType(sc, s.varType)
 			if !ok {
 				return nil, fmt.Errorf("compile: unknown type %q, register it with BindType", s.varType)
 			}
@@ -93,18 +100,18 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 	}
 
 	newSlot := func(name string, t reflect.Type) int {
-		slot, ok := slots[name]
+		slot, ok := sc.slots[name]
 		if !ok {
 			slot = p.nslots
 			p.nslots++
 			p.slotTypes = append(p.slotTypes, nil)
-			slots[name] = slot
+			sc.slots[name] = slot
 		}
 		if prev := p.slotTypes[slot]; prev != nil && prev != t {
 			p.polymorphic = true
 		}
 		p.slotTypes[slot] = t
-		env[name] = t
+		sc.env[name] = t
 		return slot
 	}
 
@@ -119,7 +126,7 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 		}
 
 		if s.fieldLhs != nil {
-			fs, err := c.compileFieldSet(slots, env, s)
+			fs, err := c.compileFieldSet(sc, s)
 			if err != nil {
 				return nil, err
 			}
@@ -127,7 +134,7 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			continue
 		}
 		if s.sendCh != nil {
-			sn, err := c.compileSend(slots, env, s)
+			sn, err := c.compileSend(sc, s)
 			if err != nil {
 				return nil, err
 			}
@@ -154,7 +161,7 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 					return nil, err
 				}
 			}
-			rv, err := c.compileRecv(slots, env, *s.lit)
+			rv, err := c.compileRecv(sc, *s.lit)
 			if err != nil {
 				return nil, err
 			}
@@ -184,13 +191,13 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			// u = url.URL{...} binds the name to the literal's own type,
 			// built fresh on every run.
 			if s.lit.kind == argStruct {
-				sa, st, err := c.compileStructLit(slots, env, *s.lit)
+				sa, st, err := c.compileStructLit(sc, *s.lit)
 				if err != nil {
 					return nil, fmt.Errorf("compile: %s: %w", name, err)
 				}
-				if prev, ok := env[name]; ok && prev != st {
+				if prev, ok := sc.env[name]; ok && prev != st {
 					if !st.AssignableTo(prev) {
-						return nil, fmt.Errorf("compile: %s: cannot use %s as %s", name, st, prev)
+						return nil, fmt.Errorf("compile: %s: cannot use %s as %s", name, sc.typeName(st), sc.typeName(prev))
 					}
 					st = prev
 				}
@@ -198,7 +205,7 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 				p.stmts = append(p.stmts, vmStmt{assign: sa, out: []int{slot}})
 				continue
 			}
-			t, ok := env[name]
+			t, ok := sc.env[name]
 			if !ok {
 				t = c.inferLiteralType(prog, name, *s.lit)
 				if t == nil {
@@ -248,7 +255,7 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 				// converting into an interface slot keeps the slot's
 				// type, like any literal assigned to one.
 				st := t
-				if prev, ok := env[name]; ok && prev != t {
+				if prev, ok := sc.env[name]; ok && prev != t {
 					if !t.AssignableTo(prev) {
 						return nil, fmt.Errorf("compile: %s: cannot use %s as %s", name, t, prev)
 					}
@@ -261,7 +268,7 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 		}
 
 		if s.retVal != nil {
-			ra, err := c.compileRetVal(slots, env, *s.retVal)
+			ra, err := c.compileRetVal(sc, *s.retVal)
 			if err != nil {
 				return nil, err
 			}
@@ -273,7 +280,7 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			p.stmts = append(p.stmts, vmStmt{ret: true})
 			continue
 		}
-		call, _, err := c.compileExpr(slots, env, s.call)
+		call, _, err := c.compileExpr(sc, s.call)
 		if err != nil {
 			return nil, err
 		}
@@ -379,13 +386,13 @@ func (p *vmProgram) assignArg(a *vmArg) {
 // compileFieldSet compiles req.Method = value. The base is a
 // program-bound name, every selector is an exported field, and the
 // value is a literal or a call whose result is assignable to the field.
-func (c *Compiler) compileFieldSet(slots map[string]int, env map[string]reflect.Type, s stmt) (*vmFieldSet, error) {
+func (c *Compiler) compileFieldSet(sc *cscope, s stmt) (*vmFieldSet, error) {
 	base := s.fieldLhs[0]
-	slot, ok := slots[base]
+	slot, ok := sc.slots[base]
 	if !ok {
 		return nil, fmt.Errorf("compile: %s is not a name bound by the program, so its fields cannot be assigned", base)
 	}
-	t := env[base]
+	t := sc.env[base]
 	fs := &vmFieldSet{base: slot, field: joinPath(s.fieldLhs)}
 	for _, seg := range s.fieldLhs[1:] {
 		f, deref, ok := fieldOf(t, seg)
@@ -398,7 +405,7 @@ func (c *Compiler) compileFieldSet(slots map[string]int, env map[string]reflect.
 
 	if s.lit != nil {
 		if s.lit.kind == argStruct {
-			sa, st, err := c.compileStructLit(slots, env, *s.lit)
+			sa, st, err := c.compileStructLit(sc, *s.lit)
 			if err != nil {
 				return nil, fmt.Errorf("compile: %s: %w", fs.field, err)
 			}
@@ -415,7 +422,7 @@ func (c *Compiler) compileFieldSet(slots map[string]int, env map[string]reflect.
 		fs.val = &vmArg{kind: vaConst, val: v, typ: t, iface: -1}
 		return fs, nil
 	}
-	call, rt, err := c.compileExpr(slots, env, s.call)
+	call, rt, err := c.compileExpr(sc, s.call)
 	if err != nil {
 		return nil, err
 	}
@@ -430,11 +437,11 @@ func (c *Compiler) compileFieldSet(slots map[string]int, env map[string]reflect.
 // parameter type it is compiled against is its own: a program-bound
 // name uses its static type, a stack name has none and is returned as
 // it is, a literal keeps its natural width.
-func (c *Compiler) compileRetVal(slots map[string]int, env map[string]reflect.Type, a arg) (*vmArg, error) {
+func (c *Compiler) compileRetVal(sc *cscope, a arg) (*vmArg, error) {
 	pt := reflect.TypeFor[any]()
 	switch a.kind {
 	case argVar:
-		if t, ok := env[a.str]; ok && t != nil {
+		if t, ok := sc.env[a.str]; ok && t != nil {
 			pt = t
 		}
 	case argString:
@@ -451,7 +458,7 @@ func (c *Compiler) compileRetVal(slots map[string]int, env map[string]reflect.Ty
 		// compileArg resolves these and checks assignability against
 		// pt, so any is what lets the value keep its own type.
 	}
-	return c.compileArg(slots, env, "return", 0, pt, a)
+	return c.compileArg(sc, "return", 0, pt, a)
 }
 
 // resultType is the static type of the i'th non-error result.

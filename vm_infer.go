@@ -131,9 +131,9 @@ func (c *Compiler) useType(e *callExpr, name string) reflect.Type {
 // staticType is the compile-time type of an argument when it has one:
 // a program-bound name. Everything else answers nil, which for the
 // context rule means auto-fill.
-func (c *Compiler) staticType(env map[string]reflect.Type, a arg) reflect.Type {
+func (c *Compiler) staticType(sc *cscope, a arg) reflect.Type {
 	if a.kind == argVar {
-		return env[a.str]
+		return sc.env[a.str]
 	}
 	return nil
 }
