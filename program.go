@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sort"
 )
 
 // Program is a loaded source file or package: its declared functions
@@ -94,4 +95,35 @@ func (p *Program) FuncOf[F any](name string) (F, error) {
 		return zero, fmt.Errorf("program: %s is %s, not %s", name, fn.sig, ft)
 	}
 	return fn.materialize(context.Background(), ft, nil).Interface().(F), nil
+}
+
+// Signature reports a declared function's type, false when the name
+// is not declared.
+func (p *Program) Signature(name string) (reflect.Type, bool) {
+	fn := p.vm.funcs[name]
+	if fn == nil {
+		return nil, false
+	}
+	return fn.sig, true
+}
+
+// FuncValue materializes a declared function as a reflect func value
+// of its own signature, for callers that dispatch dynamically; the
+// typed form is FuncOf.
+func (p *Program) FuncValue(name string) (reflect.Value, error) {
+	fn, err := p.fn(name)
+	if err != nil {
+		return reflect.Value{}, err
+	}
+	return fn.materialize(context.Background(), fn.sig, nil), nil
+}
+
+// Funcs lists the declared function names.
+func (p *Program) Funcs() []string {
+	out := make([]string, 0, len(p.vm.funcs))
+	for name := range p.vm.funcs {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }

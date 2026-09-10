@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -148,3 +149,48 @@ func TestProgram(t *testing.T)         { TestRuntime_Load(t) }
 func TestProgram_Package(t *testing.T) { TestRuntime_Load(t) }
 func TestProgram_Call(t *testing.T)    { TestRuntime_Load(t) }
 func TestProgram_FuncOf(t *testing.T)  { TestRuntime_Load(t) }
+
+// TestProgram_Signature, TestProgram_FuncValue and TestProgram_Funcs
+// cover the dynamic surface the plugin loader dispatches through.
+func TestProgram_Signature(t *testing.T) {
+	rt := NewRuntime()
+	p, err := rt.Load("package m\nfunc Twice(n int64) int64 { return n * 2 }")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig, ok := p.Signature("Twice")
+	if !ok || sig.String() != "func(int64) int64" {
+		t.Fatalf("sig = %v, %v", sig, ok)
+	}
+	if _, ok := p.Signature("NoSuch"); ok {
+		t.Fatal("an undeclared name must not report a signature")
+	}
+}
+
+func TestProgram_FuncValue(t *testing.T) {
+	rt := NewRuntime()
+	p, err := rt.Load("package m\nfunc Twice(n int64) int64 { return n * 2 }")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fv, err := p.FuncValue("Twice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := fv.Call([]reflect.Value{reflect.ValueOf(int64(3))})
+	if out[0].Int() != 6 {
+		t.Fatalf("got %v", out[0])
+	}
+}
+
+func TestProgram_Funcs(t *testing.T) {
+	rt := NewRuntime()
+	p, err := rt.Load("package m\nfunc B() int64 { return 1 }\nfunc A() int64 { return 2 }")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := p.Funcs()
+	if len(got) != 2 || got[0] != "A" || got[1] != "B" {
+		t.Fatalf("funcs = %v", got)
+	}
+}
