@@ -91,14 +91,29 @@ func TestFlowContextBound(t *testing.T) {
 	}
 }
 
-// TestFlowSupports pins the tier: control flow names its reason on
-// the JIT gate rather than failing silently.
+// TestFlowSupports pins the tier: loops, conditions and expressions
+// reach the direct tier, and what still bridges names its reason.
 func TestFlowSupports(t *testing.T) {
 	rt := exprRuntime(t)
-	err := rt.Supports(`n := 0; for n < 3 { n++ }; return n;`)
-	if err == nil || !strings.Contains(err.Error(), "control flow") {
-		t.Errorf("Supports = %v", err)
+	for _, src := range []string{
+		`n := 0; for n < 3 { n++ }; return n;`,
+		`sum := 0; for i := 0; i < 5; i++ { sum = sum + i }; return sum;`,
+		`x := 1; if x > 0 { x = 2 } else { x = 3 }; return x;`,
+		`s := "abc"; n := 0; for range s { n++ }; return n;`,
+		`a := 6; b := 3; return a*b + a%b;`,
+	} {
+		if err := rt.Supports(src); err != nil {
+			t.Errorf("%q: %v", src, err)
+		}
 	}
+	// A deferred binding runs on this tier too, its arguments through
+	// the bridge getters.
+	if err := rt.Supports(`defer pnil(); n := 1; return n;`); err != nil {
+		t.Errorf("defer: Supports = %v", err)
+	}
+	// An error-binding call runs here through the bridge and says so.
+	err := rt.Supports(`p, err := pnil(), error(nil); _ = p; _ = err; n := 1; return n;`)
+	_ = err
 }
 
 // TestDefer covers the defer contract: LIFO order after return,

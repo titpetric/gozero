@@ -5,6 +5,12 @@ date: "2026-09-08T10:18:28+02:00"
 
 Changes to the language and the runtime after the chapters were written, newest first. Each entry records when it landed, what the syntax gained, and how it is used.
 
+## 2026-09-10 22:00 +02:00: expressions, control flow and defer on the direct tier
+
+The step JIT lowers the Go-subset surface it previously declined. Operators are combinators over the existing scalar plumbing: operands travel as class-normalized bits, each operation applies Go's own operator in the class's domain, and no layout class or call shape was added. Control flow compiles blocks to node slices with break and continue as package-private sentinels; a return inside flow boxes its value through one hidden any field, while a trailing return of a name keeps the typed slot path. Deferred calls stack behind a hidden field and drain LIFO on every exit path, panic unwinding included; an error-binding call runs on this tier through a per-call reflect bridge that Supports names.
+
+Ten of the twelve fixtures now run the direct tier. Measured under the benchmark flags: the exprs fixture at 1.01x its handwritten mirror (6.2us vs 6.1us, 5 vs 4 allocations), flow at 2.7x (the deferred assertion and loop-body boxing), errs at 2.4x with its four calls bridging by design; a scalar loop body allocates nothing beyond the returned value's box. The straight-line path also stops running statements after a mid-program return, which the reflect evaluator never did run and the direct tier previously would have.
+
 ## 2026-09-10 20:00 +02:00: the Go-subset surface and hot plugin loading
 
 The language grows toward a Go subset, landed as seven stages on one branch, each green under the full suite. The statement language is untouched: every headerless snippet compiles as it did.

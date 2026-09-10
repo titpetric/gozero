@@ -83,4 +83,6 @@ Where a script value fills an interface parameter, the compiler checks the scrip
 
 ## Tiers
 
-The new constructs run on the reflect evaluator. The step JIT declines each with a named reason Supports reports: operator expressions, control flow, script calls and error-binding calls are not in the shape table yet. Lowering them to direct nodes is the open perf edge; the semantics above are the contract that lowering must match.
+Operator expressions, indexing, len, control flow, block-scoped returns and defer run on the direct tier: operators are combinators over the scalar node plumbing, loops intercept break and continue as package-private sentinels, a return inside flow boxes through one hidden field, and deferred calls stack behind another and drain on every exit path. The two-tier equivalence suite and the native oracle pin the semantics; a scalar loop body allocates nothing beyond the returned value's box.
+
+What still bridges or declines does so by name through Supports: an error-binding call runs here through a per-call reflect bridge, script function calls, func literals and adapters stay on the reflect evaluator until the function units lower, and map indexing, map ranging and multi-level field paths keep their existing bridges.

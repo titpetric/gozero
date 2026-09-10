@@ -134,17 +134,47 @@ type jitProgram struct {
 	// value, which is the common case: the output goes through dest.
 	retType reflect.Type
 	retOff  uintptr
+
+	// retAny marks a program whose returns sit inside control flow:
+	// each return boxes its value into the hidden any field at
+	// retAnyOff and signals, and run reads it back.
+	retAny    bool
+	retAnyOff uintptr
+
+	// hasDefers marks a program with deferred calls; they stack
+	// behind the hidden field at deferOff and run when the run
+	// exits, whatever way it exits.
+	hasDefers bool
+	deferOff  uintptr
 }
 
-func (p *jitProgram) run(ctx context.Context, stack map[string]any, dest any) (any, error) {
+func (p *jitProgram) run(ctx context.Context, stack map[string]any, dest any) (out any, err error) {
 	var f unsafe.Pointer
 	if p.frameRT != nil {
 		f = p.getFrame()
 	}
+	if p.hasDefers {
+		defers := &deferStack{}
+		*(**deferStack)(unsafe.Add(f, p.deferOff)) = defers
+		// A Go defer, so the deferred calls also run while a panic
+		// unwinds; their arguments were copied at the defer site, so
+		// the frame's return to the pool cannot reach them.
+		defer func() {
+			derr := defers.runAll()
+			if err == nil {
+				err = derr
+			}
+		}()
+	}
 	for _, stmt := range p.stmts {
-		if err := stmt(f, ctx, stack, dest); err != nil {
+		if serr := stmt(f, ctx, stack, dest); serr != nil {
+			if serr == errJITReturn && p.retAny {
+				v := *(*any)(unsafe.Add(f, p.retAnyOff))
+				p.finish(f)
+				return v, nil
+			}
 			p.finish(f)
-			return nil, err
+			return nil, serr
 		}
 	}
 	if p.retType == nil {
@@ -228,6 +258,11 @@ type jitCompiler struct {
 	blockOf   map[*vmArg]*sitePool
 	strboxOf  map[*vmArg]*sitePool
 	poolSites []*sitePool
+	// retAnyField is the hidden any field a return inside control
+	// flow boxes into, -1 when the program has none; deferField is
+	// the hidden *deferStack the deferred calls stack behind.
+	retAnyField int
+	deferField  int
 	// pendingStrBox hands a string-box site from argNode, which knows
 	// the argument's identity, to toIface, which builds the box.
 	// Compilation of one program is single-threaded, so a plain field
@@ -267,6 +302,7 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 		splices: plan.splices, stackFields: map[string]int{},
 		packOf:  map[*vmCall]*sitePool{},
 		blockOf: map[*vmArg]*sitePool{}, strboxOf: map[*vmArg]*sitePool{},
+		retAnyField: -1, deferField: -1,
 	}
 	for slot := 0; slot < p.nslots; slot++ {
 		if !plan.live[slot] {
@@ -298,6 +334,18 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 	for _, name := range hoisted {
 		c.stackFields[name] = len(c.types)
 		c.types = append(c.types, reflect.TypeFor[any]())
+	}
+
+	// A program returning from inside control flow gets the hidden
+	// any field its returns box into; one with defers gets the
+	// hidden stack they run from.
+	if plan.needsRetAny {
+		c.retAnyField = len(c.types)
+		c.types = append(c.types, reflect.TypeFor[any]())
+	}
+	if plan.needsDefers {
+		c.deferField = len(c.types)
+		c.types = append(c.types, reflect.TypeFor[*deferStack]())
 	}
 
 	// The argument pools claim their scratch
@@ -341,6 +389,14 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 			return nil, fmt.Errorf("a returned name has no slot")
 		}
 		jp.retType, jp.retOff = c.types[field], c.offs[field]
+	}
+	if c.retAnyField >= 0 {
+		jp.retAny = true
+		jp.retAnyOff = c.offs[c.retAnyField]
+	}
+	if c.deferField >= 0 {
+		jp.hasDefers = true
+		jp.deferOff = c.offs[c.deferField]
 	}
 	jp.bridged = c.bridged
 	if jp.frameRT != nil && !c.frameEscapes {

@@ -75,6 +75,10 @@ type plannedStmt struct {
 	out  int // frame slot, -1 to discard
 	ret  bool
 
+	// flow carries an if, loop, range, break, continue, block var or
+	// return statement whole; flowNode compiles it.
+	flow *vmStmt
+
 	// lit is a literal assignment, which has no call to compile.
 	lit reflect.Value
 
@@ -99,6 +103,12 @@ type jitPlan struct {
 	// retSlot is the slot a "return name;" reads, -1 when the program
 	// returns through a trailing call or not at all.
 	retSlot int
+	// needsRetAny marks a program with a return inside control flow:
+	// those return through a hidden any field and a sentinel.
+	needsRetAny bool
+	// needsDefers marks a program with deferred calls: they stack in
+	// a hidden field and run when the run exits.
+	needsDefers bool
 }
 
 // planInline drops a statement whose single result is read exactly once
@@ -112,14 +122,15 @@ type jitPlan struct {
 // method chain written across statements collapses exactly as the same
 // chain written on one line does.
 func planInline(p *vmProgram) (*jitPlan, error) {
+	if hasFlow(p.stmts) || hasDeferOrBindErr(p.stmts) {
+		return planFlow(p)
+	}
 	retSlot := -1
 	stmts := make([]plannedStmt, 0, len(p.stmts))
 	for i := range p.stmts {
 		s := &p.stmts[i]
-		if s.ifs != nil || s.loop != nil || s.rng != nil || s.brk || s.cont || s.init != nil || s.deferCall != nil || s.retList != nil {
-			// Control flow runs on the reflect tier until the flow
-			// nodes land.
-			return nil, fmt.Errorf("control flow is not in the shape table yet")
+		if s.deferCall != nil || s.retList != nil {
+			return nil, fmt.Errorf("defer is not in the shape table yet")
 		}
 		if s.call != nil && hasScriptCall(s.call) {
 			return nil, fmt.Errorf("a script function call is not in the table yet")
@@ -133,16 +144,20 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 			continue
 		}
 		if s.retArg != nil {
-			// Only a name that already has a slot returns on this
-			// tier. A field read, a literal or a stack name in return
-			// position is rare enough that the reflect evaluator keeps
-			// it; what must not happen is the statement being skipped,
-			// which would silently return nil where reflect returns
-			// the value.
-			if s.retArg.kind != vaSlot {
-				return nil, fmt.Errorf("a returned expression is not in the table")
+			// A return stops the program, so anything after it would
+			// run here and not on the reflect tier; only the trailing
+			// position is straight-line.
+			if i != len(p.stmts)-1 {
+				return nil, fmt.Errorf("a return before the last statement is not a straight line")
 			}
-			retSlot = s.retArg.slot
+			// A returned name reads its typed slot at the end of the
+			// run; any other returned value boxes through the same
+			// channel a return inside control flow uses.
+			if s.retArg.kind == vaSlot {
+				retSlot = s.retArg.slot
+				continue
+			}
+			stmts = append(stmts, plannedStmt{flow: s, out: -1})
 			continue
 		}
 		if s.fieldSet != nil {
@@ -206,6 +221,9 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 		if s.send != nil {
 			countArgReads(reads, s.send.ch)
 			countArgReads(reads, s.send.val)
+		}
+		if s.flow != nil && s.flow.retArg != nil {
+			countArgReads(reads, s.flow.retArg)
 		}
 	}
 
@@ -278,7 +296,13 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 			return nil, fmt.Errorf("a returned value needs a slot")
 		}
 	}
-	return &jitPlan{stmts: stmts, live: live, writes: writes, splices: splices, retSlot: retSlot}, nil
+	needsRetAny := false
+	for i := range stmts {
+		if f := stmts[i].flow; f != nil && (f.retArg != nil || f.ret) {
+			needsRetAny = true
+		}
+	}
+	return &jitPlan{stmts: stmts, live: live, writes: writes, splices: splices, retSlot: retSlot, needsRetAny: needsRetAny}, nil
 }
 
 // countReads tallies how many times each name is read, which decides

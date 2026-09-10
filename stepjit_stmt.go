@@ -18,17 +18,22 @@ func (c *jitCompiler) stmtNode(s plannedStmt, jp *jitProgram) (nodeE, error) {
 	if s.fieldSet != nil {
 		return c.fieldSetNode(s.fieldSet)
 	}
-	if s.assign != nil {
-		switch s.assign.kind {
-		case vaBinary, vaUnary, vaIndex, vaLen, vaConst:
-			// Operator expressions run on the reflect tier until the
-			// direct nodes land.
-			return nil, fmt.Errorf("an operator expression is not in the shape table yet")
-		}
-		return c.structAssignNode(s)
+	if s.flow != nil {
+		return c.flowNode(s.flow, jp)
 	}
 	var n node
-	if s.lit.IsValid() {
+	switch {
+	case s.assign != nil && s.assign.kind == vaStruct:
+		return c.structAssignNode(s)
+	case s.assign != nil && (s.assign.kind == vaFuncLit || s.assign.kind == vaAdapter):
+		return nil, fmt.Errorf("a func literal or adapter value is not in the table yet")
+	case s.assign != nil:
+		v, err := c.valueNode(s.assign)
+		if err != nil {
+			return nil, err
+		}
+		n = v
+	case s.lit.IsValid():
 		field, ok := c.slotOf[s.out]
 		if !ok {
 			return nil, fmt.Errorf("a literal is assigned to a name with no slot")
@@ -42,7 +47,7 @@ func (c *jitCompiler) stmtNode(s plannedStmt, jp *jitProgram) (nodeE, error) {
 			return nil, err
 		}
 		n = lit
-	} else {
+	default:
 		var err error
 		n, err = c.exprNode(s.call)
 		if err != nil {
