@@ -44,6 +44,8 @@ func (c *jitCompiler) flowNode(s *vmStmt, jp *jitProgram) (nodeE, error) {
 		}, nil
 	case s.init != nil:
 		return c.initFlowNode(s.init)
+	case s.retList != nil:
+		return c.retListNode(s.retList)
 	case s.retArg != nil:
 		return c.returnFlowNode(s.retArg, jp)
 	case s.ret:
@@ -286,122 +288,80 @@ func boxAnyNode(t reflect.Type, n node) (func(fr unsafe.Pointer, ctx context.Con
 	}, nil
 }
 
-// deferFlowNode evaluates the deferred call's arguments now, copies
-// them off the frame, and stacks the entry; the run's exit drains
-// the stack LIFO with the reflect call the entries carry.
-func (c *jitCompiler) deferFlowNode(s *vmStmt, jp *jitProgram) (nodeE, error) {
-	if c.deferField < 0 {
-		return nil, fmt.Errorf("a defer has no stack field")
+// retListNode stores a function body's declared results into their
+// typed fields and signals the return.
+func (c *jitCompiler) retListNode(rets []*vmArg) (nodeE, error) {
+	if len(rets) != len(c.resultFields) {
+		return nil, fmt.Errorf("a return of %d values does not fit %d result fields", len(rets), len(c.resultFields))
 	}
-	call := s.deferCall
-	getters := make([]func(unsafe.Pointer, context.Context, map[string]any, any) (reflect.Value, error), len(call.args))
-	for i, a := range call.args {
-		g, err := c.bridgeArg(a)
-		if err != nil {
-			return nil, err
-		}
-		getters[i] = g
-	}
-	off := c.offs[c.deferField]
-	return func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) error {
-		args := make([]reflect.Value, len(getters))
-		for i, g := range getters {
-			v, err := g(fr, ctx, st, d)
-			if err != nil {
-				return err
-			}
-			// A bridge value may point into the frame, and the frame
-			// repools before the drain; the copy detaches it.
-			cell := reflect.New(v.Type()).Elem()
-			cell.Set(v)
-			args[i] = cell
-		}
-		defers := *(**deferStack)(unsafe.Add(fr, off))
-		defers.entries = append(defers.entries, deferredEntry{call: call, args: args, ctx: ctx})
-		return nil
-	}, nil
-}
-
-// bindErrNode is a call whose trailing error the program named: the
-// results, error included, store positionally into the named slots
-// with no implicit check. The call goes through the bridge; naming
-// the error is already the slow, once-per-failure path.
-func (c *jitCompiler) bindErrNode(s *vmStmt) (nodeE, error) {
-	call := s.call
-	getters := make([]func(unsafe.Pointer, context.Context, map[string]any, any) (reflect.Value, error), len(call.args))
-	for i, a := range call.args {
-		g, err := c.bridgeArg(a)
-		if err != nil {
-			return nil, err
-		}
-		getters[i] = g
-	}
-	ft := call.fn.Type()
-	if len(s.out) > ft.NumOut() {
-		return nil, fmt.Errorf("%s: more names than results", call.name)
-	}
-	type store struct {
+	type slotStore struct {
 		off uintptr
 		cl  layout
+		n   node
 	}
-	stores := make([]*store, len(s.out))
-	for i, slot := range s.out {
-		if slot < 0 {
-			continue
+	stores := make([]slotStore, len(rets))
+	for i, ra := range rets {
+		n, err := c.valueNode(ra)
+		if err != nil {
+			return nil, err
 		}
-		field, ok := c.slotOf[slot]
-		if !ok {
-			return nil, fmt.Errorf("%s: a bound result has no slot", call.name)
-		}
+		field := c.resultFields[i]
 		cl := layoutOf(c.types[field])
-		if cl == lBad {
-			return nil, fmt.Errorf("%s: a bound result of type %s has no layout class", call.name, c.types[field])
-		}
-		stores[i] = &store{off: c.offs[field], cl: cl}
-	}
-	fn, spread := call.fn, call.spread
-	c.bridged = append(c.bridged, fmt.Sprintf("%s (error-binding calls bridge)", call.name))
-	return func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) error {
-		args := make([]reflect.Value, len(getters))
-		for i, g := range getters {
-			v, err := g(fr, ctx, st, d)
-			if err != nil {
-				return err
-			}
-			args[i] = v
-		}
-		var out []reflect.Value
-		if spread {
-			out = fn.CallSlice(args)
-		} else {
-			out = fn.Call(args)
-		}
-		for i, sp := range stores {
-			if sp == nil || i >= len(out) {
-				continue
-			}
-			v := out[i]
-			cell := reflect.New(v.Type())
-			cell.Elem().Set(v)
-			p := cell.UnsafePointer()
-			at := unsafe.Add(fr, sp.off)
-			switch sp.cl {
-			case lPtr:
-				*(*unsafe.Pointer)(at) = *(*unsafe.Pointer)(p)
-			case lStr:
-				*(*string)(at) = *(*string)(p)
-			case lIface:
-				*(*ifacePair)(at) = *(*ifacePair)(p)
-			case lSlice:
-				*(*sliceHdr)(at) = *(*sliceHdr)(p)
-			default:
-				if sp.cl.float() {
-					storeF(sp.cl, at, loadF(p, sp.cl))
-				} else {
-					storeN(sp.cl, at, loadN(p, sp.cl))
+		if n.class != cl {
+			if cl == lIface {
+				conv, err := c.toIface(ra.typ, c.types[field], n)
+				if err != nil {
+					return nil, err
 				}
+				n = conv
+			} else {
+				return nil, fmt.Errorf("a %s value does not fill a %s result", n.class, cl)
 			}
 		}
-		return nil
+		stores[i] = slotStore{off: c.offs[field], cl: cl, n: n}
+	}
+	return func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) error {
+		for _, sp := range stores {
+			at := unsafe.Add(fr, sp.off)
+			switch {
+			case sp.cl.scalar() && sp.cl.float():
+				v, err := sp.n.F(fr, ctx, st, d)
+				if err != nil {
+					return err
+				}
+				storeF(sp.cl, at, v)
+			case sp.cl.scalar():
+				v, err := sp.n.N(fr, ctx, st, d)
+				if err != nil {
+					return err
+				}
+				storeN(sp.cl, at, v)
+			case sp.cl == lPtr:
+				v, err := sp.n.P(fr, ctx, st, d)
+				if err != nil {
+					return err
+				}
+				*(*unsafe.Pointer)(at) = v
+			case sp.cl == lStr:
+				v, err := sp.n.S(fr, ctx, st, d)
+				if err != nil {
+					return err
+				}
+				*(*string)(at) = v
+			case sp.cl == lSlice:
+				v, err := sp.n.L(fr, ctx, st, d)
+				if err != nil {
+					return err
+				}
+				*(*sliceHdr)(at) = v
+			case sp.cl == lIface:
+				v, err := sp.n.I(fr, ctx, st, d)
+				if err != nil {
+					return err
+				}
+				*(*ifacePair)(at) = v
+			}
+		}
+		return errJITReturn
 	}, nil
 }

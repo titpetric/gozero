@@ -210,6 +210,12 @@ func (pc *progCompiler) compileFuncBody(outer *cscope, fd *funcDecl, fn *scriptF
 	fn.unit = unit
 	fn.capLocal = fu.capLocal
 	fn.capsOuter = fu.caps
+	// The unit lowers to the direct tier where it can; a decline
+	// keeps the reflect walk, which stays the capturing closures'
+	// mechanism.
+	if jp, err := jitCompileUnit(fn); err == nil {
+		fn.jit = jp
+	}
 	return nil
 }
 

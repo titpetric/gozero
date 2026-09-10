@@ -342,7 +342,7 @@ func (d *deferStack) runAll() error {
 		switch {
 		case e.call.script != nil:
 			var err error
-			out, err = e.call.script.call(e.ctx, nil, e.args)
+			out, err = e.call.script.invoke(e.ctx, nil, e.args)
 			if err != nil && first == nil {
 				first = err
 			}

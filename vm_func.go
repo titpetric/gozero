@@ -26,10 +26,24 @@ type scriptFn struct {
 	// same order.
 	capLocal  []int
 	capsOuter []int
+	// jit is the unit's direct-tier form, nil when it declined; the
+	// reflect walk in call stays the general mechanism and the
+	// capturing closures' only one.
+	jit *jitProgram
 	// paramNames are the declared parameter names in order, receiver
 	// included, for calling by stack map.
 	paramNames []string
 	recvT    reflect.Type // method receiver type, nil for a plain func
+}
+
+// invoke runs the function down whichever tier its unit compiled
+// to. env carries a closure's captured cells and forces the reflect
+// walk, whose slots can hold them.
+func (fn *scriptFn) invoke(ctx context.Context, env []reflect.Value, args []reflect.Value) ([]reflect.Value, error) {
+	if fn.jit != nil && len(env) == 0 {
+		return fn.jit.callFn(ctx, args, fn.name)
+	}
+	return fn.call(ctx, env, args)
 }
 
 // call runs the function: fresh unit memory per call, captured cells
@@ -92,7 +106,7 @@ func (fn *scriptFn) call(ctx context.Context, env []reflect.Value, args []reflec
 // method set.
 func (fn *scriptFn) materialize(ctx context.Context, ft reflect.Type, env []reflect.Value) reflect.Value {
 	return reflect.MakeFunc(ft, func(args []reflect.Value) []reflect.Value {
-		out, err := fn.call(ctx, env, args)
+		out, err := fn.invoke(ctx, env, args)
 		if err != nil {
 			// With a trailing error result the error travels out as a
 			// value; anything else panics the way a Go runtime failure
@@ -119,7 +133,7 @@ func (fn *scriptFn) materializeMethod(ctx context.Context, ft reflect.Type, recv
 		full := make([]reflect.Value, 0, len(args)+1)
 		full = append(full, recv)
 		full = append(full, args...)
-		out, err := fn.call(ctx, nil, full)
+		out, err := fn.invoke(ctx, nil, full)
 		if err != nil {
 			if fn.errIdx >= 0 {
 				out = zeroResults(fn.results)

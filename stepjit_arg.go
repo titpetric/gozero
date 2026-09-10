@@ -112,7 +112,7 @@ func (c *jitCompiler) argNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 	case vaStack, vaDest:
 		return c.dynamicNode(a, pt, cl)
 
-	case vaBinary, vaUnary, vaIndex, vaLen:
+	case vaBinary, vaUnary, vaIndex, vaLen, vaFuncLit:
 		n, err := c.valueNode(a)
 		if err != nil {
 			return node{}, err

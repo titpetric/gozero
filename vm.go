@@ -376,8 +376,7 @@ func (c *vmCall) invoke(ctx context.Context, slots, frame []reflect.Value, iface
 	}
 	var out []reflect.Value
 	if c.script != nil {
-		env := capturedCells(slots, nil)
-		out, err = c.script.call(ctx, env, args)
+		out, err = c.script.invoke(ctx, nil, args)
 		if err != nil {
 			return nil, err
 		}

@@ -109,16 +109,15 @@ func flowDefers(stmts []vmStmt) bool {
 // and returns travel whole for flowNode.
 func planStmt(s *vmStmt) (plannedStmt, error) {
 	if s.deferCall != nil {
-		if hasScriptCall(s.deferCall) {
-			return plannedStmt{}, fmt.Errorf("a deferred script call is not in the table yet")
+		if s.deferCall.script != nil {
+			// A deferred script call re-enters through runAll, which
+			// carries it whole.
+			return plannedStmt{flow: s, out: -1}, nil
 		}
 		return plannedStmt{flow: s, out: -1}, nil
 	}
 	if s.retList != nil {
-		return plannedStmt{}, fmt.Errorf("a function body is not in the shape table yet")
-	}
-	if s.call != nil && hasScriptCall(s.call) {
-		return plannedStmt{}, fmt.Errorf("a script function call is not in the table yet")
+		return plannedStmt{flow: s, out: -1}, nil
 	}
 	if s.ifs != nil || s.loop != nil || s.rng != nil || s.brk || s.cont || s.init != nil ||
 		s.retArg != nil || (s.ret && s.call == nil && !s.lit.IsValid() && s.assign == nil) {
@@ -178,6 +177,9 @@ func flowCounters(p *vmProgram, stmts []vmStmt, inLoop bool, reads map[int]int, 
 		}
 		if s.retArg != nil {
 			countArgReads(reads, s.retArg)
+		}
+		for _, ra := range s.retList {
+			countArgReads(reads, ra)
 		}
 		if s.call != nil {
 			countReads(reads, s.call)
@@ -249,7 +251,7 @@ func flowCounters(p *vmProgram, stmts []vmStmt, inLoop bool, reads map[int]int, 
 func flowReturns(stmts []vmStmt) bool {
 	for i := range stmts {
 		s := &stmts[i]
-		if s.ret || s.retArg != nil {
+		if (s.ret || s.retArg != nil) && s.retList == nil {
 			return true
 		}
 		if s.ifs != nil {

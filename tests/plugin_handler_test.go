@@ -157,3 +157,30 @@ func BenchmarkPluginHandler(b *testing.B) {
 		run(b, nativeHandler(b))
 	})
 }
+
+// BenchmarkPluginHandlerParallel is the same workload under
+// concurrency: every P hammers the one handler, which is how a
+// server drives middleware.
+func BenchmarkPluginHandlerParallel(b *testing.B) {
+	run := func(b *testing.B, h http.Handler) {
+		b.Helper()
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			req := httptest.NewRequest("GET", "/bench", nil)
+			for pb.Next() {
+				rec := httptest.NewRecorder()
+				h.ServeHTTP(rec, req)
+				if rec.Code != 200 {
+					b.Fail()
+				}
+			}
+		})
+	}
+	b.Run("gozero", func(b *testing.B) {
+		run(b, gozeroHandler(b))
+	})
+	b.Run("native", func(b *testing.B) {
+		run(b, nativeHandler(b))
+	})
+}

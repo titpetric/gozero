@@ -84,8 +84,26 @@ func (c *jitCompiler) valueNode(a *vmArg) (node, error) {
 		return c.indexNode(a)
 	case vaLen:
 		return c.lenNode(a)
+	case vaFuncLit:
+		return c.funcLitNode(a)
 	}
 	return node{}, fmt.Errorf("operand kind %d is not in the table", a.kind)
+}
+
+// funcLitNode materializes a capture-free literal per evaluation and
+// carries the funcval word; a capturing literal stays on the reflect
+// tier, whose slots can hold its cells.
+func (c *jitCompiler) funcLitNode(a *vmArg) (node, error) {
+	if len(a.caps) > 0 {
+		return node{}, fmt.Errorf("a capturing closure stays on the reflect tier")
+	}
+	fn, ft := a.fnLit, a.litType
+	return node{class: lPtr, P: func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (unsafe.Pointer, error) {
+		rv := fn.materialize(ctx, ft, nil)
+		cell := reflect.New(ft)
+		cell.Elem().Set(rv)
+		return *(*unsafe.Pointer)(cell.UnsafePointer()), nil
+	}}, nil
 }
 
 // binaryNode compiles one operator application.

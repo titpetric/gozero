@@ -132,9 +132,6 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 		if s.deferCall != nil || s.retList != nil {
 			return nil, fmt.Errorf("defer is not in the shape table yet")
 		}
-		if s.call != nil && hasScriptCall(s.call) {
-			return nil, fmt.Errorf("a script function call is not in the table yet")
-		}
 		if s.assign != nil {
 			out := -1
 			if len(s.out) > 0 {
