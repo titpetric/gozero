@@ -26,7 +26,7 @@ arg     := string | number | name | expr
 ```
 
 Values are string literals, int64, float64, names, and the results of
-other calls. There is no arithmetic, no string concatenation, no field
+other calls. The language has no arithmetic, no string concatenation, no field
 access, no conditionals. Errors are never written down: a trailing
 error result is stripped at compile time and checked after every call,
 and a non-nil one ends the program.
@@ -250,7 +250,11 @@ compiler marks the nodes that hand out frame pointers (an indirectly
 aliased interface argument, an addressed receiver), and a program
 with none recycles its frame through a `sync.Pool`, cleared on reuse
 with the typed clear reflect performs, while every other program
-allocates fresh ([changelog](changelog.md)).
+allocates fresh. The retention annotation this chapter lists below
+under approaches not tried landed the same day as `NonRetaining` at
+Bind, and extends the same release discipline to the pack slices,
+string boxes and literal blocks behind an annotated call
+([changelog](changelog.md)).
 
 One measurement to be careful with. Under `-gcflags=all=-l` the numbers
 above show 6 allocations for both the program and its native

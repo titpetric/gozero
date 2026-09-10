@@ -73,7 +73,6 @@ silent second name.
 <table>
 <tr>
 <th>go</th>
-<th>gozero</th>
 </tr>
 <tr>
 <td>
@@ -88,6 +87,11 @@ y = 9 // still int32
 ```
 
 </td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
 <td>
 
 ```go
@@ -123,7 +127,6 @@ spends on each one:
 <table>
 <tr>
 <th>go</th>
-<th>gozero</th>
 </tr>
 <tr>
 <td>
@@ -140,6 +143,11 @@ if err != nil {
 ```
 
 </td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
 <td>
 
 ```go
@@ -167,7 +175,6 @@ made on purpose.
 <table>
 <tr>
 <th>go</th>
-<th>gozero</th>
 </tr>
 <tr>
 <td>
@@ -178,6 +185,11 @@ assert.NoError(tb, err)
 ```
 
 </td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
 <td>
 
 ```go
@@ -202,7 +214,6 @@ parameter on an assert binding is optional without being variadic:
 <table>
 <tr>
 <th>go</th>
-<th>gozero</th>
 </tr>
 <tr>
 <td>
@@ -213,6 +224,11 @@ assert.Equal(tb, "a/b/c", joined, "path.Join over spread fields")
 ```
 
 </td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
 <td>
 
 ```go
@@ -242,7 +258,6 @@ composite literal:
 <table>
 <tr>
 <th>go</th>
-<th>gozero</th>
 </tr>
 <tr>
 <td>
@@ -254,6 +269,11 @@ u.Path = "/rewritten"
 ```
 
 </td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
 <td>
 
 ```go
@@ -277,7 +297,6 @@ afterwards. The type name is any type discovery registered
 <table>
 <tr>
 <th>go</th>
-<th>gozero</th>
 </tr>
 <tr>
 <td>
@@ -291,6 +310,11 @@ w.Path = "/w"
 ```
 
 </td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
 <td>
 
 ```go
@@ -317,7 +341,6 @@ spread slice (`f(xs...)`), both as in Go (`testdata/variadic.txt`,
 <table>
 <tr>
 <th>go</th>
-<th>gozero</th>
 </tr>
 <tr>
 <td>
@@ -329,6 +352,11 @@ joined := path.Join(parts...)
 ```
 
 </td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
 <td>
 
 ```go
@@ -358,7 +386,6 @@ receive or send ends the program with `ctx.Err()` when the
 <table>
 <tr>
 <th>go</th>
-<th>gozero</th>
 </tr>
 <tr>
 <td>
@@ -373,6 +400,11 @@ results <- out
 ```
 
 </td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
 <td>
 
 ```go
@@ -393,7 +425,6 @@ is the same program run per message:
 <table>
 <tr>
 <th>go</th>
-<th>gozero</th>
 </tr>
 <tr>
 <td>
@@ -413,6 +444,11 @@ for {
 ```
 
 </td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
 <td>
 
 ```go
@@ -442,7 +478,6 @@ owns:
 <table>
 <tr>
 <th>go</th>
-<th>gozero</th>
 </tr>
 <tr>
 <td>
@@ -455,6 +490,11 @@ if err := json.NewEncoder(&buf).Encode(req.Cookies()); err != nil {
 ```
 
 </td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
 <td>
 
 ```go
@@ -477,7 +517,6 @@ fixture that replaces it:
 <table>
 <tr>
 <th>go</th>
-<th>gozero</th>
 </tr>
 <tr>
 <td>
@@ -491,6 +530,11 @@ assert.Equal(tb, "POST", req.Method)
 ```
 
 </td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
 <td>
 
 ```go
@@ -511,7 +555,6 @@ the signature and hands the writer and request in on the stack:
 <table>
 <tr>
 <th>go</th>
-<th>gozero</th>
 </tr>
 <tr>
 <td>
@@ -523,6 +566,11 @@ mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 ```
 
 </td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
 <td>
 
 ```go

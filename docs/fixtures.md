@@ -100,36 +100,30 @@ the request, and back out.
 context from `tb.Context()` on both sides. All eight fixtures run
 fully on the direct-call tier, structs since composite literals landed
 on it and channels since receive and send became language nodes
-([changelog](changelog.md)). Pinned core, inlining disabled,
-remeasured 2026-09-10:
+([changelog](changelog.md)). The measurements live in
+[inlining.md](inlining.md): table 1 is the default build, table 2 the
+build with inlining disabled, and the method (best of three
+fixed-count runs) is described there once.
 
-| fixture  | vm               | native    | ratio |
-|----------|------------------|-----------|-------|
-| channels | 4.3us, 15 allocs | 2.1us, 8  | 2.1x  |
-| fmt      | 1.5us, 6 allocs  | 0.9us, 4  | 1.7x  |
-| http     | 3.1us, 8 allocs  | 2.3us, 8  | 1.3x  |
-| json     | 4.4us, 16 allocs | 3.5us, 16 | 1.3x  |
-| structs  | 7.8us, 25 allocs | 5.3us, 19 | 1.5x  |
-| types    | 4.6us, 20 allocs | 3.3us, 11 | 1.4x  |
-| url      | 4.6us, 14 allocs | 4.0us, 14 | 1.2x  |
-| variadic | 0.6us, 3 allocs  | 0.5us, 3  | 1.1x  |
-
-The frame pool recycles the per-run frame of every program whose
-frame the compiler proves does not escape, so http, json, url and
-variadic sit at allocation parity with their mirrors; http matches
-its mirror byte for byte. structs sits six over: a literal in
-argument or interface position allocates a fresh struct where Go
-keeps the mirror's on the stack. channels sits seven over and above
-2x for a related reason: every reflect receive boxes the element
-where the mirror receives into a local, a cost the default build
-halves ([inlining.md](inlining.md)).
+Two pools produce the allocation columns of those tables. The frame
+pool recycles
+the per-run frame of a program whose frame provably does not escape,
+and argument pooling recycles the pack slices, string boxes and
+literal blocks behind calls to NonRetaining bindings; the fixture
+runtime annotates its fmt and assert scopes. Seven of the eight
+fixtures run at or below their mirrors' allocation counts - fmt at
+half its mirror's. channels is the exception at 15 against 8: every
+reflect receive boxes the element where the mirror receives into a
+local, and its asserts read write-once string slots that alias the
+frame instead of boxing, so it has no pooled sites
+([inlining.md](inlining.md)).
 For the bridge cost
 of a call the shape table cannot express, and for the work-only
 comparison without assertions, see the benchmarks in
 `fixture_bench_test.go`. For how these numbers move when inlining is
 enabled, the build a caller sees, see [inlining.md](inlining.md).
 
-Two details of the direct tier show up in these columns. A scalar
+Two details of the direct tier show up in those tables. A scalar
 whose bits fit a byte boxes into a static cell rather than a fresh
 one, the trick runtime.staticuint64s plays, which is one allocation
 off fmt and types. A stack name the program reads more than once, tb

@@ -45,7 +45,7 @@ The implicit rules carry over from the rest of the language:
 - Declaration rules apply: `:=` or `var` declares the received
   name, `=` assigns to a declared one.
 
-There is no `go` statement. The peer is the host's: goroutines,
+The language has no `go` statement. The peer is the host's: goroutines,
 channel construction and topology stay in Go, and a compiled program
 is safe to run from as many goroutines as the host starts. That is
 the shell model the research pointed at: the shell owns the
@@ -65,8 +65,8 @@ blocking path. On the direct tier the operations are language nodes
 same producers the bridge uses, the received element stores into the
 frame through a typed `reflect.Set`, and neither operation appears
 in `Supports` output. The channels fixture reports `tier: JIT`; the
-`_P` and `L_P` shapes its constructor bindings needed are in the
-table.
+shape-table entries its constructor bindings needed were added with
+the feature.
 
 Measured against its handwritten mirror, pinned core: 1883ns against
 1223ns in a default build (1.5x, inside the band the other fixtures

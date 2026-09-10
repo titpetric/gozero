@@ -16,10 +16,25 @@ reach for which.
 the package so a host binds a constructor or closes over a shared
 instance:
 
+<table>
+<tr>
+<th>go</th>
+</tr>
+<tr>
+<td>
+
 ```go
 shared := gozero.NewMutexMap()
 rt.Bind("store", func() *gozero.MutexMap { return shared })
 ```
+
+</td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
+<td>
 
 ```go
 m := store()
@@ -27,9 +42,13 @@ m.Set("k", 42)
 v := m.Get("k")
 ```
 
+</td>
+</tr>
+</table>
+
 `Set` and `Get` are ordinary method calls, so they compile like
 every other bound call and land on the direct tier through the
-`PSi64_` and `PS_i64` shapes: a funcval cast and a plain Go call,
+shape table: a funcval cast and a plain Go call,
 no reflection anywhere on the path. The binding is the
 synchronization: one compiled program run from many goroutines
 against one shared map is race-free because the map is
@@ -42,38 +61,41 @@ ways: the mutex map and a buffered channel, each native and as a
 compiled program. Both programs have the same shape - one nullary
 constructor call, one write, one read - and both run on the direct
 tier, asserted by `TestConcurrencyPrograms` before the numbers mean
-anything. Pinned core, medians of three 1s runs, uncontended.
+anything. Each figure is the best of three fixed-count runs,
+uncontended.
 
-Default build, with the frame pool:
+Table 1, the default build, best of three fixed-count runs,
+remeasured 2026-09-10:
 
 | write + read | native | vm               | vm overhead |
 |--------------|--------|------------------|-------------|
-| mutex map    | 36.2ns | 129.5ns, 8 B, 1  | +93ns       |
-| channel      | 42.0ns | 248.8ns, 40 B, 3 | +207ns      |
+| mutex map    | 40.6ns | 138.4ns, 8 B, 1  | +98ns       |
+| channel      | 45.2ns | 255.2ns, 40 B, 3 | +210ns      |
 
-With `-gcflags=all=-l`:
+Table 2, with `-gcflags=all=-l`:
 
-| write + read | native | vm      |
-|--------------|--------|---------|
-| mutex map    | 50.9ns | 180.8ns |
-| channel      | 56.0ns | 432.4ns |
+| write + read | native | vm               |
+|--------------|--------|------------------|
+| mutex map    | 57.4ns | 190.2ns, 8 B, 1  |
+| channel      | 58.2ns | 458.1ns, 40 B, 3 |
 
 Both programs qualify for the frame pool, which removed the per-run
-frame allocation and 14% of the mutex program's time
+frame allocation and 14% of the mutex program's time when it landed
 ([changelog](changelog.md)); the remaining allocation on the mutex
-side is the returned value's box.
+side is the returned value's box. Neither program has NonRetaining
+bindings, so argument pooling does not apply here.
 
 ## What the numbers say
 
 **The channel itself is not the cost.** The native columns sit 5ns
 apart: an uncontended send-and-receive on a buffered channel costs
-42ns against the mutex round trip's 36ns. A channel send carries no
-meaningful inherent overhead at this grain, so the 2.2x of the
+45ns against the mutex round trip's 41ns. A channel send carries no
+meaningful inherent overhead at this grain, so the 2.0x of the
 channels fixture ([fixtures.md](fixtures.md)) cannot be the channel:
 the gap has another owner.
 
 **The reflect layer is the cost.** The compiled mutex program pays
-+93ns over native; the compiled channel program pays +207ns. The
++98ns over native; the compiled channel program pays +210ns. The
 difference is where the two paths run: the mutex methods are direct
 shape-table calls with no reflection, while receive and send are
 runtime-generic and go through `reflect.Value` - `TryRecv` and

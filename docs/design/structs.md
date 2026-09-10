@@ -64,7 +64,7 @@ would split naming into a layer reflect cannot see.
 
 **The type universe grows monotonically.** Go runtime types are
 never collected. `StructOf` canonicalizes - identical shapes return
-the identical type - so recompiling the same program costs nothing,
+the identical type - and recompiling the same program costs nothing,
 but every distinct shape a program mints stays in the process for
 its lifetime. The binding set stops being the whole sandbox
 boundary: today a program cannot allocate anything the host did not

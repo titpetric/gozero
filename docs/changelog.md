@@ -7,6 +7,37 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-10 16:20 +02:00: argument pooling for NonRetaining bindings
+
+Bind and BindScope accept options, and the first option is a
+promise:
+
+```go
+rt.Bind("fmt.Sprintf", fmt.Sprintf, gozero.NonRetaining())
+```
+
+NonRetaining declares that the bound function neither stores its
+arguments beyond the call nor returns them, so the memory behind an
+annotated call's arguments is dead when the call returns. The JIT
+then pools three allocation kinds it previously made fresh per run:
+the variadic pack slice, the heap cell a string boxes into for an
+interface parameter, and the block behind a composite literal in
+argument position. Each pooled site holds its block through a hidden
+frame field, and run releases every site after the statements
+finish, clearing the block so it repools zeroed and referencing
+nothing. The compiler cannot check the promise: a binding that
+retains a pooled argument will observe it overwritten by a later
+run. Unannotated bindings keep fresh allocations unconditionally,
+pinned by TestRetainingBindingUnpooled.
+
+Verified with benchstat over four paired runs: allocations drop 25%
+geometric mean across the affected fixtures - fmt 6 to 2 per run
+(native: 4), types 20 to 8 (native: 11), structs 25 to 18 (native:
+19), json 16 to 14, variadic 3 to 2 - with time down 3.4% geometric
+mean (fmt -7.4%, variadic +2.9% the one regression). With the frame
+pool and argument pooling together, seven of the eight fixtures run
+at or below their handwritten mirrors' allocation counts.
+
 ## 2026-09-10 15:29 +02:00: escape-gated frame pooling
 
 The per-run frame is recycled through a sync.Pool when the compiler
@@ -45,7 +76,8 @@ symmetric.
 `gozero.MutexMap` is a mutex-protected `map[string]int` exported for
 hosts to bind: shared state as method calls, the alternative to
 moving values through a channel. Its `Set` and `Get` land on the
-direct tier through two new shapes, `PSi64_` and `PS_i64`.
+direct tier through two shape-table entries added for their
+signatures.
 
 [concurrency.md](concurrency.md) measures the two against each
 other: an uncontended native channel round trip costs within 5ns of
@@ -78,7 +110,8 @@ program with ctx.Err() when the ExecContext deadline passes, which
 also bounds a nil channel. A send on a closed channel panics as in
 Go, arriving as *PanicError. The channel itself must have a static
 type - a name, a field, or a call result; a stack name is rejected
-at compile the way a method on one is. There is no go statement:
+at compile the way a method on one is. The language has no go
+statement:
 goroutines and channel construction stay in the host, and a compiled
 program is safe to run from as many goroutines as the host starts.
 
@@ -86,7 +119,7 @@ On the direct tier the operations compile to a try fast path
 (reflect TryRecv/TrySend, no allocation when the channel is ready)
 falling back to a two-case reflect.Select with the context's Done.
 The channels fixture runs at 1.6x its handwritten mirror in a
-default build (1977ns vs 1253ns, pinned) and 2.1x with inlining off;
+default build (1977ns vs 1253ns) and 2.1x with inlining off;
 the gap is the per-operation element boxing reflect requires, 15
 allocations against the mirror's 8. A typed fast path per element
 class, reinterpreting the frame word as the concrete channel type,
@@ -127,7 +160,7 @@ Addressability is Go's rule: a name is a variable and has an
 address, a field of one does too, and the direct result of a call
 does not, so f().Bump() is a compile error naming the fix. The
 receiver resolves to the variable's real address - on the direct
-tier the frame slot's offset, no load at all - so a method that
+tier the frame slot's offset, with no load at all, and a method that
 writes through its receiver writes the program's variable. A slot
 whose address is taken is stored through an addressable cell on the
 reflect tier, is never spliced away by the planner, and does not

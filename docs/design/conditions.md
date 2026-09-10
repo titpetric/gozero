@@ -117,7 +117,7 @@ next.ServeHTTP(w, r)
 missing; the program stops on the spot, exactly as `Scan` and `Exec`
 already behave for a failed `http.NewRequest`. Cons:
 
-- Only one arm. There is no else; the other branch is "the rest of
+- Only one arm. The form has no else; the other branch is "the rest of
   the program", so two-way branching needs two programs or a binding
   that takes both continuations, which needs
   [closures](closures.md).

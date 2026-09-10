@@ -5,7 +5,7 @@ date: "2026-09-09T00:00:00+02:00"
 
 A closure is the one extension the architecture is already shaped
 for. A compiled program is a Go closure - `CompiledFunc` is a func
-value built at runtime over the bindings - so a func literal inside a
+value built at runtime over the bindings - and a func literal inside a
 program is a smaller instance of the thing the compiler already
 builds. The machinery exists; the open questions are what capture
 does to the frame, and what closures make expressible that the

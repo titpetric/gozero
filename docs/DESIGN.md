@@ -16,7 +16,7 @@ are the investigations that produced both.
 
 The language has statements and nothing else: a call, a name bound to
 a call's results, a var declaration, a field read or write, a channel
-receive or send, a return. There are no operators beyond the channel
+receive or send, a return. The language has no operators beyond the channel
 arrow, no conditionals, no loops and no standard library. Everything
 a program can do, it does by calling a Go function the host bound:
 
@@ -84,7 +84,7 @@ between statements sharing one. The full grammar is in
 
 ## The compiler
 
-There is no code generation and no go/types: the signatures the host
+The compiler uses no code generation and no go/types: the signatures the host
 already has are the type system. `compileProgram` walks the
 statements once, tracking a slot and a static type per name, and
 checks everything checkable before the program ever runs:
@@ -212,6 +212,7 @@ recompile only when it calls an API nothing has bound yet.
 ```go
 rt := gozero.NewRuntime()
 err := rt.Bind("NewRequest", http.NewRequest)
+err = rt.Bind("Sprintf", fmt.Sprintf, gozero.NonRetaining()) // arguments pool
 err = rt.BindScope("json", map[string]any{"NewEncoder": json.NewEncoder})
 err = rt.BindType("io.Closer", (*io.Closer)(nil))
 rt.SetLogger(logger) // discovery reports at debug level
@@ -233,10 +234,12 @@ because `Compile` wraps what it returns.
 
 A cached single call costs tens of nanoseconds over native with the
 same allocations ([overheads.md](overheads.md)); the eight-fixture
-suite runs at 1.0x-1.7x of handwritten mirrors with inlining
-disabled - channels at 2.2x, paying reflect's per-operation element
-boxing - and 1.1x-1.5x with it on ([fixtures.md](fixtures.md),
-[inlining.md](inlining.md)). Parse and compile cost about 2us and are
+suite runs at 1.1x-1.5x of handwritten mirrors with inlining
+disabled - channels at 2.0x, paying reflect's per-operation element
+boxing - and 1.1x-1.6x with it on, with seven of the eight at or
+below their mirrors' allocation counts (tables 1 and 2 in
+[inlining.md](inlining.md); the analysis is in
+[fixtures.md](fixtures.md)). Parse and compile cost about 2us and are
 paid once per source string.
 
 ## Open edges

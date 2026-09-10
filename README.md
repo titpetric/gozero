@@ -29,7 +29,6 @@ full surface is in [docs/syntax.md](docs/syntax.md).
 <table>
 <tr>
 <th>go</th>
-<th>gozero</th>
 </tr>
 <tr>
 <td>
@@ -44,6 +43,11 @@ assert.Equal(tb, "POST", req.Method)
 ```
 
 </td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
 <td>
 
 ```go
@@ -55,6 +59,12 @@ assert.Equal(tb, "POST", req.Method)
 ```
 
 </td>
+</tr>
+</table>
+
+<table>
+<tr>
+<th>go</th>
 </tr>
 <tr>
 <td>
@@ -68,6 +78,11 @@ assert.Equal(tb, "https://example.com/rewritten?x=1", u.String())
 ```
 
 </td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
 <td>
 
 ```go
@@ -79,6 +94,12 @@ assert.Equal(tb, "https://example.com/rewritten?x=1", u.String())
 
 </td>
 </tr>
+</table>
+
+<table>
+<tr>
+<th>go</th>
+</tr>
 <tr>
 <td>
 
@@ -89,6 +110,11 @@ assert.Equal(tb, "/", req.URL.Path)
 ```
 
 </td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
 <td>
 
 ```go
