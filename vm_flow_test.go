@@ -166,3 +166,71 @@ func TestDefer(t *testing.T) {
 		t.Fatal("the deferred error must surface")
 	}
 }
+
+// TestRangeChannel covers ranging a channel: elements until close,
+// break inside, the one-variable rule, and the context bound.
+func TestRangeChannel(t *testing.T) {
+	rt := exprRuntime(t)
+	if err := rt.Bind("feed", func(vs ...string) chan string {
+		c := make(chan string, len(vs))
+		for _, v := range vs {
+			c <- v
+		}
+		close(c)
+		return c
+	}); err != nil {
+		t.Fatal(err)
+	}
+	src := `c := feed("a", "b", "c")
+out := ""
+for v := range c {
+	out = out + v
+}
+return out`
+	got, err := rt.Eval[string](src, nil)
+	if err != nil || got != "abc" {
+		t.Fatalf("got %q, %v", got, err)
+	}
+
+	src = `c := feed("a", "b", "c")
+n := 0
+for range c {
+	n++
+	if n == 2 {
+		break
+	}
+}
+return n`
+	if got, err := rt.Eval[int64](src, nil); err != nil || got != 2 {
+		t.Fatalf("break: got %v, %v", got, err)
+	}
+
+	if _, err := rt.Compile(`c := feed("a")
+for k, v := range c {
+	_ = k
+	_ = v
+}
+x := 1
+return x`); err == nil || !strings.Contains(err.Error(), "one variable") {
+		t.Fatalf("two variables: %v", err)
+	}
+
+	// An open, empty channel ends with the context.
+	if err := rt.Bind("open", func() chan string { return make(chan string) }); err != nil {
+		t.Fatal(err)
+	}
+	fn, err := rt.Compile(`c := open()
+for v := range c {
+	_ = v
+}
+x := 1
+return x`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if _, err := fn.ExecContext[any](ctx, nil); err == nil {
+		t.Fatal("an open channel range must end with the context")
+	}
+}

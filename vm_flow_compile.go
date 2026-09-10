@@ -134,6 +134,18 @@ func (pc *progCompiler) compileFlow(sc *cscope, s stmt, dst *[]vmStmt) error {
 				kt, vt = intType, reflect.TypeFor[rune]()
 			case reflect.Map:
 				kt, vt = ot.Key(), ot.Elem()
+			case reflect.Chan:
+				// A channel range has one variable, the element, and
+				// runs until the channel closes, as in Go; a blocked
+				// receive ends with the execution context, like every
+				// channel operation here.
+				if f.val != "" && f.val != "_" {
+					return fmt.Errorf("compile: a channel range has one variable")
+				}
+				if ot.ChanDir() == reflect.SendDir {
+					return fmt.Errorf("compile: cannot range over a send-only channel")
+				}
+				kt, vt = ot.Elem(), nil
 			default:
 				return fmt.Errorf("compile: cannot range over %s", sc.typeName(ot))
 			}
@@ -149,6 +161,7 @@ func (pc *progCompiler) compileFlow(sc *cscope, s stmt, dst *[]vmStmt) error {
 				}
 				rng.valSlot = pc.newSlot(fsc, f.val, vt, true)
 			}
+			rng.overChan = ot.Kind() == reflect.Chan
 			pc.loopDepth++
 			err = pc.compileBlock(fsc.child(), f.body.stmts, &rng.body.stmts)
 			pc.loopDepth--

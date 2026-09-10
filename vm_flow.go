@@ -50,6 +50,9 @@ type vmRange struct {
 	keySlot int
 	valSlot int
 	body    vmBlock
+	// overChan marks a channel range: one variable, the element,
+	// until the channel closes.
+	overChan bool
 }
 
 // runBlock executes one statement list, reporting how it ended.
@@ -287,6 +290,27 @@ func (p *vmProgram) runRange(ctx context.Context, slots, frame []reflect.Value, 
 			return false, sigNone, nil, nil
 		}
 		return true, sigNone, nil, nil
+	}
+	if r.overChan {
+		done := reflect.ValueOf(ctx.Done())
+		for {
+			// The receive and the context race, the way every channel
+			// operation here is armed.
+			chosen, v, ok := reflect.Select([]reflect.SelectCase{
+				{Dir: reflect.SelectRecv, Chan: over},
+				{Dir: reflect.SelectRecv, Chan: done},
+			})
+			if chosen == 1 {
+				return sigNone, nil, ctx.Err()
+			}
+			if !ok {
+				return sigNone, nil, nil
+			}
+			more, sig, val, err := run(v, reflect.Value{})
+			if !more {
+				return sig, val, err
+			}
+		}
 	}
 	switch over.Kind() {
 	case reflect.Slice, reflect.Array:
