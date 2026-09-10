@@ -5,6 +5,12 @@ date: "2026-09-08T10:18:28+02:00"
 
 Changes to the language and the runtime after the chapters were written, newest first. Each entry records when it landed, what the syntax gained, and how it is used.
 
+## 2026-09-10 23:30 +02:00: function units lower, and the surface rounds out
+
+Capture-free script functions and literals compile through the jit pipeline: parameters store by class into their unit's frame (a struct receiver through its type, whole), declared results read back from typed fields, and recursion dispatches at run time, so fib runs its body direct. Capturing closures keep the reflect walk, whose slots can hold their cells; lowering them is the next perf edge, with typed trampolines in place of MakeFunc and a wider call shape table, in that order per the allocation profile of the plugin-handler benchmark.
+
+The language rounds out: variadic script functions and literals (packed or spread, double-pack proofed at the reflect boundary), func-typed parameter spellings resolved back to reflect.FuncOf, name copies inside function bodies, method dispatch through the program's own interfaces with the pointer-receiver rule enforced, and range over channels, context-bounded like every channel operation. The plugin package gains OpenSource for in-memory plugins, a Watch loop over modification times, and Runtime.Forget beside Invalidate. Building with gozero_purego drops the two reflect-internal linkname pulls for public reflect calls.
+
 ## 2026-09-10 22:00 +02:00: expressions, control flow and defer on the direct tier
 
 The step JIT lowers the Go-subset surface it previously declined. Operators are combinators over the existing scalar plumbing: operands travel as class-normalized bits, each operation applies Go's own operator in the class's domain, and no layout class or call shape was added. Control flow compiles blocks to node slices with break and continue as package-private sentinels; a return inside flow boxes its value through one hidden any field, while a trailing return of a name keeps the typed slot path. Deferred calls stack behind a hidden field and drain LIFO on every exit path, panic unwinding included; an error-binding call runs on this tier through a per-call reflect bridge that Supports names.
