@@ -28,8 +28,9 @@ import (
 // req.Cookies is a method on the value held by req, and req.Header is
 // a struct field on it; the parser cannot tell the three apart without
 // the bindings and the types. Strings are single- or double-quoted,
-// and numbers map to int64 without a decimal point and float64 with
-// one; no other numeric types exist.
+// or backquoted raw literals without escapes, and numbers map to
+// int64 without a decimal point and float64 with one; no other
+// numeric types exist.
 type Parser struct {
 	src string
 	pos int
@@ -37,6 +38,9 @@ type Parser struct {
 	// last token byte was consumed, which is what lets the end of a
 	// line close a statement the way a semicolon does.
 	nl bool
+	// badComment is the offset of an unterminated block comment, -1
+	// when there is none. skipSpace records it; Parse surfaces it.
+	badComment int
 }
 
 // terminated consumes a statement end. The semicolon is a delimiter
@@ -179,11 +183,14 @@ func (p *program) flatCall() (*callExpr, bool) {
 
 // Parse parses a program.
 func (p *Parser) Parse(src string) (*program, error) {
-	p.src, p.pos = src, 0
+	p.src, p.pos, p.badComment = src, 0, -1
 
 	prog := &program{}
 	for {
 		p.skipSpace()
+		if p.badComment >= 0 {
+			return nil, p.errAt(p.badComment, "unterminated comment")
+		}
 		if p.pos >= len(p.src) {
 			break
 		}

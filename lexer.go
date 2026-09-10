@@ -3,6 +3,7 @@ package gozero
 import (
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 func joinPath(path []string) string {
@@ -73,6 +74,42 @@ func (p *Parser) stringLitEscaped(quote byte, start int) (arg, error) {
 		p.pos++
 	}
 	return arg{}, fmt.Errorf("parse: unterminated string at offset %d", p.pos)
+}
+
+// rawString reads a backquoted raw string literal: no escapes, spans
+// lines freely, and carriage returns are discarded, as in Go.
+func (p *Parser) rawString() (arg, error) {
+	p.pos++ // opening backquote
+	start := p.pos
+	hasCR := false
+	for p.pos < len(p.src) {
+		switch p.src[p.pos] {
+		case '`':
+			lit := p.src[start:p.pos]
+			p.pos++
+			p.nl = false
+			if hasCR {
+				lit = strings.ReplaceAll(lit, "\r", "")
+			}
+			return arg{kind: argString, str: lit}, nil
+		case '\r':
+			hasCR = true
+		}
+		p.pos++
+	}
+	return arg{}, fmt.Errorf("parse: unterminated raw string at offset %d", p.pos)
+}
+
+// errAt builds a parse error carrying a line:column position computed
+// lazily from a byte offset, so the happy path pays nothing for
+// position tracking.
+func (p *Parser) errAt(pos int, format string, args ...any) error {
+	if pos > len(p.src) {
+		pos = len(p.src)
+	}
+	line := 1 + strings.Count(p.src[:pos], "\n")
+	col := pos - strings.LastIndexByte(p.src[:pos], '\n')
+	return fmt.Errorf("parse: "+format+" at line %d:%d", append(args, line, col)...)
 }
 
 func (p *Parser) numberLit() (arg, error) {
@@ -180,13 +217,39 @@ func (p *Parser) skipSpace() {
 		case ' ', '\t', '\r':
 			p.pos++
 		case '/':
-			// A line comment runs to the newline. There is no block
-			// form.
-			if p.pos+1 >= len(p.src) || p.src[p.pos+1] != '/' {
+			if p.pos+1 >= len(p.src) {
 				return
 			}
-			for p.pos < len(p.src) && p.src[p.pos] != '\n' {
-				p.pos++
+			switch p.src[p.pos+1] {
+			case '/':
+				// A line comment runs to the newline.
+				for p.pos < len(p.src) && p.src[p.pos] != '\n' {
+					p.pos++
+				}
+			case '*':
+				// A block comment containing a newline acts as one, as
+				// in Go's semicolon rule; on a single line it is a
+				// space. An unterminated comment is recorded here and
+				// surfaced by Parse, because skipSpace cannot fail.
+				start := p.pos
+				p.pos += 2
+				for {
+					if p.pos+1 >= len(p.src) {
+						p.badComment = start
+						p.pos = len(p.src)
+						return
+					}
+					if p.src[p.pos] == '*' && p.src[p.pos+1] == '/' {
+						p.pos += 2
+						break
+					}
+					if p.src[p.pos] == '\n' {
+						p.nl = true
+					}
+					p.pos++
+				}
+			default:
+				return
 			}
 		default:
 			return

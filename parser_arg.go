@@ -83,6 +83,8 @@ func (p *Parser) arg() (arg, error) {
 	switch {
 	case c == '"' || c == '\'':
 		return p.stringLit(c)
+	case c == '`':
+		return p.rawString()
 	case c == '<' && p.pos+1 < len(p.src) && p.src[p.pos+1] == '-':
 		p.pos += 2
 		p.nl = false
