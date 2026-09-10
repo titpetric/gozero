@@ -50,6 +50,20 @@ func (c *Compiler) compileExpr(sc *cscope, e *callExpr) (*vmCall, reflect.Type, 
 	switch {
 	case base >= 0:
 		methods = e.path[base:]
+	case len(e.path) == 1 && sc.funcs[e.path[0]] != nil && func() bool { _, shadowed := sc.slot(e.path[0]); return !shadowed }():
+		fn := sc.funcs[e.path[0]]
+		call, err := c.compileScriptCall(sc, fn, e.path[0], nil, e.args)
+		if err != nil {
+			return nil, nil, err
+		}
+		curr = call
+		if call.nres > 0 {
+			currType = fn.results[0]
+		}
+		if len(e.chain) == 0 {
+			return curr, currType, nil
+		}
+		methods = nil
 	default:
 		slot, ok := sc.slot(e.path[0])
 		if !ok {
@@ -64,6 +78,15 @@ func (c *Compiler) compileExpr(sc *cscope, e *callExpr) (*vmCall, reflect.Type, 
 		currType = sc.typeOf(e.path[0])
 		methods = e.path[1:]
 		if len(methods) == 0 && len(e.chain) == 0 {
+			// A func-typed value calls through its dynamic value; the
+			// declared signature checks the arguments.
+			if currType != nil && currType.Kind() == reflect.Func {
+				call, err := c.compileDynCall(sc, recv, currType, e.path[0], e.args)
+				if err != nil {
+					return nil, nil, err
+				}
+				return call, c.resultType(call, 0), nil
+			}
 			return nil, nil, fmt.Errorf("compile: %s is a value, not a call", e.path[0])
 		}
 	}
@@ -100,6 +123,29 @@ func (c *Compiler) compileExpr(sc *cscope, e *callExpr) (*vmCall, reflect.Type, 
 		}
 		if currType == nil {
 			return nil, nil, fmt.Errorf("compile: cannot call %s on a value of unknown type", l.name)
+		}
+		// A method the program declared on one of its own types wins
+		// over the host method set, which a StructOf type cannot
+		// carry anyway.
+		if fn := scriptMethodOf(sc, currType, l.name); fn != nil {
+			mrecv := recv
+			if fn.recvT.Kind() == reflect.Pointer && currType.Kind() != reflect.Pointer {
+				arecv, err := addrOf(currType, recv)
+				if err != nil {
+					return nil, nil, fmt.Errorf("compile: cannot call pointer method %s on %s: %w", l.name, sc.typeName(currType), err)
+				}
+				mrecv = arecv
+			}
+			call, err := c.compileScriptCall(sc, fn, sc.typeName(currType)+"."+l.name, mrecv, l.args)
+			if err != nil {
+				return nil, nil, err
+			}
+			curr = call
+			currType = nil
+			if call.nres > 0 {
+				currType = fn.results[0]
+			}
+			continue
 		}
 		if m, ok := currType.MethodByName(l.name); ok {
 			fn := m.Func
@@ -319,6 +365,15 @@ func (c *Compiler) compileArg(sc *cscope, name string, pos int, pt reflect.Type,
 			return nil, fmt.Errorf("compile: %s argument %d: %w", name, pos+1, err)
 		}
 		v = lit
+	case argFuncLit:
+		node, vt, err := sc.pc.compileFuncLit(sc, a, pt)
+		if err != nil {
+			return nil, err
+		}
+		if !vt.AssignableTo(pt) {
+			return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, sc.typeName(vt), sc.typeName(pt))
+		}
+		return node, nil
 	case argBinary, argUnary, argIndex:
 		node, vt, err := c.compileValueExpr(sc, a, pt)
 		if err != nil {
@@ -329,6 +384,17 @@ func (c *Compiler) compileArg(sc *cscope, name string, pos int, pt reflect.Type,
 		}
 		return node, nil
 	case argCall:
+		if ct, ok := c.funcConversion(sc, a.sub); ok {
+			node, err := c.compileArg(sc, name, pos, ct, a.sub.args[0])
+			if err != nil {
+				return nil, err
+			}
+			if !ct.AssignableTo(pt) {
+				return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, sc.typeName(ct), sc.typeName(pt))
+			}
+			node.typ = ct
+			return node, nil
+		}
 		if c.isLenCall(sc, a.sub) {
 			node, vt, err := c.compileLen(sc, a.sub)
 			if err != nil {
@@ -342,6 +408,16 @@ func (c *Compiler) compileArg(sc *cscope, name string, pos int, pt reflect.Type,
 		sub, st, err := c.compileExpr(sc, a.sub)
 		if err != nil {
 			return nil, err
+		}
+		if sub.nres == 0 && pt == errType && sub.errIdx >= 0 && !sub.bindErr {
+			// The position wants an error and the callee returns only
+			// its trailing one: the error is the value, not the
+			// implicit check, which is how errors.New flows into a
+			// return list.
+			sub.bindErr = true
+			sub.errIdx = -1
+			sub.nres = 1
+			st = errType
 		}
 		if sub.nres == 0 {
 			return nil, fmt.Errorf("compile: %s argument %d: %s returns no value", name, pos+1, sub.name)

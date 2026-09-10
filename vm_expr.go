@@ -22,7 +22,7 @@ var (
 
 // isExprKind reports the argument kinds the expression compiler owns.
 func isExprKind(k argKind) bool {
-	return k == argBinary || k == argUnary || k == argIndex
+	return k == argBinary || k == argUnary || k == argIndex || k == argFuncLit
 }
 
 // isLenCall reports a call of the len builtin: the one-segment path
@@ -111,6 +111,14 @@ func (c *Compiler) compileOperand(sc *cscope, a arg) (*vmArg, reflect.Type, erro
 		}
 		return cur, curType, nil
 	case argCall:
+		if ct, ok := c.funcConversion(sc, a.sub); ok {
+			node, err := c.compileArg(sc, joinPath(a.sub.path), 0, ct, a.sub.args[0])
+			if err != nil {
+				return nil, nil, err
+			}
+			node.typ = ct
+			return node, ct, nil
+		}
 		if c.isLenCall(sc, a.sub) {
 			return c.compileLen(sc, a.sub)
 		}
@@ -122,6 +130,8 @@ func (c *Compiler) compileOperand(sc *cscope, a arg) (*vmArg, reflect.Type, erro
 			return nil, nil, fmt.Errorf("compile: %s returns no value", sub.name)
 		}
 		return &vmArg{kind: vaCall, sub: sub, typ: st, iface: -1}, st, nil
+	case argFuncLit:
+		return sc.pc.compileFuncLit(sc, a, nil)
 	case argBinary, argUnary, argIndex:
 		return c.compileValueExpr(sc, a, nil)
 	case argNil:

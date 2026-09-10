@@ -1,5 +1,9 @@
 package gozero
 
+import (
+	"fmt"
+)
+
 // The expression grammar, precedence climbing over the argument
 // atoms parser_arg.go always had:
 //
@@ -113,5 +117,61 @@ func (p *Parser) primary() (arg, error) {
 		}
 		base := a
 		a = arg{kind: argIndex, x: &base, y: &idx}
+	}
+}
+
+func (p *Parser) expr() (*callExpr, error) {
+	path, err := p.path()
+	if err != nil {
+		return nil, err
+	}
+	if !p.consume('(') {
+		return nil, fmt.Errorf("parse: expected '(' at offset %d", p.pos)
+	}
+	args, err := p.args()
+	if err != nil {
+		return nil, err
+	}
+	call := &callExpr{path: path, args: args}
+
+	for {
+		save := p.pos
+		p.skipSpace()
+		if !p.consume('.') {
+			p.pos = save
+			return call, nil
+		}
+		name := p.ident()
+		if name == "" {
+			return nil, fmt.Errorf("parse: expected method name at offset %d", p.pos)
+		}
+		if !p.consume('(') {
+			return nil, fmt.Errorf("parse: expected '(' at offset %d", p.pos)
+		}
+		largs, err := p.args()
+		if err != nil {
+			return nil, err
+		}
+		call.chain = append(call.chain, link{name: name, args: largs})
+	}
+}
+
+func (p *Parser) path() ([]string, error) {
+	name := p.ident()
+	if name == "" {
+		return nil, fmt.Errorf("parse: expected a name at offset %d", p.pos)
+	}
+	path := []string{name}
+	for {
+		save := p.pos
+		if !p.consume('.') {
+			return path, nil
+		}
+		next := p.ident()
+		if next == "" {
+			p.pos = save
+			return path, nil
+		}
+		path = append(path, next)
 	}
 }

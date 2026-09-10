@@ -61,6 +61,25 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 		}
 	}
 	pc := &progCompiler{c: c, p: p, prog: prog, reserved: reserved}
+	sc.pc = pc
+	// The top level is a unit like any other, so a literal capturing
+	// a program variable has an owner to mark address-taken.
+	sc.fn = &fnCompile{p: p}
+
+	// Function signatures declare before any body or statement
+	// compiles, so order never matters, then the bodies compile. The
+	// maps stay nil for a program without declarations.
+	if len(prog.funcs) > 0 {
+		sc.funcs = map[string]*scriptFn{}
+		sc.methods = map[reflect.Type]map[string]*scriptFn{}
+		if err := pc.declareFuncs(prog.funcs, sc); err != nil {
+			return nil, err
+		}
+		if err := pc.compileFuncs(prog.funcs, sc); err != nil {
+			return nil, err
+		}
+		p.funcs = sc.funcs
+	}
 
 	for si := range prog.stmts {
 		if err := pc.compileOne(sc, prog.stmts[si], &p.stmts, true); err != nil {
@@ -180,82 +199,33 @@ func (pc *progCompiler) compileOne(sc *cscope, s stmt, dst *[]vmStmt, top bool) 
 		return nil
 	}
 	if s.lit != nil {
-		if len(s.lhs) != 1 {
-			return fmt.Errorf("compile: a literal assigns to exactly one name")
-		}
-		name := s.lhs[0]
-		if name == "_" {
-			// A discard: a pure right-hand side compiles to nothing,
-			// one with calls inside still evaluates for its effects.
-			if isExprKind(s.lit.kind) {
-				node, _, err := c.compileValueExpr(sc, *s.lit, nil)
-				if err != nil {
-					return err
-				}
-				*dst = append(*dst, vmStmt{assign: node, out: []int{-1}})
-			}
-			return nil
-		}
-		if err := pc.checkName(name); err != nil {
-			return err
-		}
-		if err := pc.checkDecl(sc, name, s.define); err != nil {
-			return err
-		}
-		if s.define {
-			if err := pc.checkNew(s.lhs, sc); err != nil {
+		return pc.compileLitAssign(sc, s, dst)
+	}
+
+	// A conversion to a named func type in call position.
+	if s.call != nil && !s.ret && len(s.lhs) == 1 {
+		if ct, ok := c.funcConversion(sc, s.call); ok {
+			name := s.lhs[0]
+			if err := pc.checkName(name); err != nil {
 				return err
 			}
-		}
-		// An operator expression compiles to a per-run evaluation;
-		// its type is its own unless the name already has one.
-		if isExprKind(s.lit.kind) {
-			node, t, err := c.compileValueExpr(sc, *s.lit, sc.env[name])
+			if err := pc.checkDecl(sc, name, s.define); err != nil {
+				return err
+			}
+			if s.define {
+				if err := pc.checkNew(s.lhs, sc); err != nil {
+					return err
+				}
+			}
+			node, err := c.compileArg(sc, joinPath(s.call.path), 0, ct, s.call.args[0])
 			if err != nil {
 				return err
 			}
-			st := t
-			if prev, ok := sc.env[name]; ok && prev != t {
-				if !t.AssignableTo(prev) {
-					return fmt.Errorf("compile: %s: cannot use %s as %s", name, sc.typeName(t), sc.typeName(prev))
-				}
-				st = prev
-			}
-			slot := pc.newSlot(sc, name, st, s.define)
+			node.typ = ct
+			slot := pc.newSlot(sc, name, ct, s.define)
 			*dst = append(*dst, vmStmt{assign: node, out: []int{slot}})
 			return nil
 		}
-		// u = url.URL{...} binds the name to the literal's own type,
-		// built fresh on every run.
-		if s.lit.kind == argStruct {
-			sa, st, err := c.compileStructLit(sc, *s.lit)
-			if err != nil {
-				return fmt.Errorf("compile: %s: %w", name, err)
-			}
-			if prev, ok := sc.env[name]; ok && prev != st {
-				if !st.AssignableTo(prev) {
-					return fmt.Errorf("compile: %s: cannot use %s as %s", name, sc.typeName(st), sc.typeName(prev))
-				}
-				st = prev
-			}
-			slot := pc.newSlot(sc, name, st, s.define)
-			*dst = append(*dst, vmStmt{assign: sa, out: []int{slot}})
-			return nil
-		}
-		t, ok := sc.env[name]
-		if !ok {
-			t = c.inferLiteralType(sc, prog, name, *s.lit)
-			if t == nil {
-				return fmt.Errorf("compile: %s = nil needs a var declaration or a use to take a type from", name)
-			}
-		}
-		v, err := literalValue(t, *s.lit)
-		if err != nil {
-			return fmt.Errorf("compile: %s: %w", name, err)
-		}
-		slot := pc.newSlot(sc, name, t, s.define)
-		*dst = append(*dst, vmStmt{lit: v, out: []int{slot}})
-		return nil
 	}
 
 	// len(xs) in call position is the builtin, not a binding.
@@ -346,6 +316,12 @@ func (pc *progCompiler) compileOne(sc *cscope, s stmt, dst *[]vmStmt, top bool) 
 		}
 	}
 
+	if pc.fn != nil && (s.ret || s.rets != nil) {
+		return pc.compileFuncReturn(sc, s, dst)
+	}
+	if s.rets != nil {
+		return fmt.Errorf("compile: a program returns one value; multi-value return belongs in a function body")
+	}
 	if s.retVal != nil {
 		ra, err := c.compileRetVal(sc, *s.retVal)
 		if err != nil {
@@ -377,7 +353,6 @@ func (pc *progCompiler) compileOne(sc *cscope, s stmt, dst *[]vmStmt, top bool) 
 			return err
 		}
 	}
-	ft := call.fn.Type()
 	out := make([]int, 0, len(s.lhs))
 	for i, name := range s.lhs {
 		// The blank identifier discards its value without a slot.
@@ -395,7 +370,7 @@ func (pc *progCompiler) compileOne(sc *cscope, s stmt, dst *[]vmStmt, top bool) 
 		if call.bindErr {
 			// The left-hand side maps to every result positionally,
 			// the trailing error included.
-			rt = ft.Out(i)
+			rt = c.resultAt(call, i)
 		}
 		out = append(out, pc.newSlot(sc, name, rt, s.define))
 	}
@@ -432,6 +407,9 @@ func (pc *progCompiler) walkFrames(stmts []vmStmt) {
 			if s.deferCall != nil {
 				p.assignFrame(s.deferCall)
 			}
+			for _, ra := range s.retList {
+				p.assignArg(ra)
+			}
 			if s.ifs != nil {
 				p.assignArg(s.ifs.cond)
 				pc.walkFrames(s.ifs.then.stmts)
@@ -457,16 +435,37 @@ func (pc *progCompiler) walkFrames(stmts []vmStmt) {
 
 // resultType is the static type of the i'th non-error result.
 func (c *Compiler) resultType(call *vmCall, i int) reflect.Type {
-	ft := call.fn.Type()
 	n := 0
-	for j := 0; j < ft.NumOut(); j++ {
+	for j := 0; j < c.resultCount(call); j++ {
 		if j == call.errIdx {
 			continue
 		}
 		if n == i {
-			return ft.Out(j)
+			return c.resultAt(call, j)
 		}
 		n++
 	}
 	return nil
+}
+
+// resultCount and resultAt read the result list of either call kind:
+// a binding's signature or a script function's declaration.
+func (c *Compiler) resultCount(call *vmCall) int {
+	if call.script != nil {
+		return len(call.script.results)
+	}
+	if call.dyn != nil {
+		return call.dyn.typ.NumOut()
+	}
+	return call.fn.Type().NumOut()
+}
+
+func (c *Compiler) resultAt(call *vmCall, i int) reflect.Type {
+	if call.script != nil {
+		return call.script.results[i]
+	}
+	if call.dyn != nil {
+		return call.dyn.typ.Out(i)
+	}
+	return call.fn.Type().Out(i)
 }

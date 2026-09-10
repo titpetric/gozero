@@ -134,6 +134,14 @@ func (p *Parser) arg() (arg, error) {
 		}
 		return p.composite(path, true)
 	default:
+		litSave := p.pos
+		if p.keyword("func") {
+			p.skipSpace()
+			if p.pos < len(p.src) && p.src[p.pos] == '(' {
+				return p.funcLit(litSave)
+			}
+			p.pos = litSave
+		}
 		save := p.pos
 		path, err := p.path()
 		if err != nil {

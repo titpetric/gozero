@@ -26,6 +26,14 @@ type cscope struct {
 	// exactly when the program has a file header, which is also what
 	// scopes type resolution to the imports.
 	pkgs map[string]*boundPackage
+	// funcs and methods are the program's declared functions; fn is
+	// the unit being compiled, and a name resolving across a unit
+	// boundary becomes a capture. pc reaches the statement compiler
+	// from expression positions, for func literals.
+	funcs   map[string]*scriptFn
+	methods map[reflect.Type]map[string]*scriptFn
+	fn      *fnCompile
+	pc      *progCompiler
 }
 
 // scriptTypes holds the types a program declares in its own source:
@@ -67,13 +75,22 @@ func (sc *cscope) child() *cscope {
 		parent:   sc,
 		bindings: sc.bindings,
 		pkgs:     sc.pkgs,
+		funcs:    sc.funcs,
+		methods:  sc.methods,
+		fn:       sc.fn,
+		pc:       sc.pc,
 	}
 }
 
-// slot resolves a name to its slot through the scope chain.
+// slot resolves a name to its slot through the scope chain. A hit
+// across a unit boundary is a capture: the reading unit gains a cell
+// slot and the owner's storage goes address-taken.
 func (sc *cscope) slot(name string) (int, bool) {
 	for s := sc; s != nil; s = s.parent {
 		if slot, ok := s.slots[name]; ok {
+			if s.fn != sc.fn && sc.fn != nil {
+				return sc.fn.capture(s.fn, slot, s.env[name]), true
+			}
 			return slot, true
 		}
 	}

@@ -116,10 +116,13 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 	stmts := make([]plannedStmt, 0, len(p.stmts))
 	for i := range p.stmts {
 		s := &p.stmts[i]
-		if s.ifs != nil || s.loop != nil || s.rng != nil || s.brk || s.cont || s.init != nil || s.deferCall != nil {
+		if s.ifs != nil || s.loop != nil || s.rng != nil || s.brk || s.cont || s.init != nil || s.deferCall != nil || s.retList != nil {
 			// Control flow runs on the reflect tier until the flow
 			// nodes land.
 			return nil, fmt.Errorf("control flow is not in the shape table yet")
+		}
+		if s.call != nil && hasScriptCall(s.call) {
+			return nil, fmt.Errorf("a script function call is not in the table yet")
 		}
 		if s.assign != nil {
 			out := -1
@@ -349,4 +352,20 @@ func subCall(splices map[*vmArg]*vmCall, a *vmArg) *vmCall {
 		return a.sub
 	}
 	return splices[a]
+}
+
+// hasScriptCall reports a script function anywhere in a call tree.
+func hasScriptCall(c *vmCall) bool {
+	if c.script != nil || c.dyn != nil {
+		return true
+	}
+	for _, a := range c.args {
+		if a.kind == vaCall && hasScriptCall(a.sub) {
+			return true
+		}
+		if a.kind == vaFuncLit {
+			return true
+		}
+	}
+	return false
 }

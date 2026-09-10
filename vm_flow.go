@@ -57,7 +57,7 @@ func (p *vmProgram) runBlock(ctx context.Context, slots, frame []reflect.Value, 
 	for i := range stmts {
 		s := &stmts[i]
 		if s.lit.IsValid() {
-			slots[s.out[0]] = p.addrCell(s.lit, s.out[0])
+			p.setSlot(slots, s.lit, s.out[0])
 			continue
 		}
 		if s.init != nil {
@@ -72,7 +72,7 @@ func (p *vmProgram) runBlock(ctx context.Context, slots, frame []reflect.Value, 
 				return sigNone, nil, err
 			}
 			if slot := s.out[0]; slot >= 0 {
-				slots[slot] = p.addrCell(v, slot)
+				p.setSlot(slots, v, slot)
 			}
 			continue
 		}
@@ -88,7 +88,7 @@ func (p *vmProgram) runBlock(ctx context.Context, slots, frame []reflect.Value, 
 				return sigNone, nil, err
 			}
 			if len(s.out) > 0 {
-				slots[s.out[0]] = p.addrCell(v, s.out[0])
+				p.setSlot(slots, v, s.out[0])
 			}
 			continue
 		}
@@ -120,7 +120,8 @@ func (p *vmProgram) runBlock(ctx context.Context, slots, frame []reflect.Value, 
 			continue
 		}
 		if s.deferCall != nil {
-			// Arguments evaluate now, the call waits: Go's rule.
+			// Arguments, and for a closure the func value itself,
+			// evaluate now; the call waits: Go's rule.
 			args := make([]reflect.Value, len(s.deferCall.args))
 			for j, a := range s.deferCall.args {
 				v, err := a.get(ctx, slots, frame, ifaces, stack, dest)
@@ -129,7 +130,15 @@ func (p *vmProgram) runBlock(ctx context.Context, slots, frame []reflect.Value, 
 				}
 				args[j] = v
 			}
-			defers.push(args, s.deferCall)
+			e := deferredEntry{call: s.deferCall, args: args, ctx: ctx}
+			if d := s.deferCall.dyn; d != nil {
+				fv, err := d.get(ctx, slots, frame, ifaces, stack, dest)
+				if err != nil {
+					return sigNone, nil, err
+				}
+				e.fv = fv
+			}
+			defers.entries = append(defers.entries, e)
 			continue
 		}
 		if s.brk {
@@ -137,6 +146,17 @@ func (p *vmProgram) runBlock(ctx context.Context, slots, frame []reflect.Value, 
 		}
 		if s.cont {
 			return sigContinue, nil, nil
+		}
+		if s.retList != nil {
+			out := make([]reflect.Value, len(s.retList))
+			for j, ra := range s.retList {
+				v, err := ra.get(ctx, slots, frame, ifaces, stack, dest)
+				if err != nil {
+					return sigNone, nil, err
+				}
+				out[j] = v
+			}
+			return sigReturn, out, nil
 		}
 		if s.retArg != nil {
 			v, err := s.retArg.get(ctx, slots, frame, ifaces, stack, dest)
@@ -163,7 +183,7 @@ func (p *vmProgram) runBlock(ctx context.Context, slots, frame []reflect.Value, 
 			}
 			if n < len(s.out) {
 				if slot := s.out[n]; slot >= 0 {
-					slots[slot] = p.addrCell(out[j], slot)
+					p.setSlot(slots, out[j], slot)
 				}
 			}
 			n++
@@ -239,7 +259,7 @@ func (p *vmProgram) runRange(ctx context.Context, slots, frame []reflect.Value, 
 	}
 	setKey := func(v reflect.Value) {
 		if r.keySlot >= 0 {
-			slots[r.keySlot] = p.addrCell(v, r.keySlot)
+			p.setSlot(slots, v, r.keySlot)
 		}
 	}
 	setVal := func(v reflect.Value) {
@@ -248,7 +268,9 @@ func (p *vmProgram) runRange(ctx context.Context, slots, frame []reflect.Value, 
 			// and Go's range variable is not.
 			cell := reflect.New(v.Type()).Elem()
 			cell.Set(v)
-			slots[r.valSlot] = p.addrCell(cell, r.valSlot)
+			// Always the fresh cell: a captured range value must be a
+			// new variable per iteration, Go's own rule.
+			slots[r.valSlot] = cell
 		}
 	}
 	run := func(key, val reflect.Value) (bool, ctlSig, any, error) {
@@ -302,10 +324,10 @@ type deferStack struct {
 type deferredEntry struct {
 	call *vmCall
 	args []reflect.Value
-}
-
-func (d *deferStack) push(args []reflect.Value, call *vmCall) {
-	d.entries = append(d.entries, deferredEntry{call: call, args: args})
+	// fv is a closure's func value, read at the defer site; ctx is
+	// the execution context a deferred script call runs under.
+	fv  reflect.Value
+	ctx context.Context
 }
 
 // runAll executes the stack. A deferred call's trailing error is
@@ -317,9 +339,19 @@ func (d *deferStack) runAll() error {
 	for i := len(d.entries) - 1; i >= 0; i-- {
 		e := d.entries[i]
 		var out []reflect.Value
-		if e.call.spread {
+		switch {
+		case e.call.script != nil:
+			var err error
+			out, err = e.call.script.call(e.ctx, nil, e.args)
+			if err != nil && first == nil {
+				first = err
+			}
+			continue
+		case e.fv.IsValid():
+			out = e.fv.Call(e.args)
+		case e.call.spread:
 			out = e.call.fn.CallSlice(e.args)
-		} else {
+		default:
 			out = e.call.fn.Call(e.args)
 		}
 		if e.call.errIdx >= 0 {

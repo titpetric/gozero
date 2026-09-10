@@ -45,6 +45,7 @@ const (
 	vaUnary                  // op over x
 	vaIndex                  // x[y] on a slice, array, string or map
 	vaLen                    // len(x)
+	vaFuncLit                // a func literal, materialized per evaluation
 )
 
 var ctxType = reflect.TypeFor[context.Context]()
@@ -110,6 +111,13 @@ type vmArg struct {
 	x, y  *vmArg
 	binFn func(x, y reflect.Value) reflect.Value
 	unFn  func(x reflect.Value) reflect.Value
+
+	// vaFuncLit: the compiled literal, the func type the value takes
+	// (possibly named), and the enclosing slots whose cells it
+	// captures.
+	fnLit   *scriptFn
+	litType reflect.Type
+	caps    []int
 }
 
 // vmElem is one element of a compiled composite literal: the field it
@@ -153,6 +161,11 @@ type vmCall struct {
 	// its left-hand side: the error is a value there, not the
 	// implicit check.
 	bindErr bool
+	// script, when set, makes this a call of a declared function or
+	// method rather than a binding; fn is then unused. dyn calls a
+	// func-typed value instead: a closure held by a name.
+	script *scriptFn
+	dyn    *vmArg
 }
 
 // vmStmt is one statement: a call, the slots its results bind to, and
@@ -196,6 +209,10 @@ type vmStmt struct {
 	// deferCall runs when the program exits, its arguments already
 	// evaluated at the defer statement.
 	deferCall *vmCall
+
+	// retList is a function body's multi-value return, evaluated in
+	// order and carried out as one result list.
+	retList []*vmArg
 }
 
 // fieldStep is one selector of a field-assignment target.
@@ -246,6 +263,12 @@ type vmProgram struct {
 	// statement so a name reads as its type's zero value even when
 	// nothing assigned it.
 	inits []slotInit
+
+	// funcs are the program's declared functions by name, and
+	// scriptInits its init functions in declaration order, run once
+	// at load.
+	funcs       map[string]*scriptFn
+	scriptInits []*scriptFn
 }
 
 // apply writes the value through the field chain. Addressability comes
@@ -306,18 +329,23 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (re
 	return ret, err
 }
 
-// addrCell stores v into a fresh addressable cell when the slot's
-// address is taken somewhere in the program. A call result and the
-// prebuilt literal value are not addressable, and the literal is also
-// shared between runs, so both go through the copy; every other slot
-// keeps the value as it is.
-func (p *vmProgram) addrCell(v reflect.Value, slot int) reflect.Value {
+// setSlot stores v into a slot. An address-taken slot holds an
+// addressable cell instead of the bare value, and an assignment
+// writes through the existing cell, so a closure holding the cell
+// observes it, which is Go's one-variable rule; the cell is replaced
+// only when the stored type changes, which a captured slot's cannot.
+func (p *vmProgram) setSlot(slots []reflect.Value, v reflect.Value, slot int) {
 	if !p.addrTaken[slot] {
-		return v
+		slots[slot] = v
+		return
+	}
+	if cur := slots[slot]; cur.IsValid() && cur.CanSet() && cur.Type() == v.Type() {
+		cur.Set(v)
+		return
 	}
 	cell := reflect.New(v.Type()).Elem()
 	cell.Set(v)
-	return cell
+	slots[slot] = cell
 }
 
 func firstNonErr(out []reflect.Value, errIdx int) reflect.Value {
@@ -333,15 +361,32 @@ func firstNonErr(out []reflect.Value, errIdx int) reflect.Value {
 // result list. A non-nil trailing error stops the program.
 func (c *vmCall) invoke(ctx context.Context, slots, frame []reflect.Value, ifaces []ifacePair, stack map[string]any, dest any) ([]reflect.Value, error) {
 	args := frame[c.off : c.off+len(c.args)]
+	var err error
 	for i, a := range c.args {
-		v, err := a.get(ctx, slots, frame, ifaces, stack, dest)
+		var v reflect.Value
+		v, err = a.get(ctx, slots, frame, ifaces, stack, dest)
 		if err != nil {
 			return nil, err
 		}
 		args[i] = v
 	}
 	var out []reflect.Value
-	if c.spread {
+	if c.script != nil {
+		env := capturedCells(slots, nil)
+		out, err = c.script.call(ctx, env, args)
+		if err != nil {
+			return nil, err
+		}
+	} else if c.dyn != nil {
+		fv, err := c.dyn.get(ctx, slots, frame, ifaces, stack, dest)
+		if err != nil {
+			return nil, err
+		}
+		if !fv.IsValid() || fv.IsNil() {
+			return nil, fmt.Errorf("exec: %s is nil, not a function", c.name)
+		}
+		out = fv.Call(args)
+	} else if c.spread {
 		out = c.fn.CallSlice(args)
 	} else {
 		out = c.fn.Call(args)
@@ -431,6 +476,8 @@ func (a *vmArg) get(ctx context.Context, slots, frame []reflect.Value, ifaces []
 			return reflect.Value{}, err
 		}
 		return reflect.ValueOf(v.Len()), nil
+	case vaFuncLit:
+		return a.fnLit.materialize(ctx, a.litType, capturedCells(slots, a.caps)), nil
 	case vaDest:
 		if dest == nil {
 			return reflect.Zero(a.typ), fmt.Errorf("exec: dest is only set by Scan")

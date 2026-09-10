@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"reflect"
 	"runtime/debug"
 	"sort"
@@ -226,6 +228,110 @@ func (r *Runtime) Invalidate() {
 	r.mu.Lock()
 	r.cache = map[string]cacheEntry{}
 	r.mu.Unlock()
+}
+
+// Load compiles a source file into a Program: its type and function
+// declarations against this Runtime's registered packages, each
+// func init() run once in declaration order before Load returns. A
+// snippet loads too; a file with a package clause is the intended
+// form.
+func (r *Runtime) Load(src string) (*Program, error) {
+	prog, err := (&Parser{}).Parse(src)
+	if err != nil {
+		return nil, err
+	}
+	return r.load(prog)
+}
+
+// LoadFile is Load over one file on disk.
+func (r *Runtime) LoadFile(path string) (*Program, error) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("load: %w", err)
+	}
+	p, err := r.Load(string(src))
+	if err != nil {
+		return nil, fmt.Errorf("load %s: %w", path, err)
+	}
+	return p, nil
+}
+
+// LoadDir loads a package folder: every *.go file in dir, one
+// package, merged in filename order, inits running in that order.
+func (r *Runtime) LoadDir(dir string) (*Program, error) {
+	files, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	if err != nil {
+		return nil, fmt.Errorf("load: %w", err)
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("load %s: no .go files", dir)
+	}
+	sort.Strings(files)
+	var merged *program
+	for _, file := range files {
+		src, err := os.ReadFile(file)
+		if err != nil {
+			return nil, fmt.Errorf("load: %w", err)
+		}
+		prog, err := (&Parser{}).Parse(string(src))
+		if err != nil {
+			return nil, fmt.Errorf("load %s: %w", file, err)
+		}
+		if prog.pkg == "" {
+			return nil, fmt.Errorf("load %s: a package file needs a package clause", file)
+		}
+		if merged == nil {
+			merged = prog
+			continue
+		}
+		if prog.pkg != merged.pkg {
+			return nil, fmt.Errorf("load %s: package %s, want %s", file, prog.pkg, merged.pkg)
+		}
+		merged.imports = mergeImports(merged.imports, prog.imports)
+		merged.types = append(merged.types, prog.types...)
+		merged.funcs = append(merged.funcs, prog.funcs...)
+	}
+	p, err := r.load(merged)
+	if err != nil {
+		return nil, fmt.Errorf("load %s: %w", dir, err)
+	}
+	return p, nil
+}
+
+// load compiles a parsed program and runs its init hooks.
+func (r *Runtime) load(prog *program) (*Program, error) {
+	r.mu.RLock()
+	vm, err := r.compiler.compileProgram(prog)
+	r.mu.RUnlock()
+	if err != nil {
+		return nil, err
+	}
+	for _, init := range vm.scriptInits {
+		if _, err := init.call(context.Background(), nil, nil); err != nil {
+			return nil, fmt.Errorf("load: init: %w", err)
+		}
+	}
+	return &Program{rt: r, pkg: prog.pkg, vm: vm}, nil
+}
+
+// mergeImports concatenates import lists, deduplicating an identical
+// alias and path pair; the same path under two names stays two
+// entries, as it would across Go files.
+func mergeImports(a, b []importSpec) []importSpec {
+	out := a
+	for _, imp := range b {
+		dup := false
+		for _, have := range out {
+			if have == imp {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			out = append(out, imp)
+		}
+	}
+	return out
 }
 
 // guard installs the panic boundary. It covers both tiers, because it

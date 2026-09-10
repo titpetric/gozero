@@ -89,6 +89,14 @@ func (c *Compiler) compileFieldSet(sc *cscope, s stmt) (*vmFieldSet, error) {
 	}
 
 	if s.lit != nil {
+		if s.lit.kind == argVar || s.lit.kind == argPath {
+			va, err := c.compileArg(sc, fs.field, 0, t, *s.lit)
+			if err != nil {
+				return nil, err
+			}
+			fs.val = va
+			return fs, nil
+		}
 		if isExprKind(s.lit.kind) {
 			node, vt, err := c.compileValueExpr(sc, *s.lit, t)
 			if err != nil {
@@ -159,4 +167,89 @@ func (c *Compiler) compileRetVal(sc *cscope, a arg) (*vmArg, error) {
 		// pt, so any is what lets the value keep its own type.
 	}
 	return c.compileArg(sc, "return", 0, pt, a)
+}
+
+// compileLitAssign compiles an assignment whose right-hand side is
+// not a call: a literal, a composite, an operator expression, a
+// receive, or a func literal.
+func (pc *progCompiler) compileLitAssign(sc *cscope, s stmt, dst *[]vmStmt) error {
+	c, p, prog := pc.c, pc.p, pc.prog
+	_, _, _ = c, p, prog
+	if len(s.lhs) != 1 {
+		return fmt.Errorf("compile: a literal assigns to exactly one name")
+	}
+	name := s.lhs[0]
+	if name == "_" {
+		// A discard: a pure right-hand side compiles to nothing,
+		// one with calls inside still evaluates for its effects.
+		if isExprKind(s.lit.kind) {
+			node, _, err := c.compileValueExpr(sc, *s.lit, nil)
+			if err != nil {
+				return err
+			}
+			*dst = append(*dst, vmStmt{assign: node, out: []int{-1}})
+		}
+		return nil
+	}
+	if err := pc.checkName(name); err != nil {
+		return err
+	}
+	if err := pc.checkDecl(sc, name, s.define); err != nil {
+		return err
+	}
+	if s.define {
+		if err := pc.checkNew(s.lhs, sc); err != nil {
+			return err
+		}
+	}
+	// An operator expression compiles to a per-run evaluation;
+	// its type is its own unless the name already has one.
+	if isExprKind(s.lit.kind) {
+		node, t, err := c.compileValueExpr(sc, *s.lit, sc.env[name])
+		if err != nil {
+			return err
+		}
+		st := t
+		if prev, ok := sc.env[name]; ok && prev != t {
+			if !t.AssignableTo(prev) {
+				return fmt.Errorf("compile: %s: cannot use %s as %s", name, sc.typeName(t), sc.typeName(prev))
+			}
+			st = prev
+		}
+		slot := pc.newSlot(sc, name, st, s.define)
+		*dst = append(*dst, vmStmt{assign: node, out: []int{slot}})
+		return nil
+	}
+	// u = url.URL{...} binds the name to the literal's own type,
+	// built fresh on every run.
+	if s.lit.kind == argStruct {
+		sa, st, err := c.compileStructLit(sc, *s.lit)
+		if err != nil {
+			return fmt.Errorf("compile: %s: %w", name, err)
+		}
+		if prev, ok := sc.env[name]; ok && prev != st {
+			if !st.AssignableTo(prev) {
+				return fmt.Errorf("compile: %s: cannot use %s as %s", name, sc.typeName(st), sc.typeName(prev))
+			}
+			st = prev
+		}
+		slot := pc.newSlot(sc, name, st, s.define)
+		*dst = append(*dst, vmStmt{assign: sa, out: []int{slot}})
+		return nil
+	}
+	t, ok := sc.env[name]
+	if !ok {
+		t = c.inferLiteralType(sc, prog, name, *s.lit)
+		if t == nil {
+			return fmt.Errorf("compile: %s = nil needs a var declaration or a use to take a type from", name)
+		}
+	}
+	v, err := literalValue(t, *s.lit)
+	if err != nil {
+		return fmt.Errorf("compile: %s: %w", name, err)
+	}
+	slot := pc.newSlot(sc, name, t, s.define)
+	*dst = append(*dst, vmStmt{lit: v, out: []int{slot}})
+	return nil
+	return nil
 }

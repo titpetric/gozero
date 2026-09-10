@@ -200,8 +200,11 @@ func TestAssignNameToName(t *testing.T) {
 
 // TestParseAllocBudget stops the parse and compile cost creeping
 // silently: it moved 1088 to 1256 to 1416 B/op across three grammar
-// expansions with nothing watching. Measured 29 allocations; the
-// ceiling is that plus headroom for one small feature, not a target.
+// expansions with nothing watching. Measured 29 allocations for the
+// statement language and 39 once expressions, control flow and
+// functions landed, the larger IR nodes and the per-compile unit
+// state; the ceiling is the measurement plus headroom for one small
+// feature, not a target.
 func TestParseAllocBudget(t *testing.T) {
 	rt, _ := litRuntime(t)
 	const src = `return http.NewRequest("GET", url);`
@@ -211,8 +214,8 @@ func TestParseAllocBudget(t *testing.T) {
 		}
 	})
 	t.Logf("parse+compile allocations/run = %.0f", n)
-	if n > 32 {
-		t.Errorf("parse+compile allocates %.0f/run, budget 32", n)
+	if n > 44 {
+		t.Errorf("parse+compile allocates %.0f/run, budget 44", n)
 	}
 }
 

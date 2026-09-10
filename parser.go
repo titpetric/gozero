@@ -92,6 +92,9 @@ const (
 	argUnary
 	// argIndex is x[y].
 	argIndex
+	// argFuncLit is a func literal: a value that captures what it
+	// reads from enclosing scopes.
+	argFuncLit
 )
 
 // structElem is one element of a composite literal: the field name
@@ -124,6 +127,8 @@ type arg struct {
 	op string
 	x  *arg
 	y  *arg
+	// argFuncLit: the literal's parameters, results and body.
+	fn *funcDecl
 }
 
 // link is one ".Method(args)" step chained onto a call.
@@ -182,6 +187,9 @@ type stmt struct {
 	// deferred marks "defer call()": the call's arguments evaluate
 	// here, the call itself runs when the program exits.
 	deferred bool
+
+	// rets is a multi-value return inside a function body.
+	rets []arg
 }
 
 // program is a parsed source unit.
@@ -195,6 +203,10 @@ type program struct {
 	// a file resolves names only through its import block.
 	pkg     string
 	imports []importSpec
+	// funcs are the function and method declarations. In a file they
+	// are the program; a snippet may declare them before its
+	// statements.
+	funcs []funcDecl
 }
 
 // flatCall reports the single call of a one-statement program whose
@@ -246,6 +258,12 @@ func (p *Parser) Parse(src string) (*program, error) {
 			prog.types = append(prog.types, td)
 			continue
 		}
+		if fd, ok, err := p.funcDeclSniff(); err != nil {
+			return nil, err
+		} else if ok {
+			prog.funcs = append(prog.funcs, fd)
+			continue
+		}
 		if file {
 			// A file holds declarations, as in Go; statements are the
 			// snippet form.
@@ -257,7 +275,7 @@ func (p *Parser) Parse(src string) (*program, error) {
 		}
 		prog.stmts = append(prog.stmts, s)
 	}
-	if len(prog.stmts) == 0 && !file {
+	if len(prog.stmts) == 0 && !file && len(prog.funcs) == 0 {
 		return nil, fmt.Errorf("parse: empty program")
 	}
 	return prog, nil
@@ -297,7 +315,18 @@ func (p *Parser) stmt() (stmt, error) {
 		if err != nil {
 			return s, err
 		}
-		if a.kind == argCall {
+		if p.peek() == ',' {
+			// A multi-value return, legal inside a function body; the
+			// compiler checks the arity against the declaration.
+			s.rets = append(s.rets, a)
+			for p.consume(',') {
+				next, err := p.exprArg()
+				if err != nil {
+					return s, err
+				}
+				s.rets = append(s.rets, next)
+			}
+		} else if a.kind == argCall {
 			s.call = a.sub
 		} else {
 			s.retVal = &a
@@ -363,9 +392,6 @@ func (p *Parser) stmt() (stmt, error) {
 				a, err := p.exprArg()
 				if err != nil {
 					return stmt{}, err
-				}
-				if a.kind == argVar || a.kind == argPath {
-					return stmt{}, fmt.Errorf("parse: cannot assign a name to a field at offset %d", p.pos)
 				}
 				if !p.terminated() {
 					return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
@@ -497,60 +523,4 @@ func (p *Parser) assignList() ([]string, bool, bool) {
 		return lhs, false, true
 	}
 	return nil, false, false
-}
-
-func (p *Parser) expr() (*callExpr, error) {
-	path, err := p.path()
-	if err != nil {
-		return nil, err
-	}
-	if !p.consume('(') {
-		return nil, fmt.Errorf("parse: expected '(' at offset %d", p.pos)
-	}
-	args, err := p.args()
-	if err != nil {
-		return nil, err
-	}
-	call := &callExpr{path: path, args: args}
-
-	for {
-		save := p.pos
-		p.skipSpace()
-		if !p.consume('.') {
-			p.pos = save
-			return call, nil
-		}
-		name := p.ident()
-		if name == "" {
-			return nil, fmt.Errorf("parse: expected method name at offset %d", p.pos)
-		}
-		if !p.consume('(') {
-			return nil, fmt.Errorf("parse: expected '(' at offset %d", p.pos)
-		}
-		largs, err := p.args()
-		if err != nil {
-			return nil, err
-		}
-		call.chain = append(call.chain, link{name: name, args: largs})
-	}
-}
-
-func (p *Parser) path() ([]string, error) {
-	name := p.ident()
-	if name == "" {
-		return nil, fmt.Errorf("parse: expected a name at offset %d", p.pos)
-	}
-	path := []string{name}
-	for {
-		save := p.pos
-		if !p.consume('.') {
-			return path, nil
-		}
-		next := p.ident()
-		if next == "" {
-			p.pos = save
-			return path, nil
-		}
-		path = append(path, next)
-	}
 }

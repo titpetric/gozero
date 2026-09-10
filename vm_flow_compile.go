@@ -16,6 +16,9 @@ type progCompiler struct {
 	// loopDepth tracks how many loop bodies enclose the statement
 	// being compiled, for the break and continue placement checks.
 	loopDepth int
+	// fn is the unit being compiled, nil for the top-level program;
+	// return statements compile against its declared results.
+	fn *fnCompile
 }
 
 // checkName rejects a name that would shadow a binding or keyword,
@@ -64,6 +67,12 @@ func (pc *progCompiler) newSlot(sc *cscope, name string, t reflect.Type, define 
 	} else {
 		for o := sc; o != nil; o = o.parent {
 			if slot, ok = o.slots[name]; ok {
+				if o.fn != sc.fn && sc.fn != nil {
+					// Assigning across a unit boundary writes through
+					// the captured cell; the type is the owner's and
+					// stays fixed.
+					return sc.fn.capture(o.fn, slot, o.env[name])
+				}
 				owner = o
 				break
 			}

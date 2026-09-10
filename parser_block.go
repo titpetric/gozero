@@ -26,6 +26,7 @@ type block struct {
 // ifStmt is one if with its else chain: else-if nests as a block
 // holding a single if statement.
 type ifStmt struct {
+	init *stmt
 	cond arg
 	then block
 	els  *block
@@ -83,6 +84,12 @@ func (p *Parser) block() (block, error) {
 // parseIf reads an if statement after the keyword.
 func (p *Parser) parseIf() (stmt, error) {
 	is := &ifStmt{}
+	save, saveNL := p.pos, p.nl
+	if cl, err := p.forClause(); err == nil && p.consume(';') {
+		is.init = cl
+	} else {
+		p.pos, p.nl = save, saveNL
+	}
 	cond, err := p.headerExpr()
 	if err != nil {
 		return stmt{}, err
@@ -94,7 +101,7 @@ func (p *Parser) parseIf() (stmt, error) {
 
 	// else binds only on the same line as the closing brace, as in
 	// gofmt-shaped Go.
-	save, saveNL := p.pos, p.nl
+	save, saveNL = p.pos, p.nl
 	p.skipSpace()
 	if !p.nl && p.keyword("else") {
 		if p.keyword("if") {
