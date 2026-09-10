@@ -33,439 +33,454 @@ import (
 // called on.
 func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 	p := &vmProgram{addrTaken: map[int]bool{}}
-	slots := map[string]int{}
-	env := map[string]reflect.Type{}
+	sc := &cscope{
+		slots: map[string]int{},
+		env:   map[string]reflect.Type{},
+	}
+
+	if err := c.buildNamespace(sc, prog); err != nil {
+		return nil, err
+	}
+
+	// Declared types build after the namespace, because a field type
+	// may name an imported package.
+	if err := c.buildScriptTypes(sc, prog); err != nil {
+		return nil, err
+	}
 
 	// A name that collides with a binding can never be read back:
 	// path resolution prefers the binding, so url := ... with url.Parse
 	// bound compiles and then silently resolves the other way. Shadowing
 	// is rejected instead.
 	reserved := map[string]bool{"dest": true, "true": true, "false": true, "nil": true, "var": true, "return": true}
-	for name := range c.bindings {
+	for name := range sc.bindings {
 		if i := strings.IndexByte(name, '.'); i > 0 {
 			reserved[name[:i]] = true
 		} else {
 			reserved[name] = true
 		}
 	}
-	checkName := func(name string) error {
-		if reserved[name] {
-			return fmt.Errorf("compile: %s shadows a binding or keyword and cannot be assigned", name)
-		}
-		return nil
-	}
+	pc := &progCompiler{c: c, p: p, prog: prog, reserved: reserved}
+	sc.pc = pc
+	sc.ifaceOf = map[int]*scriptIface{}
+	// The top level is a unit like any other, so a literal capturing
+	// a program variable has an owner to mark address-taken.
+	sc.fn = &fnCompile{p: p}
 
-	// Declaration is := or var; a plain = assigns to a name that already
-	// exists. The rule is Go's and holds for every statement kind: the
-	// initial prototype let a literal define its name with =, which left
-	// a typo one silent new name away from a stale read.
-	checkDecl := func(name string, define bool) error {
-		_, ok := slots[name]
-		if !ok && !define {
-			return fmt.Errorf("compile: %s is not defined, use := or var", name)
-		}
-		return nil
-	}
-	// The other half of the rule: := must declare something.
-	checkNew := func(lhs []string) error {
-		for _, name := range lhs {
-			if _, ok := slots[name]; !ok {
-				return nil
-			}
-		}
-		return fmt.Errorf("compile: no new variables on left side of :=")
-	}
-
-	// A name declared with var fixes its type before anything else is
-	// compiled, so a literal assigned to it converts to that type.
-	declared := map[string]reflect.Type{}
-	for si := range prog.stmts {
-		if s := prog.stmts[si]; s.varType != "" {
-			if err := checkName(s.varName); err != nil {
-				return nil, err
-			}
-			t, ok := c.lookupType(s.varType)
-			if !ok {
-				return nil, fmt.Errorf("compile: unknown type %q, register it with BindType", s.varType)
-			}
-			declared[s.varName] = t
-		}
-	}
-
-	newSlot := func(name string, t reflect.Type) int {
-		slot, ok := slots[name]
-		if !ok {
-			slot = p.nslots
-			p.nslots++
-			p.slotTypes = append(p.slotTypes, nil)
-			slots[name] = slot
-		}
-		if prev := p.slotTypes[slot]; prev != nil && prev != t {
-			p.polymorphic = true
-		}
-		p.slotTypes[slot] = t
-		env[name] = t
-		return slot
-	}
-
-	for si := range prog.stmts {
-		s := prog.stmts[si]
-
-		if s.varType != "" {
-			t := declared[s.varName]
-			slot := newSlot(s.varName, t)
-			p.inits = append(p.inits, slotInit{slot: slot, zero: reflect.Zero(t)})
-			continue
-		}
-
-		if s.fieldLhs != nil {
-			fs, err := c.compileFieldSet(slots, env, s)
-			if err != nil {
-				return nil, err
-			}
-			p.stmts = append(p.stmts, vmStmt{fieldSet: fs})
-			continue
-		}
-		if s.sendCh != nil {
-			sn, err := c.compileSend(slots, env, s)
-			if err != nil {
-				return nil, err
-			}
-			p.stmts = append(p.stmts, vmStmt{send: sn})
-			continue
-		}
-		if s.lit != nil && s.lit.kind == argRecv {
-			// The ok of Go's two-value receive is implicit, like the
-			// trailing error of a call: a closed channel ends the
-			// program with io.EOF, so there is no second name to bind.
-			if len(s.lhs) > 1 {
-				return nil, fmt.Errorf("compile: a receive binds one name; ok is implicit, a closed channel ends the program with io.EOF")
-			}
-			for _, name := range s.lhs {
-				if err := checkName(name); err != nil {
-					return nil, err
-				}
-				if err := checkDecl(name, s.define); err != nil {
-					return nil, err
-				}
-			}
-			if s.define {
-				if err := checkNew(s.lhs); err != nil {
-					return nil, err
-				}
-			}
-			rv, err := c.compileRecv(slots, env, *s.lit)
-			if err != nil {
-				return nil, err
-			}
-			var out []int
-			if len(s.lhs) == 1 {
-				out = []int{newSlot(s.lhs[0], rv.elem)}
-			}
-			p.stmts = append(p.stmts, vmStmt{recv: rv, out: out})
-			continue
-		}
-		if s.lit != nil {
-			if len(s.lhs) != 1 {
-				return nil, fmt.Errorf("compile: a literal assigns to exactly one name")
-			}
-			name := s.lhs[0]
-			if err := checkName(name); err != nil {
-				return nil, err
-			}
-			if err := checkDecl(name, s.define); err != nil {
-				return nil, err
-			}
-			if s.define {
-				if err := checkNew(s.lhs); err != nil {
-					return nil, err
-				}
-			}
-			// u = url.URL{...} binds the name to the literal's own type,
-			// built fresh on every run.
-			if s.lit.kind == argStruct {
-				sa, st, err := c.compileStructLit(slots, env, *s.lit)
-				if err != nil {
-					return nil, fmt.Errorf("compile: %s: %w", name, err)
-				}
-				if prev, ok := env[name]; ok && prev != st {
-					if !st.AssignableTo(prev) {
-						return nil, fmt.Errorf("compile: %s: cannot use %s as %s", name, st, prev)
-					}
-					st = prev
-				}
-				slot := newSlot(name, st)
-				p.stmts = append(p.stmts, vmStmt{assign: sa, out: []int{slot}})
-				continue
-			}
-			t, ok := env[name]
-			if !ok {
-				t = c.inferLiteralType(prog, name, *s.lit)
-				if t == nil {
-					return nil, fmt.Errorf("compile: %s = nil needs a var declaration or a use to take a type from", name)
-				}
-			}
-			v, err := literalValue(t, *s.lit)
-			if err != nil {
-				return nil, fmt.Errorf("compile: %s: %w", name, err)
-			}
-			slot := newSlot(name, t)
-			p.stmts = append(p.stmts, vmStmt{lit: v, out: []int{slot}})
-			continue
-		}
-
-		// x = int32(0) is a conversion hint. The right-hand side parses
-		// as a call; a path that names a registered type rather than a
-		// binding cannot be called, so it fixes the literal's type
-		// instead, the way a var declaration would. The var form stays:
-		// the hint only covers a name assigned a literal.
-		if s.call != nil && !s.ret && len(s.lhs) > 0 {
-			if t, ok := c.conversionType(s.call); ok {
-				if len(s.lhs) != 1 {
-					return nil, fmt.Errorf("compile: a conversion assigns to exactly one name")
-				}
-				name := s.lhs[0]
-				if err := checkName(name); err != nil {
-					return nil, err
-				}
-				if err := checkDecl(name, s.define); err != nil {
-					return nil, err
-				}
-				if s.define {
-					if err := checkNew(s.lhs); err != nil {
-						return nil, err
-					}
-				}
-				a, err := conversionArg(s.call)
-				if err != nil {
-					return nil, fmt.Errorf("compile: %s = %s(...): %w", name, joinPath(s.call.path), err)
-				}
-				v, err := literalValue(t, a)
-				if err != nil {
-					return nil, fmt.Errorf("compile: %s: %w", name, err)
-				}
-				// A declared type is not overridden by a hint. A hint
-				// converting into an interface slot keeps the slot's
-				// type, like any literal assigned to one.
-				st := t
-				if prev, ok := env[name]; ok && prev != t {
-					if !t.AssignableTo(prev) {
-						return nil, fmt.Errorf("compile: %s: cannot use %s as %s", name, t, prev)
-					}
-					st = prev
-				}
-				slot := newSlot(name, st)
-				p.stmts = append(p.stmts, vmStmt{lit: v, out: []int{slot}})
-				continue
-			}
-		}
-
-		if s.retVal != nil {
-			ra, err := c.compileRetVal(slots, env, *s.retVal)
-			if err != nil {
-				return nil, err
-			}
-			p.stmts = append(p.stmts, vmStmt{ret: true, retArg: ra})
-			continue
-		}
-		if s.call == nil {
-			// A bare "return;".
-			p.stmts = append(p.stmts, vmStmt{ret: true})
-			continue
-		}
-		call, _, err := c.compileExpr(slots, env, s.call)
-		if err != nil {
+	// Function signatures declare before any body or statement
+	// compiles, so order never matters, then the bodies compile. The
+	// maps stay nil for a program without declarations.
+	if len(prog.funcs) > 0 {
+		sc.funcs = map[string]*scriptFn{}
+		sc.methods = map[reflect.Type]map[string]*scriptFn{}
+		if err := pc.declareFuncs(prog.funcs, sc); err != nil {
 			return nil, err
 		}
-		if len(s.lhs) > call.nres {
-			return nil, fmt.Errorf("compile: %s returns %d values, cannot assign %d", call.name, call.nres, len(s.lhs))
+		if err := pc.compileFuncs(prog.funcs, sc); err != nil {
+			return nil, err
 		}
-
-		if s.define && len(s.lhs) > 0 {
-			if err := checkNew(s.lhs); err != nil {
-				return nil, err
-			}
-		}
-		out := make([]int, 0, len(s.lhs))
-		for i, name := range s.lhs {
-			if err := checkName(name); err != nil {
-				return nil, err
-			}
-			if err := checkDecl(name, s.define); err != nil {
-				return nil, err
-			}
-			out = append(out, newSlot(name, c.resultType(call, i)))
-		}
-		p.stmts = append(p.stmts, vmStmt{call: call, out: out, ret: s.ret})
+		p.funcs = sc.funcs
 	}
 
-	for i := range p.stmts {
-		s := &p.stmts[i]
-		if s.call != nil {
-			p.assignFrame(s.call)
-		}
-		if s.assign != nil {
-			p.assignArg(s.assign)
-		}
-		if s.fieldSet != nil {
-			p.assignArg(s.fieldSet.val)
-		}
-		if s.retArg != nil {
-			p.assignArg(s.retArg)
-		}
-		if s.recv != nil {
-			p.assignArg(s.recv.ch)
-		}
-		if s.send != nil {
-			p.assignArg(s.send.ch)
-			p.assignArg(s.send.val)
+	for si := range prog.stmts {
+		if err := pc.compileOne(sc, prog.stmts[si], &p.stmts, true); err != nil {
+			return nil, err
 		}
 	}
+	pc.walkFrames(p.stmts)
 	return p, nil
 }
 
-// assignFrame gives every call in the program a disjoint window into
-// the per-run argument frame, so one allocation covers them all and a
-// nested call cannot overwrite the arguments its parent is still
-// filling.
-func (p *vmProgram) assignFrame(c *vmCall) {
-	c.off = p.frame
-	p.frame += len(c.args)
-	for _, a := range c.args {
-		p.assignArg(a)
+// compileBlock compiles a statement list into dst under sc.
+func (pc *progCompiler) compileBlock(sc *cscope, in []stmt, dst *[]vmStmt) error {
+	for i := range in {
+		if err := pc.compileOne(sc, in[i], dst, false); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-// assignArg walks one argument for assignFrame: a nested call needs
-// its own frame window whether it sits in an argument list, a struct
-// element, or a field assignment's value.
-func (p *vmProgram) assignArg(a *vmArg) {
-	// An addressed argument pins the slot at its root: run stores the
-	// slot's value through an addressable cell, and the step JIT
-	// refuses to splice its producer or alias it behind an interface.
-	if a.addrOf {
-		root := a
-		for root.kind == vaField {
-			root = root.src
-		}
-		if root.kind == vaSlot {
-			p.addrTaken[root.slot] = true
-		}
+// compileOne compiles one statement into dst. top marks the
+// program's own statement list, whose var declarations become the
+// pre-run inits.
+func (pc *progCompiler) compileOne(sc *cscope, s stmt, dst *[]vmStmt, top bool) error {
+	c, p, prog := pc.c, pc.p, pc.prog
+	_ = prog
+	if s.ifs != nil || s.fors != nil {
+		return pc.compileFlow(sc, s, dst)
 	}
-	for a.kind == vaField {
-		a = a.src
-	}
-	switch a.kind {
-	case vaCall:
-		p.assignFrame(a.sub)
-	case vaStruct:
-		for i := range a.elems {
-			p.assignArg(a.elems[i].val)
-		}
-	case vaStack, vaDest:
-		// Only a non-empty interface is worth pre-converting: for
-		// an empty one reflect packs an eface directly and never
-		// reaches implements.
-		if a.typ.Kind() == reflect.Interface && a.typ.NumMethod() > 0 {
-			if conv, ok := ifaceConvs[a.typ]; ok {
-				a.conv = conv
-				a.iface = p.nifaces
-				p.nifaces++
-			}
-		}
-	}
-}
-
-// compileFieldSet compiles req.Method = value. The base is a
-// program-bound name, every selector is an exported field, and the
-// value is a literal or a call whose result is assignable to the field.
-func (c *Compiler) compileFieldSet(slots map[string]int, env map[string]reflect.Type, s stmt) (*vmFieldSet, error) {
-	base := s.fieldLhs[0]
-	slot, ok := slots[base]
-	if !ok {
-		return nil, fmt.Errorf("compile: %s is not a name bound by the program, so its fields cannot be assigned", base)
-	}
-	t := env[base]
-	fs := &vmFieldSet{base: slot, field: joinPath(s.fieldLhs)}
-	for _, seg := range s.fieldLhs[1:] {
-		f, deref, ok := fieldOf(t, seg)
-		if !ok {
-			return nil, fmt.Errorf("compile: %s has no field %s", t, seg)
-		}
-		fs.steps = append(fs.steps, fieldStep{index: f.Index, deref: deref})
-		t = f.Type
-	}
-
-	if s.lit != nil {
-		if s.lit.kind == argStruct {
-			sa, st, err := c.compileStructLit(slots, env, *s.lit)
-			if err != nil {
-				return nil, fmt.Errorf("compile: %s: %w", fs.field, err)
-			}
-			if !st.AssignableTo(t) {
-				return nil, fmt.Errorf("compile: %s: cannot assign %s to %s", fs.field, st, t)
-			}
-			fs.val = sa
-			return fs, nil
-		}
-		v, err := literalValue(t, *s.lit)
+	if s.deferred {
+		call, _, err := c.compileExpr(sc, s.call)
 		if err != nil {
-			return nil, fmt.Errorf("compile: %s: %w", fs.field, err)
+			return err
 		}
-		fs.val = &vmArg{kind: vaConst, val: v, typ: t, iface: -1}
-		return fs, nil
+		*dst = append(*dst, vmStmt{deferCall: call})
+		return nil
 	}
-	call, rt, err := c.compileExpr(slots, env, s.call)
+	if s.brk {
+		if pc.loopDepth == 0 {
+			return fmt.Errorf("compile: break is not in a loop")
+		}
+		*dst = append(*dst, vmStmt{brk: true})
+		return nil
+	}
+	if s.cont {
+		if pc.loopDepth == 0 {
+			return fmt.Errorf("compile: continue is not in a loop")
+		}
+		*dst = append(*dst, vmStmt{cont: true})
+		return nil
+	}
+
+	if s.varType != "" {
+		if err := pc.checkName(s.varName); err != nil {
+			return err
+		}
+		t, ok := c.resolveType(sc, s.varType)
+		if !ok {
+			return fmt.Errorf("compile: unknown type %q, register it with BindType", s.varType)
+		}
+		slot := pc.newSlot(sc, s.varName, t, true)
+		if sc.script != nil {
+			if iface := sc.script.ifaces[s.varType]; iface != nil {
+				if sc.ifaceOf == nil {
+					sc.ifaceOf = map[int]*scriptIface{}
+				}
+				sc.ifaceOf[slot] = iface
+			}
+		}
+		if top {
+			p.inits = append(p.inits, slotInit{slot: slot, zero: reflect.Zero(t)})
+		} else {
+			// A block-scoped var re-zeroes at its position on
+			// every pass, matching Go.
+			*dst = append(*dst, vmStmt{init: &slotInit{slot: slot, zero: reflect.Zero(t)}})
+		}
+		return nil
+	}
+
+	if s.fieldLhs != nil {
+		fs, err := c.compileFieldSet(sc, s)
+		if err != nil {
+			return err
+		}
+		*dst = append(*dst, vmStmt{fieldSet: fs})
+		return nil
+	}
+	if s.sendCh != nil {
+		sn, err := c.compileSend(sc, s)
+		if err != nil {
+			return err
+		}
+		*dst = append(*dst, vmStmt{send: sn})
+		return nil
+	}
+	if s.lit != nil && s.lit.kind == argRecv {
+		// The ok of Go's two-value receive is implicit, like the
+		// trailing error of a call: a closed channel ends the
+		// program with io.EOF, so there is no second name to bind.
+		if len(s.lhs) > 1 {
+			return fmt.Errorf("compile: a receive binds one name; ok is implicit, a closed channel ends the program with io.EOF")
+		}
+		for _, name := range s.lhs {
+			if err := pc.checkName(name); err != nil {
+				return err
+			}
+			if err := pc.checkDecl(sc, name, s.define); err != nil {
+				return err
+			}
+		}
+		if s.define {
+			if err := pc.checkNew(s.lhs, sc); err != nil {
+				return err
+			}
+		}
+		rv, err := c.compileRecv(sc, *s.lit)
+		if err != nil {
+			return err
+		}
+		var out []int
+		if len(s.lhs) == 1 {
+			out = []int{pc.newSlot(sc, s.lhs[0], rv.elem, s.define)}
+		}
+		*dst = append(*dst, vmStmt{recv: rv, out: out})
+		return nil
+	}
+	if s.lit != nil {
+		return pc.compileLitAssign(sc, s, dst)
+	}
+
+	// A conversion to a named func type in call position.
+	if s.call != nil && !s.ret && len(s.lhs) == 1 {
+		if ct, ok := c.funcConversion(sc, s.call); ok {
+			name := s.lhs[0]
+			if err := pc.checkName(name); err != nil {
+				return err
+			}
+			if err := pc.checkDecl(sc, name, s.define); err != nil {
+				return err
+			}
+			if s.define {
+				if err := pc.checkNew(s.lhs, sc); err != nil {
+					return err
+				}
+			}
+			node, err := c.compileArg(sc, joinPath(s.call.path), 0, ct, s.call.args[0])
+			if err != nil {
+				return err
+			}
+			node.typ = ct
+			slot := pc.newSlot(sc, name, ct, s.define)
+			*dst = append(*dst, vmStmt{assign: node, out: []int{slot}})
+			return nil
+		}
+	}
+
+	// len(xs) in call position is the builtin, not a binding.
+	if s.call != nil && c.isLenCall(sc, s.call) {
+		node, t, err := c.compileLen(sc, s.call)
+		if err != nil {
+			return err
+		}
+		if s.ret {
+			*dst = append(*dst, vmStmt{ret: true, retArg: node})
+			return nil
+		}
+		if len(s.lhs) != 1 {
+			return fmt.Errorf("compile: len returns one value")
+		}
+		name := s.lhs[0]
+		if name == "_" {
+			// A discard: a pure right-hand side compiles to nothing,
+			// one with calls inside still evaluates for its effects.
+			if isExprKind(s.lit.kind) {
+				node, _, err := c.compileValueExpr(sc, *s.lit, nil)
+				if err != nil {
+					return err
+				}
+				*dst = append(*dst, vmStmt{assign: node, out: []int{-1}})
+			}
+			return nil
+		}
+		if err := pc.checkName(name); err != nil {
+			return err
+		}
+		if err := pc.checkDecl(sc, name, s.define); err != nil {
+			return err
+		}
+		if s.define {
+			if err := pc.checkNew(s.lhs, sc); err != nil {
+				return err
+			}
+		}
+		slot := pc.newSlot(sc, name, t, s.define)
+		*dst = append(*dst, vmStmt{assign: node, out: []int{slot}})
+		return nil
+	}
+
+	// x = int32(0) is a conversion hint. The right-hand side parses
+	// as a call; a path that names a registered type rather than a
+	// binding cannot be called, so it fixes the literal's type
+	// instead, the way a var declaration would. The var form stays:
+	// the hint only covers a name assigned a literal.
+	if s.call != nil && !s.ret && len(s.lhs) > 0 {
+		if t, ok := c.conversionType(sc, s.call); ok {
+			if len(s.lhs) != 1 {
+				return fmt.Errorf("compile: a conversion assigns to exactly one name")
+			}
+			name := s.lhs[0]
+			if err := pc.checkName(name); err != nil {
+				return err
+			}
+			if err := pc.checkDecl(sc, name, s.define); err != nil {
+				return err
+			}
+			if s.define {
+				if err := pc.checkNew(s.lhs, sc); err != nil {
+					return err
+				}
+			}
+			a, err := conversionArg(s.call)
+			if err != nil {
+				return fmt.Errorf("compile: %s = %s(...): %w", name, joinPath(s.call.path), err)
+			}
+			v, err := literalValue(t, a)
+			if err != nil {
+				return fmt.Errorf("compile: %s: %w", name, err)
+			}
+			// A declared type is not overridden by a hint. A hint
+			// converting into an interface slot keeps the slot's
+			// type, like any literal assigned to one.
+			st := t
+			if prev, ok := sc.env[name]; ok && prev != t {
+				if !t.AssignableTo(prev) {
+					return fmt.Errorf("compile: %s: cannot use %s as %s", name, t, prev)
+				}
+				st = prev
+			}
+			slot := pc.newSlot(sc, name, st, s.define)
+			*dst = append(*dst, vmStmt{lit: v, out: []int{slot}})
+			return nil
+		}
+	}
+
+	if pc.fn != nil && (s.ret || s.rets != nil) {
+		return pc.compileFuncReturn(sc, s, dst)
+	}
+	if s.rets != nil {
+		return fmt.Errorf("compile: a program returns one value; multi-value return belongs in a function body")
+	}
+	if s.retVal != nil {
+		ra, err := c.compileRetVal(sc, *s.retVal)
+		if err != nil {
+			return err
+		}
+		*dst = append(*dst, vmStmt{ret: true, retArg: ra})
+		return nil
+	}
+	if s.call == nil {
+		// A bare "return;".
+		*dst = append(*dst, vmStmt{ret: true})
+		return nil
+	}
+	call, _, err := c.compileExpr(sc, s.call)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if rt == nil || !rt.AssignableTo(t) {
-		return nil, fmt.Errorf("compile: %s: cannot assign %s to %s", fs.field, rt, t)
+	// Naming one more value than the call returns binds the trailing
+	// error as an ordinary value; eliding it keeps the implicit
+	// check-and-abort. Both spellings are legal Go.
+	if len(s.lhs) == call.nres+1 && call.errIdx >= 0 {
+		call.bindErr = true
+	} else if len(s.lhs) > call.nres {
+		return fmt.Errorf("compile: %s returns %d values, cannot assign %d", call.name, call.nres, len(s.lhs))
 	}
-	fs.val = &vmArg{kind: vaCall, sub: call, typ: t, iface: -1}
-	return fs, nil
+
+	if s.define && len(s.lhs) > 0 {
+		if err := pc.checkNew(s.lhs, sc); err != nil {
+			return err
+		}
+	}
+	out := make([]int, 0, len(s.lhs))
+	for i, name := range s.lhs {
+		// The blank identifier discards its value without a slot.
+		if name == "_" {
+			out = append(out, -1)
+			continue
+		}
+		if err := pc.checkName(name); err != nil {
+			return err
+		}
+		if err := pc.checkDecl(sc, name, s.define); err != nil {
+			return err
+		}
+		rt := c.resultType(call, i)
+		if call.bindErr {
+			// The left-hand side maps to every result positionally,
+			// the trailing error included.
+			rt = c.resultAt(call, i)
+		}
+		out = append(out, pc.newSlot(sc, name, rt, s.define))
+	}
+	*dst = append(*dst, vmStmt{call: call, out: out, ret: s.ret})
+	return nil
 }
 
-// compileRetVal compiles the value of a "return x;" form. The
-// parameter type it is compiled against is its own: a program-bound
-// name uses its static type, a stack name has none and is returned as
-// it is, a literal keeps its natural width.
-func (c *Compiler) compileRetVal(slots map[string]int, env map[string]reflect.Type, a arg) (*vmArg, error) {
-	pt := reflect.TypeFor[any]()
-	switch a.kind {
-	case argVar:
-		if t, ok := env[a.str]; ok && t != nil {
-			pt = t
+// walkFrames gives every call in the compiled tree its frame window,
+// recursing through the control-flow blocks.
+func (pc *progCompiler) walkFrames(stmts []vmStmt) {
+	p := pc.p
+	{
+		for i := range stmts {
+			s := &stmts[i]
+			if s.call != nil {
+				p.assignFrame(s.call)
+			}
+			if s.assign != nil {
+				p.assignArg(s.assign)
+			}
+			if s.fieldSet != nil {
+				p.assignArg(s.fieldSet.val)
+			}
+			if s.retArg != nil {
+				p.assignArg(s.retArg)
+			}
+			if s.recv != nil {
+				p.assignArg(s.recv.ch)
+			}
+			if s.send != nil {
+				p.assignArg(s.send.ch)
+				p.assignArg(s.send.val)
+			}
+			if s.deferCall != nil {
+				p.assignFrame(s.deferCall)
+			}
+			for _, ra := range s.retList {
+				p.assignArg(ra)
+			}
+			if s.ifs != nil {
+				p.assignArg(s.ifs.cond)
+				pc.walkFrames(s.ifs.then.stmts)
+				if s.ifs.els != nil {
+					pc.walkFrames(s.ifs.els.stmts)
+				}
+			}
+			if s.loop != nil {
+				pc.walkFrames(s.loop.init)
+				if s.loop.cond != nil {
+					p.assignArg(s.loop.cond)
+				}
+				pc.walkFrames(s.loop.post)
+				pc.walkFrames(s.loop.body.stmts)
+			}
+			if s.rng != nil {
+				p.assignArg(s.rng.over)
+				pc.walkFrames(s.rng.body.stmts)
+			}
 		}
-	case argString:
-		pt = reflect.TypeFor[string]()
-	case argInt:
-		pt = reflect.TypeFor[int64]()
-	case argFloat:
-		pt = reflect.TypeFor[float64]()
-	case argBool:
-		pt = reflect.TypeFor[bool]()
-	case argNil:
-		return nil, fmt.Errorf("compile: return nil returns no value, use return;")
-	case argPath, argStruct:
-		// compileArg resolves these and checks assignability against
-		// pt, so any is what lets the value keep its own type.
 	}
-	return c.compileArg(slots, env, "return", 0, pt, a)
 }
 
 // resultType is the static type of the i'th non-error result.
 func (c *Compiler) resultType(call *vmCall, i int) reflect.Type {
-	ft := call.fn.Type()
 	n := 0
-	for j := 0; j < ft.NumOut(); j++ {
+	for j := 0; j < c.resultCount(call); j++ {
 		if j == call.errIdx {
 			continue
 		}
 		if n == i {
-			return ft.Out(j)
+			return c.resultAt(call, j)
 		}
 		n++
 	}
 	return nil
+}
+
+// resultCount and resultAt read the result list of either call kind:
+// a binding's signature or a script function's declaration.
+func (c *Compiler) resultCount(call *vmCall) int {
+	if call.script != nil {
+		return len(call.script.results)
+	}
+	if call.dyn != nil {
+		return call.dyn.typ.NumOut()
+	}
+	if call.dispatch != nil {
+		return len(call.dispatch.method.results)
+	}
+	return call.fn.Type().NumOut()
+}
+
+func (c *Compiler) resultAt(call *vmCall, i int) reflect.Type {
+	if call.script != nil {
+		return call.script.results[i]
+	}
+	if call.dyn != nil {
+		return call.dyn.typ.Out(i)
+	}
+	if call.dispatch != nil {
+		return call.dispatch.method.results[i]
+	}
+	return call.fn.Type().Out(i)
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"reflect"
 	"runtime/debug"
 	"sort"
@@ -17,7 +19,18 @@ import (
 type Runtime struct {
 	mu       sync.RWMutex
 	compiler Compiler
-	cache    map[string]CompiledFunc
+	cache    map[string]cacheEntry
+	// gen counts the binding surface's revisions. Every Bind, BindType,
+	// BindPackage and Import bumps it, and a cache entry compiled under
+	// an older generation is a miss, so a rebind is visible to the next
+	// Compile of the same source.
+	gen uint64
+	// packages holds the BindPackage registrations, keyed by import
+	// path; a program's import block resolves against it.
+	packages map[string]*boundPackage
+	// adapters holds the BindAdapter registrations, keyed by the
+	// interface type.
+	adapters map[reflect.Type]*adapterSpec
 	// types is the registry a var statement resolves against. It is
 	// filled by walking every binding, so most types never need
 	// registering by hand.
@@ -41,12 +54,23 @@ func (r *Runtime) SetLogger(l *slog.Logger) {
 	r.mu.Unlock()
 }
 
+// cacheEntry is one compiled program and the binding generation it
+// compiled under.
+type cacheEntry struct {
+	fn  CompiledFunc
+	gen uint64
+}
+
 // NewRuntime returns an empty Runtime.
 func NewRuntime() *Runtime {
 	types := predeclared()
+	packages := map[string]*boundPackage{}
+	adapters := map[reflect.Type]*adapterSpec{}
 	return &Runtime{
-		compiler: Compiler{bindings: map[string]binding{}, types: types},
-		cache:    map[string]CompiledFunc{},
+		compiler: Compiler{bindings: map[string]binding{}, types: types, packages: packages, adapters: adapters},
+		cache:    map[string]cacheEntry{},
+		packages: packages,
+		adapters: adapters,
 		types:    types,
 	}
 }
@@ -74,6 +98,7 @@ func (r *Runtime) Bind(name string, fn any) error {
 	r.origin = name
 	r.discover(v.Type(), 1)
 	r.origin = ""
+	r.gen++
 	r.mu.Unlock()
 	return nil
 }
@@ -99,6 +124,244 @@ func (r *Runtime) BindScope(prefix string, fns map[string]any) error {
 		}
 	}
 	return nil
+}
+
+// BindPackage registers symbols under a Go import path, e.g.
+// BindPackage("net/http", map[string]any{"NewRequest": http.NewRequest}).
+// The funcs become callable once a program imports the path, under
+// the path's base name or the import's alias; discovery walks the
+// signatures into the package's own type table. Registering the same
+// path again replaces the package, which is the hot-reload path. The
+// borrowed-arguments contract of Bind applies unchanged.
+func (r *Runtime) BindPackage(path string, symbols map[string]any) error {
+	if path == "" {
+		return fmt.Errorf("bindpackage: empty import path")
+	}
+	names := make([]string, 0, len(symbols))
+	for name := range symbols {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	pkg := &boundPackage{
+		path:  path,
+		base:  pkgBase(path),
+		fns:   map[string]binding{},
+		types: map[string]reflect.Type{},
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, name := range names {
+		fn := symbols[name]
+		v := reflect.ValueOf(fn)
+		if v.Kind() != reflect.Func {
+			return fmt.Errorf("bindpackage: %s.%s is %s, want func", path, name, v.Kind())
+		}
+		pkg.fns[name] = binding{rv: v, raw: fn}
+		r.origin = path + "." + name
+		r.discoverInto(pkg.types, v.Type(), 1)
+		r.origin = ""
+	}
+	r.packages[path] = pkg
+	r.gen++
+	return nil
+}
+
+// BindPackageType registers a type into a package, for the rare type
+// no bound signature reaches. The contract matches BindType: pass a
+// value, or a nil pointer to an interface.
+func (r *Runtime) BindPackageType(path, name string, v any) error {
+	t := reflect.TypeOf(v)
+	if t == nil {
+		return fmt.Errorf("bindpackage: %s.%s: cannot take the type of a nil value", path, name)
+	}
+	if t.Kind() == reflect.Pointer && t.Elem().Kind() == reflect.Interface {
+		t = t.Elem()
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	pkg, ok := r.packages[path]
+	if !ok {
+		return fmt.Errorf("bindpackage: %q is not registered, call BindPackage first", path)
+	}
+	pkg.types[name] = t
+	r.origin = path + "." + name
+	r.discoverInto(pkg.types, t, 1)
+	r.origin = ""
+	r.gen++
+	return nil
+}
+
+// Import activates a registered package into the flat namespace under
+// its base name, so a headerless snippet calls http.NewRequest after
+// Import("net/http") the way it would after a BindScope. The package's
+// type table merges into the registry without overwriting names the
+// registry already holds.
+func (r *Runtime) Import(path string) error {
+	return r.ImportAs("", path)
+}
+
+// ImportAs is Import with an explicit prefix in place of the path's
+// base name.
+func (r *Runtime) ImportAs(alias, path string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	pkg, ok := r.packages[path]
+	if !ok {
+		return fmt.Errorf("import: %q is not registered, call BindPackage first", path)
+	}
+	name := alias
+	if name == "" {
+		name = pkg.base
+	}
+	for fname, b := range pkg.fns {
+		r.compiler.bindings[name+"."+fname] = b
+	}
+	for tname, t := range pkg.types {
+		if _, seen := r.types[tname]; !seen {
+			r.types[tname] = t
+		}
+	}
+	r.gen++
+	return nil
+}
+
+// Invalidate drops the compile cache. The generation check already
+// keeps stale entries from being served after a rebind; Invalidate is
+// for reclaiming the memory of a cache grown under repeated reloads.
+func (r *Runtime) Invalidate() {
+	r.mu.Lock()
+	r.cache = map[string]cacheEntry{}
+	r.mu.Unlock()
+}
+
+// BindAdapter registers the adapter that carries a script type into
+// the interface I: a host struct with one func field per interface
+// method, ServeHTTPFunc for ServeHTTP, and forwarding methods over
+// them. Pass a nil pointer to the struct. A script value whose
+// method set covers I then passes anywhere I is wanted.
+func (r *Runtime) BindAdapter[I any](proto any) error {
+	spec, err := validateAdapter(reflect.TypeFor[I](), reflect.TypeOf(proto))
+	if err != nil {
+		return err
+	}
+	r.mu.Lock()
+	r.adapters[spec.iface] = spec
+	r.gen++
+	r.mu.Unlock()
+	return nil
+}
+
+// Forget evicts one source from the compile cache, the reload
+// loop's narrow alternative to Invalidate.
+func (r *Runtime) Forget(src string) {
+	r.mu.Lock()
+	delete(r.cache, src)
+	r.mu.Unlock()
+}
+
+// Load compiles a source file into a Program: its type and function
+// declarations against this Runtime's registered packages, each
+// func init() run once in declaration order before Load returns. A
+// snippet loads too; a file with a package clause is the intended
+// form.
+func (r *Runtime) Load(src string) (*Program, error) {
+	prog, err := (&Parser{}).Parse(src)
+	if err != nil {
+		return nil, err
+	}
+	return r.load(prog)
+}
+
+// LoadFile is Load over one file on disk.
+func (r *Runtime) LoadFile(path string) (*Program, error) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("load: %w", err)
+	}
+	p, err := r.Load(string(src))
+	if err != nil {
+		return nil, fmt.Errorf("load %s: %w", path, err)
+	}
+	return p, nil
+}
+
+// LoadDir loads a package folder: every *.go file in dir, one
+// package, merged in filename order, inits running in that order.
+func (r *Runtime) LoadDir(dir string) (*Program, error) {
+	files, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	if err != nil {
+		return nil, fmt.Errorf("load: %w", err)
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("load %s: no .go files", dir)
+	}
+	sort.Strings(files)
+	var merged *program
+	for _, file := range files {
+		src, err := os.ReadFile(file)
+		if err != nil {
+			return nil, fmt.Errorf("load: %w", err)
+		}
+		prog, err := (&Parser{}).Parse(string(src))
+		if err != nil {
+			return nil, fmt.Errorf("load %s: %w", file, err)
+		}
+		if prog.pkg == "" {
+			return nil, fmt.Errorf("load %s: a package file needs a package clause", file)
+		}
+		if merged == nil {
+			merged = prog
+			continue
+		}
+		if prog.pkg != merged.pkg {
+			return nil, fmt.Errorf("load %s: package %s, want %s", file, prog.pkg, merged.pkg)
+		}
+		merged.imports = mergeImports(merged.imports, prog.imports)
+		merged.types = append(merged.types, prog.types...)
+		merged.funcs = append(merged.funcs, prog.funcs...)
+	}
+	p, err := r.load(merged)
+	if err != nil {
+		return nil, fmt.Errorf("load %s: %w", dir, err)
+	}
+	return p, nil
+}
+
+// load compiles a parsed program and runs its init hooks.
+func (r *Runtime) load(prog *program) (*Program, error) {
+	r.mu.RLock()
+	vm, err := r.compiler.compileProgram(prog)
+	r.mu.RUnlock()
+	if err != nil {
+		return nil, err
+	}
+	for _, init := range vm.scriptInits {
+		if _, err := init.call(context.Background(), nil, nil); err != nil {
+			return nil, fmt.Errorf("load: init: %w", err)
+		}
+	}
+	return &Program{rt: r, pkg: prog.pkg, vm: vm}, nil
+}
+
+// mergeImports concatenates import lists, deduplicating an identical
+// alias and path pair; the same path under two names stays two
+// entries, as it would across Go files.
+func mergeImports(a, b []importSpec) []importSpec {
+	out := a
+	for _, imp := range b {
+		dup := false
+		for _, have := range out {
+			if have == imp {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			out = append(out, imp)
+		}
+	}
+	return out
 }
 
 // guard installs the panic boundary. It covers both tiers, because it
@@ -157,10 +420,11 @@ func (r *Runtime) Supports(src string) error {
 // same source is a map lookup.
 func (r *Runtime) Compile(stmt string) (CompiledFunc, error) {
 	r.mu.RLock()
-	fn, ok := r.cache[stmt]
+	e, ok := r.cache[stmt]
+	gen := r.gen
 	r.mu.RUnlock()
-	if ok {
-		return fn, nil
+	if ok && e.gen == gen {
+		return e.fn, nil
 	}
 
 	fn, err := r.compileUncached(stmt)
@@ -168,8 +432,10 @@ func (r *Runtime) Compile(stmt string) (CompiledFunc, error) {
 		return nil, err
 	}
 	fn = guard(fn)
+	// The entry records the generation read before compiling, so a
+	// bind landing mid-compile marks it stale rather than fresh.
 	r.mu.Lock()
-	r.cache[stmt] = fn
+	r.cache[stmt] = cacheEntry{fn: fn, gen: gen}
 	r.mu.Unlock()
 	return fn, nil
 }

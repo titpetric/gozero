@@ -43,6 +43,94 @@ func (p *Parser) typeRef() (string, error) {
 			}
 			continue
 		}
+		// A func type spells as reflect does: func(params) results,
+		// multiple results parenthesised. It ends the reference.
+		if p.keyword("func") {
+			if !p.consume('(') {
+				return "", fmt.Errorf("parse: expected '(' after func at offset %d", p.pos)
+			}
+			spec := "func("
+			first := true
+			for {
+				p.skipSpace()
+				if p.consume(')') {
+					break
+				}
+				if !first && !p.consume(',') {
+					return "", fmt.Errorf("parse: expected ',' or ')' in a func type at offset %d", p.pos)
+				}
+				variadic := p.consumeStr("...")
+				pt, err := p.typeRef()
+				if err != nil {
+					return "", err
+				}
+				if !first {
+					spec += ", "
+				}
+				if variadic {
+					spec += "..." + pt
+				} else {
+					spec += pt
+				}
+				first = false
+			}
+			spec += ")"
+			p.skipSpace()
+			if !p.nl && p.pos < len(p.src) {
+				switch p.src[p.pos] {
+				case '(':
+					p.pos++
+					p.nl = false
+					outs := ""
+					ofirst := true
+					for {
+						p.skipSpace()
+						if p.consume(')') {
+							break
+						}
+						if !ofirst && !p.consume(',') {
+							return "", fmt.Errorf("parse: expected ',' or ')' in func results at offset %d", p.pos)
+						}
+						rt, err := p.typeRef()
+						if err != nil {
+							return "", err
+						}
+						if !ofirst {
+							outs += ", "
+						}
+						outs += rt
+						ofirst = false
+					}
+					spec += " (" + outs + ")"
+				default:
+					if c := p.src[p.pos]; c == '_' || c == '*' || c == '[' || c == '<' ||
+						(c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') {
+						rt, err := p.typeRef()
+						if err != nil {
+							return "", err
+						}
+						spec += " " + rt
+					}
+				}
+			}
+			return prefix + spec, nil
+		}
+		// A map key is a full type reference of its own; the value is
+		// whatever the rest of the loop reads.
+		if p.keyword("map") {
+			if !p.consume('[') {
+				return "", fmt.Errorf("parse: expected '[' after map at offset %d", p.pos)
+			}
+			key, err := p.typeRef()
+			if err != nil {
+				return "", err
+			}
+			if !p.consume(']') {
+				return "", fmt.Errorf("parse: expected ']' after map key at offset %d", p.pos)
+			}
+			prefix += "map[" + key + "]"
+			continue
+		}
 		break
 	}
 	path, err := p.path()
@@ -53,7 +141,12 @@ func (p *Parser) typeRef() (string, error) {
 }
 
 // args reads the argument list up to and including the closing paren.
+// A composite literal is legal again inside the parens, whatever the
+// enclosing header said.
 func (p *Parser) args() ([]arg, error) {
+	saved := p.hdr
+	p.hdr = false
+	defer func() { p.hdr = saved }()
 	var out []arg
 	for {
 		p.skipSpace()
@@ -63,7 +156,7 @@ func (p *Parser) args() ([]arg, error) {
 		if len(out) > 0 && !p.consume(',') {
 			return nil, fmt.Errorf("parse: expected ',' or ')' at offset %d", p.pos)
 		}
-		a, err := p.arg()
+		a, err := p.exprArg()
 		if err != nil {
 			return nil, err
 		}
@@ -83,6 +176,8 @@ func (p *Parser) arg() (arg, error) {
 	switch {
 	case c == '"' || c == '\'':
 		return p.stringLit(c)
+	case c == '`':
+		return p.rawString()
 	case c == '<' && p.pos+1 < len(p.src) && p.src[p.pos+1] == '-':
 		p.pos += 2
 		p.nl = false
@@ -111,6 +206,14 @@ func (p *Parser) arg() (arg, error) {
 		}
 		return p.composite(path, true)
 	default:
+		litSave := p.pos
+		if p.keyword("func") {
+			p.skipSpace()
+			if p.pos < len(p.src) && p.src[p.pos] == '(' {
+				return p.funcLit(litSave)
+			}
+			p.pos = litSave
+		}
 		save := p.pos
 		path, err := p.path()
 		if err != nil {
@@ -124,7 +227,7 @@ func (p *Parser) arg() (arg, error) {
 			}
 			return arg{kind: argCall, sub: sub}, nil
 		}
-		if p.peek() == '{' {
+		if p.peek() == '{' && !p.hdr {
 			p.consume('{')
 			return p.composite(path, false)
 		}
@@ -171,7 +274,7 @@ func (p *Parser) composite(path []string, addr bool) (arg, error) {
 		} else {
 			p.pos = save
 		}
-		v, err := p.arg()
+		v, err := p.exprArg()
 		if err != nil {
 			return arg{}, err
 		}

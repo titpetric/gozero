@@ -26,6 +26,12 @@ type Compiler struct {
 	// types is the Runtime's registry, shared by reference so a Bind
 	// after a Compile is visible.
 	types map[string]reflect.Type
+	// packages is the Runtime's BindPackage table, shared the same
+	// way; a program's import block resolves against it.
+	packages map[string]*boundPackage
+	// adapters is the Runtime's BindAdapter table, shared the same
+	// way.
+	adapters map[reflect.Type]*adapterSpec
 }
 
 // Compile validates a program and builds the constructed func.

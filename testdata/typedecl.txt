@@ -1,0 +1,34 @@
+// typedecl: script-declared struct types built with reflect.StructOf:
+// composite literals, field reads and writes, forward references,
+// embedded data fields, and json output shaped by the declared tags.
+type Point struct {
+	X int64 `json:"x"`
+	Y int64 `json:"y"`
+}
+p := Point{X: 3, Y: 4};
+assert.Equal(tb, 3, p.X);
+p.X = 5;
+assert.Equal(tb, 5, p.X);
+
+q := &Point{X: 1};
+assert.Equal(tb, 1, q.X);
+
+var w Point;
+w.Y = 7;
+assert.Equal(tb, 7, w.Y);
+
+// A declaration can reference one written after it, as in Go, and an
+// embedded script struct promotes its data fields.
+type Wrap struct {
+	Base
+	M int64
+}
+type Base struct { N int64 }
+b := Wrap{Base: Base{N: 3}, M: 4};
+assert.Equal(tb, 3, b.N);
+assert.Equal(tb, 4, b.M);
+
+// The declared tags shape the encoder's output.
+buf := bytes.NewBufferString("");
+json.NewEncoder(buf).Encode(Point{X: 1, Y: 2});
+assert.Equal(tb, "{\"x\":1,\"y\":2}\n", buf.String());

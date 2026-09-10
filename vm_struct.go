@@ -14,9 +14,9 @@ import (
 // staying zero, matching how a call fills missing arguments. Each
 // value compiles against its field's type, so a numeric literal
 // converts the way it does at a call.
-func (c *Compiler) compileStructLit(slots map[string]int, env map[string]reflect.Type, a arg) (*vmArg, reflect.Type, error) {
+func (c *Compiler) compileStructLit(sc *cscope, a arg) (*vmArg, reflect.Type, error) {
 	name := joinPath(a.path)
-	t, ok := c.lookupType(name)
+	t, ok := c.resolveType(sc, name)
 	if !ok {
 		return nil, nil, fmt.Errorf("unknown type %q, register it with BindType", name)
 	}
@@ -54,7 +54,7 @@ func (c *Compiler) compileStructLit(slots map[string]int, env map[string]reflect
 				return nil, nil, fmt.Errorf("%s: field %s is unexported, use keyed elements", name, f.Name)
 			}
 		}
-		va, err := c.compileArg(slots, env, name, i, f.Type, e.val)
+		va, err := c.compileArg(sc, name, i, f.Type, e.val)
 		if err != nil {
 			// compileArg speaks in call terms and carries the compile:
 			// prefix the caller adds again; reduce it to the mismatch.

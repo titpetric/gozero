@@ -3,20 +3,11 @@ title: What if we implemented closures?
 date: "2026-09-09T00:00:00+02:00"
 ---
 
-A closure is the one extension the architecture is already shaped
-for. A compiled program is a Go closure - `CompiledFunc` is a func
-value built at runtime over the bindings - and a func literal inside a
-program is a smaller instance of the thing the compiler already
-builds. The machinery exists; the open questions are what capture
-does to the frame, and what closures make expressible that the
-design elsewhere declines.
+A closure is the one extension the architecture is already shaped for. A compiled program is a Go closure - `CompiledFunc` is a func value built at runtime over the bindings - and a func literal inside a program is a smaller instance of the thing the compiler already builds. The machinery exists; the open questions are what capture does to the frame, and what closures make expressible that the design elsewhere declines.
 
 ## How it would look
 
-A func literal whose body is the same straight-line statement list a
-program is, typed entirely by the parameter it fills - no return type
-or parameter type syntax needed when the target signature is known
-from the binding:
+A func literal whose body is the same straight-line statement list a program is, typed entirely by the parameter it fills - no return type or parameter type syntax needed when the target signature is known from the binding:
 
 ```go
 mux.HandleFunc("/health", func(w, r) {
@@ -28,81 +19,36 @@ slices.SortFunc(xs, func(a, b) {
 })
 ```
 
-The types of `w`, `r`, `a`, `b` come from `http.HandlerFunc` and
-`SortFunc`'s signature, the way every other type in the language
-comes from a binding. That is the rule the compiler already applies
-to arguments, extended to parameters; closures add no type surface.
+The types of `w`, `r`, `a`, `b` come from `http.HandlerFunc` and `SortFunc`'s signature, the way every other type in the language comes from a binding. That is the rule the compiler already applies to arguments, extended to parameters; closures add no type surface.
 
-Materialization has a stdlib answer on each tier. Generally,
-`reflect.MakeFunc` wraps the compiled body in a func of any
-signature; the body runs on the reflect evaluator with the incoming
-`[]reflect.Value` as its outer slots. On the direct tier, a signature
-in the shape table needs no MakeFunc at all: the compiler builds an
-ordinary Go closure of the shape type over the frame pointer and the
-body's `[]nodeE`, and `castFn` already proves a closure's funcval
-passes anywhere a func does. Out-of-table signatures bridge, exactly
-as out-of-table calls do now.
+Materialization has a stdlib answer on each tier. Generally, `reflect.MakeFunc` wraps the compiled body in a func of any signature; the body runs on the reflect evaluator with the incoming `[]reflect.Value` as its outer slots. On the direct tier, a signature in the shape table needs no MakeFunc at all: the compiler builds an ordinary Go closure of the shape type over the frame pointer and the body's `[]nodeE`, and `castFn` already proves a closure's funcval passes anywhere a func does. Out-of-table signatures bridge, exactly as out-of-table calls do now.
 
 ## What it costs the design
 
-**Capture forces reference semantics onto by-value slots.** Go
-closures capture variables, not values; a captured name must observe
-later writes. The frame gives that almost for free - capture the
-slot's address - but an address into the frame is precisely the
-aliasing that stepjit_arg.go only permits for write-once slots.
-Every captured slot is potentially written after capture, so capture
-is aliasing without the write-once proof.
+**Capture forces reference semantics onto by-value slots.** Go closures capture variables, not values; a captured name must observe later writes. The frame gives that almost for free - capture the slot's address - but an address into the frame is precisely the aliasing that stepjit_arg.go only permits for write-once slots. Every captured slot is potentially written after capture, so capture is aliasing without the write-once proof.
 
-**The frame escapes, permanently.** A closure handed to a binding may
-outlive the run: `HandleFunc` keeps it forever. The frame it points
-into must live as long, so frame pooling - already foreclosed by
-interface aliasing, per [overheads.md](../overheads.md) - goes from
-foreclosed to impossible, and a long-lived closure pins the whole
-frame including slots it never reads.
+**The frame escapes, permanently.** A closure handed to a binding may outlive the run: `HandleFunc` keeps it forever. The frame it points into must live as long, so frame pooling - already foreclosed by interface aliasing, per [overheads.md](../overheads.md) - goes from foreclosed to impossible, and a long-lived closure pins the whole frame including slots it never reads.
 
-**Construction moves into the run.** A compiled program is immutable
-and cached per source string; a closure closes over a per-run frame,
-so the func value must be built on every execution. One allocation
-per closure per run - the same cost the Go compiler emits for an
-escaping func literal, so parity survives, but the "compile once,
-zero construction at exec" story does not.
+**Construction moves into the run.** A compiled program is immutable and cached per source string; a closure closes over a per-run frame, so the func value must be built on every execution. One allocation per closure per run - the same cost the Go compiler emits for an escaping func literal, so parity survives, but the "compile once, zero construction at exec" story does not.
 
-**The grammar grows blocks and parameter lists.** Same nesting cost
-as [conditions.md](conditions.md), plus parameters. Inferring
-parameter types from the target keeps type syntax out, at the price
-of rejecting a func literal in any position whose expected type is
-unknown - which the language can afford, since every position is a
-binding's parameter.
+**The grammar grows blocks and parameter lists.** Same nesting cost as [conditions.md](conditions.md), plus parameters. Inferring parameter types from the target keeps type syntax out, at the price of rejecting a func literal in any position whose expected type is unknown - which the language can afford, since every position is a binding's parameter.
 
-**The equivalence suite doubles.** Both tiers must agree not only on
-results but on what a callee observes when it calls the closure late,
-concurrently, or more than once. Re-entrancy is new: a closure
-running while its defining program still runs shares the frame with
-it.
+**The equivalence suite doubles.** Both tiers must agree not only on results but on what a callee observes when it calls the closure late, concurrently, or more than once. Re-entrancy is new: a closure running while its defining program still runs shares the frame with it.
 
 ## Userland control flow
 
-Closures make the other three features expressible without further
-syntax:
+Closures make the other three features expressible without further syntax:
 
 ```go
 iff(ok, func() { w.WriteHeader(403) })
 each(req.Cookies(), func(c) { jar.SetCookie(c) })
 ```
 
-That is Tcl: control flow as library calls, evaluation order and
-branch semantics defined by whatever the binding does, different per
-host. It is the userland control flow this design rejects in
-[conditions.md](conditions.md) and [loops.md](loops.md), and closures
-would make it available whether or not it is endorsed. The pattern
-comes with the feature; the binding set is the only control over it,
-and a host that binds `iff` has chosen it.
+That is Tcl: control flow as library calls, evaluation order and branch semantics defined by whatever the binding does, different per host. It is the userland control flow this design rejects in [conditions.md](conditions.md) and [loops.md](loops.md), and closures would make it available whether or not it is endorsed. The pattern comes with the feature; the binding set is the only control over it, and a host that binds `iff` has chosen it.
 
 ## Alternatives
 
-**Programs as the closure, host does the plumbing.** Today's answer.
-`Compile` returns a func; the host wraps it into whatever shape a
-callee wants:
+**Programs as the closure, host does the plumbing.** Today's answer. `Compile` returns a func; the host wraps it into whatever shape a callee wants:
 
 ```go
 fn, _ := rt.Compile(src)
@@ -111,46 +57,22 @@ mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 })
 ```
 
-The handler is imperative and it is a gozero program; only the
-adapter is Go. Cons:
+The handler is imperative and it is a gozero program; only the adapter is Go. Cons:
 
-- One program per func value: a program cannot define two handlers,
-  or hand a comparator to a sort it also calls.
-- Nothing is captured: the closure's inputs travel through the stack
-  map by name, dynamically checked, instead of statically typed
-  capture.
-- The adapter is host code per signature, though `reflect.MakeFunc`
-  could generalize it as a `BindProgram(sig, src)` helper without any
-  language change - the closure feature minus the syntax.
+- One program per func value: a program cannot define two handlers, or hand a comparator to a sort it also calls.
+- Nothing is captured: the closure's inputs travel through the stack map by name, dynamically checked, instead of statically typed capture.
+- The adapter is host code per signature, though `reflect.MakeFunc` could generalize it as a `BindProgram(sig, src)` helper without any language change - the closure feature minus the syntax.
 
-**Named sub-programs, no capture.** A `func name(params)` form
-compiled like a top-level program, capturing nothing, values passed
-as arguments only. Removes the frame-escape and aliasing costs
-entirely. Cons: capture is most of why closures are wanted -
-`next.ServeHTTP` inside a middleware body wants `next` from the
-environment - and a capture-free func is just a second program with
-a calling convention.
+**Named sub-programs, no capture.** A `func name(params)` form compiled like a top-level program, capturing nothing, values passed as arguments only. Removes the frame-escape and aliasing costs entirely. Cons: capture is most of why closures are wanted - `next.ServeHTTP` inside a middleware body wants `next` from the environment - and a capture-free func is just a second program with a calling convention.
 
 ## In other imperative settings
 
-Imperative Go leans on closures exactly where this language wants to
-go: `http.HandlerFunc`, middleware as `func(next Handler) Handler`,
-`sort.Slice`, `t.Cleanup`, range-over-func bodies. testify is the
-counterexample: assertion-heavy test code needs no closures, and the
-fixture suite runs without them today. Handlers stay imperative
-through the adapter pattern above. Middleware is the case that needs
-full capture: its shape is a function that receives a continuation,
-and guard bindings cover the abort half only. Holding `next` and
-deciding when to call it takes a closure; the branch was never the
-missing part.
+Imperative Go leans on closures exactly where this language wants to go: `http.HandlerFunc`, middleware as `func(next Handler) Handler`, `sort.Slice`, `t.Cleanup`, range-over-func bodies. testify is the counterexample: assertion-heavy test code needs no closures, and the fixture suite runs without them today. Handlers stay imperative through the adapter pattern above. Middleware is the case that needs full capture: its shape is a function that receives a continuation, and guard bindings cover the abort half only. Holding `next` and deciding when to call it takes a closure; the branch was never the missing part.
 
 ## Verdict
 
-Closures are the best-aligned of the four extensions: no new type
-surface, stdlib materialization on both tiers, and they answer the
-middleware question directly. They cost capture-as-aliasing, an
-escaping frame, per-run construction, block grammar - and they make
-userland control flow expressible. The capture-free alternatives
-(`BindProgram`-style adapters) deliver most of the value as host API
-rather than language, and are the recommended first step if the
-pressure becomes real.
+Closures are the best-aligned of the four extensions: no new type surface, stdlib materialization on both tiers, and they answer the middleware question directly. They cost capture-as-aliasing, an escaping frame, per-run construction, block grammar - and they make userland control flow expressible. The capture-free alternatives (`BindProgram`-style adapters) deliver most of the value as host API rather than language, and are the recommended first step if the pressure becomes real.
+
+## Status
+
+Superseded 2026-09-10. The verdict above declined closures for the statement-only language; the package extension adopts them by owner decision, and the adopted form is in [packages.md](../packages.md). The cost analysis above still binds the implementation.

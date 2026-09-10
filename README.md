@@ -1,10 +1,6 @@
 # gozero
 
-gozero runs imperative programs written in a minimal statement language
-against bound Go functions, with type safety taken from the bindings'
-own signatures and per-call overhead measured in tens of nanoseconds.
-It began as an experiment in call overheads and grew a direct-call JIT,
-a reflect fallback, type discovery and a hot fixture test suite.
+gozero runs imperative programs written in a minimal statement language against bound Go functions, with type safety taken from the bindings' own signatures and per-call overhead measured in tens of nanoseconds. It began as an experiment in call overheads and grew a direct-call JIT, a reflect fallback, type discovery and a hot fixture test suite.
 
 ```go
 rt := gozero.NewRuntime()
@@ -20,11 +16,7 @@ err = fn.Scan(&dest, nil)
 
 ## Syntax
 
-A script is the Go you would have written, minus what the runtime
-does implicitly: a trailing error result ends the program instead of
-being named, a `context.Context` parameter fills from the execution
-context, and a trailing argument left out is the zero value. The
-full surface is in [docs/syntax.md](docs/syntax.md).
+A script is the Go you would have written, minus what the runtime does implicitly: a trailing error result ends the program instead of being named, a `context.Context` parameter fills from the execution context, and a trailing argument left out is the zero value. The full surface is in [docs/syntax.md](docs/syntax.md).
 
 <table>
 <tr>
@@ -126,9 +118,7 @@ assert.Equal(tb, "/", req.URL.Path)
 </tr>
 </table>
 
-The design as it stands is in [docs/DESIGN.md](docs/DESIGN.md). The
-chapters below are the investigations that got it here, in the order
-they happened; each ends with what it taught.
+The design as it stands is in [docs/DESIGN.md](docs/DESIGN.md). The chapters below are the investigations that got it here, in the order they happened; each ends with what it taught.
 
 | Content                                                   | Date       |
 |-----------------------------------------------------------|------------|

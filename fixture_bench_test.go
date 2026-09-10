@@ -158,6 +158,150 @@ func (f *testFixtures) testStructs(tb testing.TB) {
 	assertEqual(tb, "https://h/m", m.String(), "")
 }
 
+func (f *testFixtures) testErrs(tb testing.TB) {
+	u, err := url.Parse("https://example.com/x")
+	assertTrue(tb, err == nil, "")
+	assertEqual(tb, "/x", u.Path, "")
+
+	req, rerr := http.NewRequest("bad method", "/", nil)
+	assertTrue(tb, rerr != nil, "")
+	assertTrue(tb, req == nil, "")
+
+	ok := "fallback"
+	if rerr != nil {
+		ok = "handled"
+	}
+	assertEqual(tb, "handled", ok, "")
+
+	_, perr := url.ParseQuery("a=%zz")
+	assertTrue(tb, perr != nil, "")
+
+	q, _ := url.ParseQuery("a=1")
+	assertEqual(tb, "1", q.Get("a"), "")
+}
+
+func (f *testFixtures) testExprs(tb testing.TB) {
+	var a, b int64 = 6, 3
+	assertEqual(tb, int64(9), a+b, "")
+	assertEqual(tb, int64(18), a*b, "")
+	assertEqual(tb, int64(2), a/b, "")
+	assertEqual(tb, int64(0), a%b, "")
+	assertEqual(tb, int64(4), a&^b, "")
+	assertEqual(tb, int64(24), a<<2, "")
+	assertTrue(tb, a > b && b > 0, "")
+	assertTrue(tb, a < b || a > 0, "")
+	assertTrue(tb, !(a == b), "")
+
+	s := "go" + "zero"
+	assertEqual(tb, "gozero", s, "")
+	assertTrue(tb, len(s) == 6, "")
+	assertTrue(tb, "a" < "b", "")
+
+	parts := strings.Fields("x y z")
+	assertTrue(tb, len(parts) == 3, "")
+	assertEqual(tb, "y", parts[1], "")
+	assertEqual(tb, "z", parts[len(parts)-1], "")
+
+	u, err := url.Parse("https://example.com/p")
+	if err != nil {
+		tb.Fatal(err)
+	}
+	assertTrue(tb, u != nil, "")
+}
+
+func (f *testFixtures) testFlow(tb testing.TB) {
+	var x int64 = 1
+	if x > 5 {
+		x = 2
+	} else if x > 0 {
+		x = 4
+	} else {
+		x = 3
+	}
+	assertEqual(tb, int64(4), x, "")
+
+	var sum int64
+	for i := int64(0); i < 5; i++ {
+		sum = sum + i
+	}
+	assertEqual(tb, int64(10), sum, "")
+
+	var n int64
+	for n < 3 {
+		n++
+	}
+	assertEqual(tb, int64(3), n, "")
+
+	var hits int64
+	for {
+		hits++
+		if hits == 4 {
+			break
+		}
+	}
+	assertEqual(tb, int64(4), hits, "")
+
+	var odd int64
+	for i := int64(0); i < 10; i++ {
+		if i%2 == 0 {
+			continue
+		}
+		odd = odd + i
+	}
+	assertEqual(tb, int64(25), odd, "")
+
+	parts := strings.Fields("a b c")
+	joined := ""
+	for _, w := range parts {
+		joined = joined + w
+	}
+	assertEqual(tb, "abc", joined, "")
+
+	var outer int64 = 7
+	if outer > 0 {
+		outer := int64(1)
+		outer++
+		_ = outer
+	}
+	assertEqual(tb, int64(7), outer, "")
+
+	defer assertTrue(tb, true, "deferred assertion ran")
+}
+
+func (f *testFixtures) testTypedecl(tb testing.TB) {
+	type point struct {
+		X int64 `json:"x"`
+		Y int64 `json:"y"`
+	}
+	type base struct{ N int64 }
+	type wrap struct {
+		base
+		M int64
+	}
+
+	p := point{X: 3, Y: 4}
+	assertEqual(tb, int64(3), p.X, "")
+	p.X = 5
+	assertEqual(tb, int64(5), p.X, "")
+
+	q := &point{X: 1}
+	assertEqual(tb, int64(1), q.X, "")
+
+	var w point
+	w.Y = 7
+	assertEqual(tb, int64(7), w.Y, "")
+
+	b := wrap{base: base{N: 3}, M: 4}
+	assertEqual(tb, int64(3), b.N, "")
+	assertEqual(tb, int64(4), b.M, "")
+
+	buf := bytesNewBufferString("")
+	if err := json.NewEncoder(buf).Encode(point{X: 1, Y: 2}); err != nil {
+		tb.Fatal(err)
+	}
+	assertEqual(tb, "{\"x\":1,\"y\":2}\n", buf.String(), "")
+}
+
 func (f *testFixtures) testVariadic(tb testing.TB) {
 	parts := strings.Fields("a b c")
 	joined := path.Join(parts...)
@@ -188,11 +332,15 @@ func (f *testFixtures) testChannels(tb testing.TB) {
 // shape the cache exists for.
 func BenchmarkFixtures(b *testing.B) {
 	native := map[string]func(*testFixtures, testing.TB){
+		"errs":     (*testFixtures).testErrs,
+		"exprs":    (*testFixtures).testExprs,
+		"flow":     (*testFixtures).testFlow,
 		"http":     (*testFixtures).testHTTP,
 		"url":      (*testFixtures).testURL,
 		"json":     (*testFixtures).testJSON,
 		"fmt":      (*testFixtures).testFmt,
 		"structs":  (*testFixtures).testStructs,
+		"typedecl": (*testFixtures).testTypedecl,
 		"types":    (*testFixtures).testTypes,
 		"variadic": (*testFixtures).testVariadic,
 		"channels": (*testFixtures).testChannels,

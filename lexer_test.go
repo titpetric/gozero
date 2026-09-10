@@ -200,8 +200,11 @@ func TestAssignNameToName(t *testing.T) {
 
 // TestParseAllocBudget stops the parse and compile cost creeping
 // silently: it moved 1088 to 1256 to 1416 B/op across three grammar
-// expansions with nothing watching. Measured 29 allocations; the
-// ceiling is that plus headroom for one small feature, not a target.
+// expansions with nothing watching. Measured 29 allocations for the
+// statement language and 39 once expressions, control flow and
+// functions landed, the larger IR nodes and the per-compile unit
+// state; the ceiling is the measurement plus headroom for one small
+// feature, not a target.
 func TestParseAllocBudget(t *testing.T) {
 	rt, _ := litRuntime(t)
 	const src = `return http.NewRequest("GET", url);`
@@ -211,8 +214,8 @@ func TestParseAllocBudget(t *testing.T) {
 		}
 	})
 	t.Logf("parse+compile allocations/run = %.0f", n)
-	if n > 32 {
-		t.Errorf("parse+compile allocates %.0f/run, budget 32", n)
+	if n > 44 {
+		t.Errorf("parse+compile allocates %.0f/run, budget 44", n)
 	}
 }
 
@@ -275,5 +278,89 @@ func TestStatementsAcrossLines(t *testing.T) {
 	// next line is a statement of its own, which a name cannot be.
 	if _, err := rt.Compile("u := url.Parse(\"/nl\")\nreturn\n\tu\n"); err == nil {
 		t.Error("expected the stranded name after a bare return to fail")
+	}
+}
+
+// TestRawStrings covers backquoted literals: no escapes, spanning
+// lines, carriage returns discarded, and the unterminated error.
+func TestRawStrings(t *testing.T) {
+	rt, seen := litRuntime(t)
+	for _, tc := range []struct{ src, want string }{
+		{"wantAny(`a\\nb`);", `a\nb`},
+		{"wantAny(`multi\nline`);", "multi\nline"},
+		{"wantAny(`cr\r\nline`);", "cr\nline"},
+	} {
+		*seen = nil
+		fn, err := rt.Compile(tc.src)
+		if err != nil {
+			t.Errorf("%q: %v", tc.src, err)
+			continue
+		}
+		if _, err := fn.Exec[any](nil); err != nil {
+			t.Errorf("%q: %v", tc.src, err)
+			continue
+		}
+		if *seen != tc.want {
+			t.Errorf("%q: callee saw %q, want %q", tc.src, *seen, tc.want)
+		}
+	}
+	if _, err := rt.Compile("wantAny(`no end);"); err == nil || !strings.Contains(err.Error(), "unterminated raw string") {
+		t.Errorf("unterminated raw string: err = %v", err)
+	}
+}
+
+// TestBlockComments pins the block comment rules: a single-line
+// comment is a space, one containing a newline ends a statement the
+// way a newline does, and an unterminated comment is an error.
+func TestBlockComments(t *testing.T) {
+	rt, seen := litRuntime(t)
+	for _, tc := range []struct {
+		src  string
+		want any
+	}{
+		{"wantAny(/* c */ true);", true},
+		{"/* leading */ wantAny(true);", true},
+		{"wantAny(true) /* trailing */", true},
+		{"wantAny(/* a */ 5 /* b */);", int64(5)},
+	} {
+		*seen = nil
+		fn, err := rt.Compile(tc.src)
+		if err != nil {
+			t.Errorf("%q: %v", tc.src, err)
+			continue
+		}
+		if _, err := fn.Exec[any](nil); err != nil {
+			t.Errorf("%q: %v", tc.src, err)
+			continue
+		}
+		if *seen != tc.want {
+			t.Errorf("%q: callee saw %v, want %v", tc.src, *seen, tc.want)
+		}
+	}
+
+	// A comment containing a newline terminates the statement before
+	// it; the same text on one line does not.
+	if fn, err := rt.Compile("u := url.Parse(\"/bc\") /* x\ny */ return u"); err != nil {
+		t.Errorf("multi-line comment as terminator: %v", err)
+	} else if u, err := fn.Exec[*url.URL](nil); err != nil || u.Path != "/bc" {
+		t.Errorf("multi-line comment: got %v, %v", u, err)
+	}
+	if _, err := rt.Compile("u := url.Parse(\"/bc\") /* x */ return u"); err == nil {
+		t.Error("single-line comment must not terminate a statement")
+	}
+
+	if _, err := rt.Compile("wantAny(true)\n/* no end"); err == nil || !strings.Contains(err.Error(), "unterminated comment") {
+		t.Errorf("unterminated comment: err = %v", err)
+	}
+}
+
+// TestErrAt pins the lazy line:column computation.
+func TestErrAt(t *testing.T) {
+	p := &Parser{src: "ab\ncd"}
+	if got := p.errAt(4, "boom %d", 7).Error(); got != "parse: boom 7 at line 2:2" {
+		t.Errorf("errAt = %q", got)
+	}
+	if got := p.errAt(1, "eol").Error(); got != "parse: eol at line 1:2" {
+		t.Errorf("errAt = %q", got)
 	}
 }

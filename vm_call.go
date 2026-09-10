@@ -29,7 +29,7 @@ import (
 // compileExpr compiles a call and the methods chained onto it,
 // returning the outermost call and the static type of its first
 // non-error result.
-func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type, e *callExpr) (*vmCall, reflect.Type, error) {
+func (c *Compiler) compileExpr(sc *cscope, e *callExpr) (*vmCall, reflect.Type, error) {
 	var (
 		curr     *vmCall
 		currType reflect.Type
@@ -40,7 +40,7 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 	// http.NewRequest is one name while req.Cookies is a method on req.
 	base := -1
 	for i := len(e.path); i >= 1; i-- {
-		if _, ok := c.bindings[joinPath(e.path[:i])]; ok {
+		if _, ok := sc.bindings[joinPath(e.path[:i])]; ok {
 			base = i
 			break
 		}
@@ -50,15 +50,43 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 	switch {
 	case base >= 0:
 		methods = e.path[base:]
+	case len(e.path) == 1 && sc.funcs[e.path[0]] != nil && func() bool { _, shadowed := sc.slot(e.path[0]); return !shadowed }():
+		fn := sc.funcs[e.path[0]]
+		call, err := c.compileScriptCall(sc, fn, e.path[0], nil, e.args)
+		if err != nil {
+			return nil, nil, err
+		}
+		curr = call
+		if call.nres > 0 {
+			currType = fn.results[0]
+		}
+		if len(e.chain) == 0 {
+			return curr, currType, nil
+		}
+		methods = nil
 	default:
-		slot, ok := slots[e.path[0]]
+		slot, ok := sc.slot(e.path[0])
 		if !ok {
+			// A known import with an unknown symbol errors the way Go
+			// spells it; anything else keeps the binding message.
+			if sc.pkgs != nil && sc.pkgs[e.path[0]] != nil && len(e.path) > 1 {
+				return nil, nil, fmt.Errorf("compile: undefined: %s", joinPath(e.path[:2]))
+			}
 			return nil, nil, fmt.Errorf("compile: unknown binding %q", joinPath(e.path))
 		}
-		recv = &vmArg{kind: vaSlot, slot: slot, typ: env[e.path[0]], iface: -1}
-		currType = env[e.path[0]]
+		recv = &vmArg{kind: vaSlot, slot: slot, typ: sc.typeOf(e.path[0]), iface: -1}
+		currType = sc.typeOf(e.path[0])
 		methods = e.path[1:]
 		if len(methods) == 0 && len(e.chain) == 0 {
+			// A func-typed value calls through its dynamic value; the
+			// declared signature checks the arguments.
+			if currType != nil && currType.Kind() == reflect.Func {
+				call, err := c.compileDynCall(sc, recv, currType, e.path[0], e.args)
+				if err != nil {
+					return nil, nil, err
+				}
+				return call, c.resultType(call, 0), nil
+			}
 			return nil, nil, fmt.Errorf("compile: %s is a value, not a call", e.path[0])
 		}
 	}
@@ -82,11 +110,30 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 		if len(methods) == 0 {
 			args = e.args
 		}
-		call, err := c.compileCall(slots, env, c.bindings[name].rv, name, nil, args)
+		call, err := c.compileCall(sc, sc.bindings[name].rv, name, nil, args)
 		if err != nil {
 			return nil, nil, err
 		}
 		curr, currType = call, c.resultType(call, 0)
+	}
+
+	// A base declared as one of the program's interfaces dispatches
+	// its first method call on the dynamic type.
+	if base < 0 && recv != nil && recv.kind == vaSlot && sc.ifaceOf != nil {
+		if tag := sc.ifaceOf[recv.slot]; tag != nil && len(links) > 0 {
+			l := links[0]
+			call, err := c.compileIfaceCall(sc, tag, l.name, recv, l.args)
+			if err != nil {
+				return nil, nil, err
+			}
+			curr = call
+			currType = nil
+			if call.nres > 0 {
+				currType = call.dispatch.method.results[0]
+			}
+			links = links[1:]
+			recv = nil
+		}
 	}
 
 	for _, l := range links {
@@ -95,6 +142,29 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 		}
 		if currType == nil {
 			return nil, nil, fmt.Errorf("compile: cannot call %s on a value of unknown type", l.name)
+		}
+		// A method the program declared on one of its own types wins
+		// over the host method set, which a StructOf type cannot
+		// carry anyway.
+		if fn := scriptMethodOf(sc, currType, l.name); fn != nil {
+			mrecv := recv
+			if fn.recvT.Kind() == reflect.Pointer && currType.Kind() != reflect.Pointer {
+				arecv, err := addrOf(currType, recv)
+				if err != nil {
+					return nil, nil, fmt.Errorf("compile: cannot call pointer method %s on %s: %w", l.name, sc.typeName(currType), err)
+				}
+				mrecv = arecv
+			}
+			call, err := c.compileScriptCall(sc, fn, sc.typeName(currType)+"."+l.name, mrecv, l.args)
+			if err != nil {
+				return nil, nil, err
+			}
+			curr = call
+			currType = nil
+			if call.nres > 0 {
+				currType = fn.results[0]
+			}
+			continue
 		}
 		if m, ok := currType.MethodByName(l.name); ok {
 			fn := m.Func
@@ -105,7 +175,7 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 				// ctx.Err() compiles like any method call.
 				fn = ifaceMethodFunc(currType, m)
 			}
-			call, err := c.compileCall(slots, env, fn, currType.String()+"."+l.name, recv, l.args)
+			call, err := c.compileCall(sc, fn, currType.String()+"."+l.name, recv, l.args)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -123,7 +193,7 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 				if err != nil {
 					return nil, nil, fmt.Errorf("compile: cannot call pointer method %s on %s: %w", l.name, currType, err)
 				}
-				call, err := c.compileCall(slots, env, m.Func, currType.String()+"."+l.name, arecv, l.args)
+				call, err := c.compileCall(sc, m.Func, currType.String()+"."+l.name, arecv, l.args)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -151,61 +221,10 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 	return curr, currType, nil
 }
 
-// addrOf turns a receiver into the address of the value it names. Only
-// a name or a field chain rooted in one qualifies: those are variables
-// and have an address, where a call's result does not, which is Go's
-// addressability rule for pointer-receiver calls.
-func addrOf(t reflect.Type, a *vmArg) (*vmArg, error) {
-	root := a
-	for root.kind == vaField {
-		root = root.src
-	}
-	if root.kind != vaSlot {
-		return nil, fmt.Errorf("the value is not addressable, bind it to a name first")
-	}
-	// Built fresh rather than copied: vmArg carries an atomic cache
-	// that must not be copied.
-	return &vmArg{
-		kind: a.kind, slot: a.slot, name: a.name,
-		src: a.src, index: a.index, deref: a.deref,
-		addrOf: true, typ: reflect.PointerTo(t), iface: -1,
-	}, nil
-}
-
-// ifaceMethodFunc builds a callable func value for a method of an
-// interface type. MethodByName on an interface returns the signature
-// without a receiver and a zero Func, so the call site gets a
-// synthesized func whose first parameter is the interface and whose
-// body dispatches on the dynamic value, exactly what the compiled
-// method call on a concrete receiver gets from Method.Func. A nil
-// receiver panics inside reflect the way a nil interface method call
-// panics in Go, and arrives as *PanicError through the guard.
-func ifaceMethodFunc(t reflect.Type, m reflect.Method) reflect.Value {
-	mt := m.Type
-	in := make([]reflect.Type, 0, mt.NumIn()+1)
-	in = append(in, t)
-	for i := 0; i < mt.NumIn(); i++ {
-		in = append(in, mt.In(i))
-	}
-	out := make([]reflect.Type, 0, mt.NumOut())
-	for i := 0; i < mt.NumOut(); i++ {
-		out = append(out, mt.Out(i))
-	}
-	idx := m.Index
-	variadic := mt.IsVariadic()
-	return reflect.MakeFunc(reflect.FuncOf(in, out, variadic), func(args []reflect.Value) []reflect.Value {
-		if variadic {
-			// MakeFunc hands the variadic tail packed as a slice.
-			return args[0].Method(idx).CallSlice(args[1:])
-		}
-		return args[0].Method(idx).Call(args[1:])
-	})
-}
-
 // compileCall validates one call against a func value. recv is the
 // receiver for a method call and fills parameter 0; src holds the
 // arguments written in the source, which fill the parameters after it.
-func (c *Compiler) compileCall(slots map[string]int, env map[string]reflect.Type, fn reflect.Value, name string, recv *vmArg, src []arg) (*vmCall, error) {
+func (c *Compiler) compileCall(sc *cscope, fn reflect.Value, name string, recv *vmArg, src []arg) (*vmCall, error) {
 	ft := fn.Type()
 
 	call := &vmCall{fn: fn, name: name, errIdx: -1}
@@ -228,7 +247,7 @@ func (c *Compiler) compileCall(slots map[string]int, env map[string]reflect.Type
 	j := 0
 	for i := len(call.args); i < fixed; i++ {
 		pt := ft.In(i)
-		if pt == ctxType && !(j < len(src) && c.staticType(env, src[j]) == ctxType) {
+		if pt == ctxType && !(j < len(src) && c.staticType(sc, src[j]) == ctxType) {
 			call.args = append(call.args, &vmArg{kind: vaCtx, typ: pt, iface: -1})
 			continue
 		}
@@ -241,7 +260,7 @@ func (c *Compiler) compileCall(slots map[string]int, env map[string]reflect.Type
 		if src[j].spread {
 			return nil, fmt.Errorf("compile: %s argument %d: ... spreads only into a variadic parameter", name, j+1)
 		}
-		a, err := c.compileArg(slots, env, name, j, pt, src[j])
+		a, err := c.compileArg(sc, name, j, pt, src[j])
 		if err != nil {
 			return nil, err
 		}
@@ -259,7 +278,7 @@ func (c *Compiler) compileCall(slots map[string]int, env map[string]reflect.Type
 		// f(xs...): the slice is passed whole and the invocation goes
 		// through CallSlice.
 		st := ft.In(fixed)
-		a, err := c.compileArg(slots, env, name, j, st, unspread(rest[0]))
+		a, err := c.compileArg(sc, name, j, st, unspread(rest[0]))
 		if err != nil {
 			return nil, err
 		}
@@ -274,7 +293,7 @@ func (c *Compiler) compileCall(slots map[string]int, env map[string]reflect.Type
 			if a.spread {
 				return nil, fmt.Errorf("compile: %s: ... must be the only variadic argument", name)
 			}
-			va, err := c.compileArg(slots, env, name, j, et, a)
+			va, err := c.compileArg(sc, name, j, et, a)
 			if err != nil {
 				return nil, err
 			}
@@ -295,7 +314,7 @@ func (c *Compiler) compileCall(slots map[string]int, env map[string]reflect.Type
 	return call, nil
 }
 
-func (c *Compiler) compileArg(slots map[string]int, env map[string]reflect.Type, name string, pos int, pt reflect.Type, a arg) (*vmArg, error) {
+func (c *Compiler) compileArg(sc *cscope, name string, pos int, pt reflect.Type, a arg) (*vmArg, error) {
 	var v reflect.Value
 	switch a.kind {
 	case argBool:
@@ -314,10 +333,59 @@ func (c *Compiler) compileArg(slots map[string]int, env map[string]reflect.Type,
 			return nil, fmt.Errorf("compile: %s argument %d: %w", name, pos+1, err)
 		}
 		v = lit
-	case argCall:
-		sub, st, err := c.compileExpr(slots, env, a.sub)
+	case argFuncLit:
+		node, vt, err := sc.pc.compileFuncLit(sc, a, pt)
 		if err != nil {
 			return nil, err
+		}
+		if !vt.AssignableTo(pt) {
+			return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, sc.typeName(vt), sc.typeName(pt))
+		}
+		return node, nil
+	case argBinary, argUnary, argIndex:
+		node, vt, err := c.compileValueExpr(sc, a, pt)
+		if err != nil {
+			return nil, err
+		}
+		if !vt.AssignableTo(pt) {
+			return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, sc.typeName(vt), sc.typeName(pt))
+		}
+		return node, nil
+	case argCall:
+		if ct, ok := c.funcConversion(sc, a.sub); ok {
+			node, err := c.compileArg(sc, name, pos, ct, a.sub.args[0])
+			if err != nil {
+				return nil, err
+			}
+			if !ct.AssignableTo(pt) {
+				return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, sc.typeName(ct), sc.typeName(pt))
+			}
+			node.typ = ct
+			return node, nil
+		}
+		if c.isLenCall(sc, a.sub) {
+			node, vt, err := c.compileLen(sc, a.sub)
+			if err != nil {
+				return nil, err
+			}
+			if !vt.AssignableTo(pt) {
+				return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, vt, pt)
+			}
+			return node, nil
+		}
+		sub, st, err := c.compileExpr(sc, a.sub)
+		if err != nil {
+			return nil, err
+		}
+		if sub.nres == 0 && pt == errType && sub.errIdx >= 0 && !sub.bindErr {
+			// The position wants an error and the callee returns only
+			// its trailing one: the error is the value, not the
+			// implicit check, which is how errors.New flows into a
+			// return list.
+			sub.bindErr = true
+			sub.errIdx = -1
+			sub.nres = 1
+			st = errType
 		}
 		if sub.nres == 0 {
 			return nil, fmt.Errorf("compile: %s argument %d: %s returns no value", name, pos+1, sub.name)
@@ -327,12 +395,12 @@ func (c *Compiler) compileArg(slots map[string]int, env map[string]reflect.Type,
 		}
 		return &vmArg{kind: vaCall, sub: sub, typ: pt, iface: -1}, nil
 	case argPath:
-		slot, ok := slots[a.path[0]]
+		slot, ok := sc.slot(a.path[0])
 		if !ok {
 			return nil, fmt.Errorf("compile: %s argument %d: %s is not a name bound by the program, so its fields are unknown", name, pos+1, a.path[0])
 		}
-		cur := &vmArg{kind: vaSlot, slot: slot, name: a.path[0], typ: env[a.path[0]], iface: -1}
-		curType := env[a.path[0]]
+		cur := &vmArg{kind: vaSlot, slot: slot, name: a.path[0], typ: sc.typeOf(a.path[0]), iface: -1}
+		curType := sc.typeOf(a.path[0])
 		for _, seg := range a.path[1:] {
 			f, deref, ok := fieldOf(curType, seg)
 			if !ok {
@@ -348,12 +416,18 @@ func (c *Compiler) compileArg(slots map[string]int, env map[string]reflect.Type,
 		return cur, nil
 
 	case argStruct:
-		sa, st, err := c.compileStructLit(slots, env, a)
+		sa, st, err := c.compileStructLit(sc, a)
 		if err != nil {
 			return nil, fmt.Errorf("compile: %s argument %d: %w", name, pos+1, err)
 		}
 		if !st.AssignableTo(pt) {
-			return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, st, pt)
+			if node, ok, aerr := c.adaptScript(sc, sa, st, pt); ok {
+				if aerr != nil {
+					return nil, aerr
+				}
+				return node, nil
+			}
+			return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, sc.typeName(st), sc.typeName(pt))
 		}
 		sa.typ = pt
 		return sa, nil
@@ -362,9 +436,16 @@ func (c *Compiler) compileArg(slots map[string]int, env map[string]reflect.Type,
 		if a.str == "dest" {
 			return &vmArg{kind: vaDest, name: "dest", typ: pt, iface: -1}, nil
 		}
-		if slot, ok := slots[a.str]; ok {
-			st := env[a.str]
+		if slot, ok := sc.slot(a.str); ok {
+			st := sc.typeOf(a.str)
 			if st != nil && !st.AssignableTo(pt) {
+				node := &vmArg{kind: vaSlot, slot: slot, name: a.str, typ: st, iface: -1}
+				if anode, isAdapt, aerr := c.adaptScript(sc, node, st, pt); isAdapt {
+					if aerr != nil {
+						return nil, aerr
+					}
+					return anode, nil
+				}
 				return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, st, pt)
 			}
 			return &vmArg{kind: vaSlot, slot: slot, name: a.str, typ: pt, iface: -1}, nil
