@@ -1,0 +1,57 @@
+// flow: if/else chains, the three for forms, range, break, continue,
+// block scoping and defer.
+x := 1;
+if x > 5 {
+	x = 2
+} else if x > 0 {
+	x = 4
+} else {
+	x = 3
+}
+assert.Equal(tb, 4, x);
+
+sum := 0;
+for i := 0; i < 5; i++ {
+	sum = sum + i
+}
+assert.Equal(tb, 10, sum);
+
+n := 0;
+for n < 3 {
+	n++
+}
+assert.Equal(tb, 3, n);
+
+hits := 0;
+for {
+	hits++
+	if hits == 4 {
+		break
+	}
+}
+assert.Equal(tb, 4, hits);
+
+odd := 0;
+for i := 0; i < 10; i++ {
+	if i%2 == 0 {
+		continue
+	}
+	odd = odd + i
+}
+assert.Equal(tb, 25, odd);
+
+parts := strings.Fields("a b c");
+joined := "";
+for _, w := range parts {
+	joined = joined + w
+}
+assert.Equal(tb, "abc", joined);
+
+outer := 7;
+if outer > 0 {
+	outer := 1
+	outer++
+}
+assert.Equal(tb, 7, outer);
+
+defer assert.True(tb, true, "deferred assertion ran");

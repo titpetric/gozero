@@ -133,7 +133,7 @@ func (c *Compiler) useType(sc *cscope, e *callExpr, name string) reflect.Type {
 // context rule means auto-fill.
 func (c *Compiler) staticType(sc *cscope, a arg) reflect.Type {
 	if a.kind == argVar {
-		return sc.env[a.str]
+		return sc.typeOf(a.str)
 	}
 	return nil
 }

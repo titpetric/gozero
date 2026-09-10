@@ -116,6 +116,11 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 	stmts := make([]plannedStmt, 0, len(p.stmts))
 	for i := range p.stmts {
 		s := &p.stmts[i]
+		if s.ifs != nil || s.loop != nil || s.rng != nil || s.brk || s.cont || s.init != nil || s.deferCall != nil {
+			// Control flow runs on the reflect tier until the flow
+			// nodes land.
+			return nil, fmt.Errorf("control flow is not in the shape table yet")
+		}
 		if s.assign != nil {
 			out := -1
 			if len(s.out) > 0 {

@@ -69,7 +69,12 @@ func (p *Parser) typeRef() (string, error) {
 }
 
 // args reads the argument list up to and including the closing paren.
+// A composite literal is legal again inside the parens, whatever the
+// enclosing header said.
 func (p *Parser) args() ([]arg, error) {
+	saved := p.hdr
+	p.hdr = false
+	defer func() { p.hdr = saved }()
 	var out []arg
 	for {
 		p.skipSpace()
@@ -142,7 +147,7 @@ func (p *Parser) arg() (arg, error) {
 			}
 			return arg{kind: argCall, sub: sub}, nil
 		}
-		if p.peek() == '{' {
+		if p.peek() == '{' && !p.hdr {
 			p.consume('{')
 			return p.composite(path, false)
 		}

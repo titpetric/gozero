@@ -73,11 +73,11 @@ func (p *vmProgram) assignArg(a *vmArg) {
 // value is a literal or a call whose result is assignable to the field.
 func (c *Compiler) compileFieldSet(sc *cscope, s stmt) (*vmFieldSet, error) {
 	base := s.fieldLhs[0]
-	slot, ok := sc.slots[base]
+	slot, ok := sc.slot(base)
 	if !ok {
 		return nil, fmt.Errorf("compile: %s is not a name bound by the program, so its fields cannot be assigned", base)
 	}
-	t := sc.env[base]
+	t := sc.typeOf(base)
 	fs := &vmFieldSet{base: slot, field: joinPath(s.fieldLhs)}
 	for _, seg := range s.fieldLhs[1:] {
 		f, deref, ok := fieldOf(t, seg)
@@ -141,7 +141,7 @@ func (c *Compiler) compileRetVal(sc *cscope, a arg) (*vmArg, error) {
 	pt := reflect.TypeFor[any]()
 	switch a.kind {
 	case argVar:
-		if t, ok := sc.env[a.str]; ok && t != nil {
+		if t := sc.typeOf(a.str); t != nil {
 			pt = t
 		}
 	case argString:

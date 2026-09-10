@@ -179,6 +179,19 @@ type vmStmt struct {
 	// is a channel send. Both in vm_chan.go.
 	recv *vmRecv
 	send *vmSend
+
+	// Control flow, in vm_flow.go; init re-zeroes a block-scoped var
+	// on every pass over its declaration.
+	ifs  *vmIf
+	loop *vmFor
+	rng  *vmRange
+	brk  bool
+	cont bool
+	init *slotInit
+
+	// deferCall runs when the program exits, its arguments already
+	// evaluated at the defer statement.
+	deferCall *vmCall
 }
 
 // fieldStep is one selector of a field-assignment target.
@@ -261,7 +274,7 @@ func (fs *vmFieldSet) apply(ctx context.Context, slots, frame []reflect.Value, i
 
 // run executes the program. Slots are allocated per execution, so
 // concurrent runs of the same compiled program do not share state.
-func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (any, error) {
+func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (ret any, err error) {
 	// One allocation per run for both the named slots and every call's
 	// argument window. Each call owns a disjoint range, so a nested
 	// call never overwrites the arguments its parent is still filling.
@@ -276,77 +289,17 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 		// settable in place.
 		slots[in.slot] = reflect.New(in.zero.Type()).Elem()
 	}
-	for i := range p.stmts {
-		s := &p.stmts[i]
-		if s.lit.IsValid() {
-			slots[s.out[0]] = p.addrCell(s.lit, s.out[0])
-			continue
+	var defers deferStack
+	defer func() {
+		// A Go defer, so the deferred calls also run while a panic
+		// from a binding unwinds, as they would in compiled Go.
+		derr := defers.runAll()
+		if err == nil {
+			err = derr
 		}
-		if s.assign != nil {
-			v, err := s.assign.get(ctx, slots, frame, ifaces, stack, dest)
-			if err != nil {
-				return nil, err
-			}
-			slots[s.out[0]] = v
-			continue
-		}
-		if s.fieldSet != nil {
-			if err := s.fieldSet.apply(ctx, slots, frame, ifaces, stack, dest); err != nil {
-				return nil, err
-			}
-			continue
-		}
-		if s.recv != nil {
-			v, err := s.recv.exec(ctx, slots, frame, ifaces, stack, dest)
-			if err != nil {
-				return nil, err
-			}
-			if len(s.out) > 0 {
-				slots[s.out[0]] = p.addrCell(v, s.out[0])
-			}
-			continue
-		}
-		if s.send != nil {
-			if err := s.send.exec(ctx, slots, frame, ifaces, stack, dest); err != nil {
-				return nil, err
-			}
-			continue
-		}
-		if s.retArg != nil {
-			v, err := s.retArg.get(ctx, slots, frame, ifaces, stack, dest)
-			if err != nil {
-				return nil, err
-			}
-			if !v.IsValid() {
-				return nil, nil
-			}
-			return v.Interface(), nil
-		}
-		if s.call == nil {
-			return nil, nil
-		}
-		out, err := s.call.invoke(ctx, slots, frame, ifaces, stack, dest)
-		if err != nil {
-			return nil, err
-		}
-		n := 0
-		for j := range out {
-			if j == s.call.errIdx {
-				continue
-			}
-			if n < len(s.out) {
-				slots[s.out[n]] = p.addrCell(out[j], s.out[n])
-			}
-			n++
-		}
-		if s.ret {
-			if s.call.nres == 0 {
-				return nil, nil
-			}
-			return firstNonErr(out, s.call.errIdx).Interface(), nil
-		}
-	}
-	return nil, nil
+	}()
+	_, ret, err = p.runBlock(ctx, slots, frame, ifaces, stack, dest, &defers, p.stmts)
+	return ret, err
 }
 
 // addrCell stores v into a fresh addressable cell when the slot's

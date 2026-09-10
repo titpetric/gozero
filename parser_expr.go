@@ -79,7 +79,10 @@ func (p *Parser) primary() (arg, error) {
 	if p.pos < len(p.src) && p.src[p.pos] == '(' {
 		p.pos++
 		p.nl = false
+		saved := p.hdr
+		p.hdr = false
 		a, err = p.exprArg()
+		p.hdr = saved
 		if err != nil {
 			return arg{}, err
 		}

@@ -41,6 +41,9 @@ type Parser struct {
 	// badComment is the offset of an unterminated block comment, -1
 	// when there is none. skipSpace records it; Parse surfaces it.
 	badComment int
+	// hdr is set while an if or for header parses: a brace there
+	// opens the block, never a composite literal, as in Go.
+	hdr bool
 }
 
 // terminated consumes a statement end. The semicolon is a delimiter
@@ -52,6 +55,11 @@ func (p *Parser) terminated() bool {
 		return true
 	}
 	p.skipSpace()
+	if p.pos < len(p.src) && p.src[p.pos] == '}' {
+		// The closing brace of a block ends the statement before it,
+		// Go's inserted semicolon; the block loop consumes it.
+		return true
+	}
 	return p.pos >= len(p.src) || p.nl
 }
 
@@ -164,6 +172,16 @@ type stmt struct {
 	// names the channel the way fieldLhs names a field target.
 	sendCh  []string
 	sendVal *arg
+
+	// Control flow: an if chain, a loop, or the loop-only jumps.
+	ifs  *ifStmt
+	fors *forStmt
+	brk  bool
+	cont bool
+
+	// deferred marks "defer call()": the call's arguments evaluate
+	// here, the call itself runs when the program exits.
+	deferred bool
 }
 
 // program is a parsed source unit.
@@ -289,6 +307,47 @@ func (p *Parser) stmt() (stmt, error) {
 		}
 		return s, nil
 	}
+
+	if p.keyword("if") {
+		return p.parseIf()
+	}
+	deferSave := p.pos
+	if p.keyword("defer") {
+		if call, err := p.expr(); err == nil && p.terminated() {
+			return stmt{call: call, deferred: true}, nil
+		}
+		p.pos = deferSave
+	}
+	if p.keyword("for") {
+		return p.parseFor()
+	}
+	jumpSave := p.pos
+	if p.keyword("break") {
+		if p.terminated() {
+			return stmt{brk: true}, nil
+		}
+		p.pos = jumpSave
+	}
+	if p.keyword("continue") {
+		if p.terminated() {
+			return stmt{cont: true}, nil
+		}
+		p.pos = jumpSave
+	}
+
+	// path++ and path-- desugar to the assignment forms.
+	incSave, incNL := p.pos, p.nl
+	if p.ident() != "" {
+		p.pos, p.nl = incSave, incNL
+		path, _ := p.path()
+		if inc, ok := p.incDec(path); ok {
+			if !p.terminated() {
+				return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
+			}
+			return inc, nil
+		}
+	}
+	p.pos, p.nl = incSave, incNL
 
 	// A dotted path followed by a single "=" is a field assignment.
 	// It is sniffed before the assignment list, which only reads bare

@@ -39,19 +39,19 @@ type vmSend struct {
 func (c *Compiler) chanSource(sc *cscope, a arg) (*vmArg, reflect.Type, error) {
 	switch a.kind {
 	case argVar:
-		slot, ok := sc.slots[a.str]
+		slot, ok := sc.slot(a.str)
 		if !ok {
 			return nil, nil, fmt.Errorf("compile: %s is not a name bound by the program; a channel from the stack has no static type", a.str)
 		}
-		t := sc.env[a.str]
+		t := sc.typeOf(a.str)
 		return &vmArg{kind: vaSlot, slot: slot, name: a.str, typ: t, iface: -1}, t, nil
 	case argPath:
-		slot, ok := sc.slots[a.path[0]]
+		slot, ok := sc.slot(a.path[0])
 		if !ok {
 			return nil, nil, fmt.Errorf("compile: %s is not a name bound by the program", a.path[0])
 		}
-		cur := &vmArg{kind: vaSlot, slot: slot, name: a.path[0], typ: sc.env[a.path[0]], iface: -1}
-		curType := sc.env[a.path[0]]
+		cur := &vmArg{kind: vaSlot, slot: slot, name: a.path[0], typ: sc.typeOf(a.path[0]), iface: -1}
+		curType := sc.typeOf(a.path[0])
 		for _, seg := range a.path[1:] {
 			f, deref, ok := fieldOf(curType, seg)
 			if !ok {

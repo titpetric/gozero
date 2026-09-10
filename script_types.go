@@ -14,6 +14,10 @@ type cscope struct {
 	slots  map[string]int
 	env    map[string]reflect.Type
 	script *scriptTypes
+	// parent chains block scopes: name resolution walks outward, a
+	// declaration lands in the innermost scope, and := may shadow an
+	// outer name with a fresh slot, as in Go.
+	parent *cscope
 	// bindings is what dotted paths resolve against: the Compiler's
 	// flat map for a snippet, a map assembled from the import block
 	// for a file.
@@ -51,6 +55,40 @@ type scriptMethod struct {
 	name    string
 	params  []reflect.Type
 	results []reflect.Type
+}
+
+// child opens a block scope: fresh name maps, everything else shared
+// by reference.
+func (sc *cscope) child() *cscope {
+	return &cscope{
+		slots:    map[string]int{},
+		env:      map[string]reflect.Type{},
+		script:   sc.script,
+		parent:   sc,
+		bindings: sc.bindings,
+		pkgs:     sc.pkgs,
+	}
+}
+
+// slot resolves a name to its slot through the scope chain.
+func (sc *cscope) slot(name string) (int, bool) {
+	for s := sc; s != nil; s = s.parent {
+		if slot, ok := s.slots[name]; ok {
+			return slot, true
+		}
+	}
+	return 0, false
+}
+
+// typeOf is the static type of a name through the scope chain, nil
+// when the name is not bound by the program.
+func (sc *cscope) typeOf(name string) reflect.Type {
+	for s := sc; s != nil; s = s.parent {
+		if t, ok := s.env[name]; ok {
+			return t
+		}
+	}
+	return nil
 }
 
 // typeName is the spelling diagnostics use for t: the declared name

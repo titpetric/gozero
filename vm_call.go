@@ -51,7 +51,7 @@ func (c *Compiler) compileExpr(sc *cscope, e *callExpr) (*vmCall, reflect.Type, 
 	case base >= 0:
 		methods = e.path[base:]
 	default:
-		slot, ok := sc.slots[e.path[0]]
+		slot, ok := sc.slot(e.path[0])
 		if !ok {
 			// A known import with an unknown symbol errors the way Go
 			// spells it; anything else keeps the binding message.
@@ -60,8 +60,8 @@ func (c *Compiler) compileExpr(sc *cscope, e *callExpr) (*vmCall, reflect.Type, 
 			}
 			return nil, nil, fmt.Errorf("compile: unknown binding %q", joinPath(e.path))
 		}
-		recv = &vmArg{kind: vaSlot, slot: slot, typ: sc.env[e.path[0]], iface: -1}
-		currType = sc.env[e.path[0]]
+		recv = &vmArg{kind: vaSlot, slot: slot, typ: sc.typeOf(e.path[0]), iface: -1}
+		currType = sc.typeOf(e.path[0])
 		methods = e.path[1:]
 		if len(methods) == 0 && len(e.chain) == 0 {
 			return nil, nil, fmt.Errorf("compile: %s is a value, not a call", e.path[0])
@@ -351,12 +351,12 @@ func (c *Compiler) compileArg(sc *cscope, name string, pos int, pt reflect.Type,
 		}
 		return &vmArg{kind: vaCall, sub: sub, typ: pt, iface: -1}, nil
 	case argPath:
-		slot, ok := sc.slots[a.path[0]]
+		slot, ok := sc.slot(a.path[0])
 		if !ok {
 			return nil, fmt.Errorf("compile: %s argument %d: %s is not a name bound by the program, so its fields are unknown", name, pos+1, a.path[0])
 		}
-		cur := &vmArg{kind: vaSlot, slot: slot, name: a.path[0], typ: sc.env[a.path[0]], iface: -1}
-		curType := sc.env[a.path[0]]
+		cur := &vmArg{kind: vaSlot, slot: slot, name: a.path[0], typ: sc.typeOf(a.path[0]), iface: -1}
+		curType := sc.typeOf(a.path[0])
 		for _, seg := range a.path[1:] {
 			f, deref, ok := fieldOf(curType, seg)
 			if !ok {
@@ -386,8 +386,8 @@ func (c *Compiler) compileArg(sc *cscope, name string, pos int, pt reflect.Type,
 		if a.str == "dest" {
 			return &vmArg{kind: vaDest, name: "dest", typ: pt, iface: -1}, nil
 		}
-		if slot, ok := sc.slots[a.str]; ok {
-			st := sc.env[a.str]
+		if slot, ok := sc.slot(a.str); ok {
+			st := sc.typeOf(a.str)
 			if st != nil && !st.AssignableTo(pt) {
 				return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, st, pt)
 			}

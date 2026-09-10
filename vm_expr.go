@@ -89,18 +89,18 @@ func (c *Compiler) compileValueExpr(sc *cscope, a arg, want reflect.Type) (*vmAr
 func (c *Compiler) compileOperand(sc *cscope, a arg) (*vmArg, reflect.Type, error) {
 	switch a.kind {
 	case argVar:
-		if slot, ok := sc.slots[a.str]; ok {
-			t := sc.env[a.str]
+		if slot, ok := sc.slot(a.str); ok {
+			t := sc.typeOf(a.str)
 			return &vmArg{kind: vaSlot, slot: slot, name: a.str, typ: t, iface: -1}, t, nil
 		}
 		return nil, nil, fmt.Errorf("compile: %s has no static type here; a name read from the stack cannot be an operand, bind it with := first", a.str)
 	case argPath:
-		slot, ok := sc.slots[a.path[0]]
+		slot, ok := sc.slot(a.path[0])
 		if !ok {
 			return nil, nil, fmt.Errorf("compile: %s is not a name bound by the program, so its fields cannot be operands", a.path[0])
 		}
-		cur := &vmArg{kind: vaSlot, slot: slot, name: a.path[0], typ: sc.env[a.path[0]], iface: -1}
-		curType := sc.env[a.path[0]]
+		cur := &vmArg{kind: vaSlot, slot: slot, name: a.path[0], typ: sc.typeOf(a.path[0]), iface: -1}
+		curType := sc.typeOf(a.path[0])
 		for _, seg := range a.path[1:] {
 			f, deref, ok := fieldOf(curType, seg)
 			if !ok {

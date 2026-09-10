@@ -1,0 +1,26 @@
+// exprs: operator expressions with Go's precedence, short-circuit
+// logic, indexing, len, and nil comparisons.
+a := 6;
+b := 3;
+assert.Equal(tb, 9, a+b);
+assert.Equal(tb, 18, a*b);
+assert.Equal(tb, 2, a/b);
+assert.Equal(tb, 0, a%b);
+assert.Equal(tb, 4, a&^b);
+assert.Equal(tb, 24, a<<2);
+assert.True(tb, a > b && b > 0);
+assert.True(tb, a < b || a > 0);
+assert.True(tb, !(a == b));
+
+s := "go" + "zero";
+assert.Equal(tb, "gozero", s);
+assert.True(tb, len(s) == 6);
+assert.True(tb, "a" < "b");
+
+parts := strings.Fields("x y z");
+assert.True(tb, len(parts) == 3);
+assert.Equal(tb, "y", parts[1]);
+assert.Equal(tb, "z", parts[len(parts)-1]);
+
+u := url.Parse("https://example.com/p");
+assert.True(tb, u != nil);
