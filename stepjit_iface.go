@@ -29,6 +29,11 @@ func itabFor(ct, it reflect.Type) (unsafe.Pointer, bool) {
 // value is the data word itself; anything wider is stored indirectly,
 // which is the allocation the Go compiler makes at the same place.
 func (c *jitCompiler) toIface(st, pt reflect.Type, sub node) (node, error) {
+	// The string-box pool site, armed by argNode for the one argument
+	// this call is compiling; taken unconditionally so a stale site
+	// can never leak into a later conversion.
+	strBox := c.pendingStrBox
+	c.pendingStrBox = nil
 	if st == nil {
 		return node{}, fmt.Errorf("a call with no result cannot become an interface")
 	}
@@ -38,6 +43,19 @@ func (c *jitCompiler) toIface(st, pt reflect.Type, sub node) (node, error) {
 	}
 	if sub.class.scalar() {
 		return scalarIface(tab, sub)
+	}
+	if sub.class == lStr && strBox != nil {
+		f, off, site := sub.S, c.offs[strBox.field], strBox
+		return node{class: lIface, I: func(fr unsafe.Pointer, ctx context.Context, s map[string]any, d any) (ifacePair, error) {
+			v, err := f(fr, ctx, s, d)
+			if err != nil {
+				return ifacePair{}, err
+			}
+			cell := site.take()
+			*(*unsafe.Pointer)(unsafe.Add(fr, off)) = cell
+			*(*string)(cell) = v
+			return ifacePair{tab: tab, data: cell}, nil
+		}}, nil
 	}
 	switch sub.class {
 	case lPtr:

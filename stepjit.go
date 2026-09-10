@@ -125,6 +125,11 @@ type jitProgram struct {
 	// declarations and literal builders rely on.
 	pool *sync.Pool
 
+	// sites are the argument pools of the program's NonRetaining
+	// calls, released after every run: the blocks they lent out are
+	// dead once the calls that received them returned.
+	sites []poolSite
+
 	// retType and retOff describe the slot a trailing "return expr;"
 	// leaves its value in. retType is nil when the program has no
 	// value, which is the common case: the output goes through dest.
@@ -139,19 +144,29 @@ func (p *jitProgram) run(ctx context.Context, stack map[string]any, dest any) (a
 	}
 	for _, stmt := range p.stmts {
 		if err := stmt(f, ctx, stack, dest); err != nil {
-			p.putFrame(f)
+			p.finish(f)
 			return nil, err
 		}
 	}
 	if p.retType == nil {
-		p.putFrame(f)
+		p.finish(f)
 		return nil, nil
 	}
 	// Interface copies the value into a fresh box, so the frame is
 	// dead once it returns and can go back to the pool.
 	v := reflect.NewAt(p.retType, unsafe.Add(f, p.retOff)).Elem().Interface()
-	p.putFrame(f)
+	p.finish(f)
 	return v, nil
+}
+
+// finish releases every argument-pool site and returns the frame to
+// its pool. Both are safe on the error path: a site whose call never
+// ran holds a nil scratch, and release skips it.
+func (p *jitProgram) finish(f unsafe.Pointer) {
+	for i := range p.sites {
+		p.sites[i].release(unsafe.Add(f, p.sites[i].off))
+	}
+	p.putFrame(f)
 }
 
 // getFrame takes a frame from the pool or allocates one. A pooled
@@ -206,6 +221,19 @@ type jitCompiler struct {
 	// frame to a callee: an aliased interface argument or an
 	// addressed receiver. A frame that escapes cannot be pooled.
 	frameEscapes bool
+	// The argument pools for NonRetaining calls, planned by planPools
+	// in stepjit_pool.go: pack slices by call, literal blocks and
+	// string boxes by argument, plus the list of every site for the
+	// release loop.
+	packOf    map[*vmCall]*sitePool
+	blockOf   map[*vmArg]*sitePool
+	strboxOf  map[*vmArg]*sitePool
+	poolSites []*sitePool
+	// pendingStrBox hands a string-box site from argNode, which knows
+	// the argument's identity, to toIface, which builds the box.
+	// Compilation of one program is single-threaded, so a plain field
+	// carries it across the one call.
+	pendingStrBox *sitePool
 	// splices maps an argument that reads a name to the call that
 	// produced it, where planInline decided the value can travel as a
 	// return value instead of through a slot. It is a side table rather
@@ -235,7 +263,12 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 		return nil, err
 	}
 
-	c := &jitCompiler{slotOf: map[int]int{}, writes: plan.writes, addr: p.addrTaken, splices: plan.splices, stackFields: map[string]int{}}
+	c := &jitCompiler{
+		slotOf: map[int]int{}, writes: plan.writes, addr: p.addrTaken,
+		splices: plan.splices, stackFields: map[string]int{},
+		packOf:  map[*vmCall]*sitePool{},
+		blockOf: map[*vmArg]*sitePool{}, strboxOf: map[*vmArg]*sitePool{},
+	}
 	for slot := 0; slot < p.nslots; slot++ {
 		if !plan.live[slot] {
 			continue
@@ -267,6 +300,10 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 		c.stackFields[name] = len(c.types)
 		c.types = append(c.types, reflect.TypeFor[any]())
 	}
+
+	// The argument pools for NonRetaining calls claim their scratch
+	// fields before the frame is laid out.
+	c.planPools(plan)
 
 	jp := &jitProgram{}
 	if len(c.types) > 0 {
@@ -309,6 +346,9 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 	jp.bridged = c.bridged
 	if jp.frameRT != nil && !c.frameEscapes {
 		jp.pool = &sync.Pool{}
+	}
+	for _, sp := range c.poolSites {
+		jp.sites = append(jp.sites, sp.releaseInto(c.offs[sp.field]))
 	}
 	return jp, nil
 }

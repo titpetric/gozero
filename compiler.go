@@ -13,6 +13,10 @@ var errType = reflect.TypeOf((*error)(nil)).Elem()
 type binding struct {
 	rv  reflect.Value
 	raw any
+	// nonRetaining is the host's promise that the function neither
+	// stores nor returns its arguments, which lets the JIT pool the
+	// memory behind them. See NonRetaining.
+	nonRetaining bool
 }
 
 // Compiler turns a parsed program into an executable form against a set

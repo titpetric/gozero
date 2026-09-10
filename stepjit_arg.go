@@ -19,6 +19,7 @@ func (c *jitCompiler) argNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 			return sub, nil
 		}
 		if cl == lIface {
+			c.armStrBox(a)
 			return c.toIface(callResultType(a.sub, 0), pt, sub)
 		}
 		return node{}, fmt.Errorf("a %s result cannot fill a %s parameter", sub.class, cl)
@@ -49,6 +50,7 @@ func (c *jitCompiler) argNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 				return sub, nil
 			}
 			if cl == lIface {
+				c.armStrBox(a)
 				return c.toIface(callResultType(producer, 0), pt, sub)
 			}
 			return node{}, fmt.Errorf("a %s result cannot fill a %s parameter", sub.class, cl)
@@ -243,6 +245,7 @@ func (c *jitCompiler) fieldNode(a *vmArg, pt reflect.Type, cl layout) (node, err
 		return out, nil
 	}
 	if cl == lIface {
+		c.armStrBox(a)
 		return c.toIface(sf.Type, pt, out)
 	}
 	return node{}, fmt.Errorf("a %s field cannot fill a %s parameter", out.class, cl)

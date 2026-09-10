@@ -97,14 +97,35 @@ func (c *jitCompiler) packNode(call *vmCall, st reflect.Type, elems []*vmArg) (n
 		}
 		nodes[i] = n
 	}
+	// A NonRetaining callee lets the pack reuse a pooled backing
+	// array instead of allocating one per call; the slice the callee
+	// receives is dead when the call returns, and finish repools it.
+	// takeBacking is nil for an ordinary call, and the pack allocates
+	// fresh.
+	var takeBacking func(fr unsafe.Pointer) unsafe.Pointer
+	if site, ok := c.packOf[call]; ok && len(nodes) > 0 {
+		off := c.offs[site.field]
+		takeBacking = func(fr unsafe.Pointer) unsafe.Pointer {
+			block := site.take()
+			*(*unsafe.Pointer)(unsafe.Add(fr, off)) = block
+			return block
+		}
+	}
 	switch {
 	case et.Kind() == reflect.Interface && et.NumMethod() == 0:
 		getters := make([]nodeI, len(nodes))
 		for i, n := range nodes {
 			getters[i] = n.I
 		}
+		take := takeBacking
 		return node{class: lSlice, L: func(fr unsafe.Pointer, ctx context.Context, stk map[string]any, d any) (sliceHdr, error) {
-			out := make([]any, len(getters))
+			var out []any
+			if take != nil {
+				h := sliceHdr{ptr: take(fr), len: len(getters), cap: len(getters)}
+				out = *(*[]any)(unsafe.Pointer(&h))
+			} else {
+				out = make([]any, len(getters))
+			}
 			for i, g := range getters {
 				pair, err := g(fr, ctx, stk, d)
 				if err != nil {
@@ -121,8 +142,15 @@ func (c *jitCompiler) packNode(call *vmCall, st reflect.Type, elems []*vmArg) (n
 		for i, n := range nodes {
 			getters[i] = n.S
 		}
+		take := takeBacking
 		return node{class: lSlice, L: func(fr unsafe.Pointer, ctx context.Context, stk map[string]any, d any) (sliceHdr, error) {
-			out := make([]string, len(getters))
+			var out []string
+			if take != nil {
+				h := sliceHdr{ptr: take(fr), len: len(getters), cap: len(getters)}
+				out = *(*[]string)(unsafe.Pointer(&h))
+			} else {
+				out = make([]string, len(getters))
+			}
 			for i, g := range getters {
 				v, err := g(fr, ctx, stk, d)
 				if err != nil {

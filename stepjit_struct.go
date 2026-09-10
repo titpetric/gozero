@@ -144,6 +144,22 @@ func (c *jitCompiler) structNode(a *vmArg) (node, error) {
 	if err != nil {
 		return node{}, err
 	}
+	// A literal handed to a NonRetaining callee reuses a pooled block:
+	// the block is dead when the call returns, release clears it, so
+	// a reused block starts from the zero value like a fresh one.
+	if site, ok := c.blockOf[a]; ok {
+		off := c.offs[site.field]
+		return node{class: lPtr, P: func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (unsafe.Pointer, error) {
+			base := site.take()
+			*(*unsafe.Pointer)(unsafe.Add(fr, off)) = base
+			for _, fill := range fills {
+				if err := fill(base, fr, ctx, st, d); err != nil {
+					return nil, err
+				}
+			}
+			return base, nil
+		}}, nil
+	}
 	rt := rtypePtr(a.styp)
 	return node{class: lPtr, P: func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (unsafe.Pointer, error) {
 		base := unsafeNew(rt)

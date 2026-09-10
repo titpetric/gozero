@@ -53,13 +53,17 @@ func NewRuntime() *Runtime {
 
 // Bind registers a Go function under a name, e.g.
 // Bind("NewRequest", http.NewRequest).
-func (r *Runtime) Bind(name string, fn any) error {
+func (r *Runtime) Bind(name string, fn any, opts ...BindOption) error {
 	v := reflect.ValueOf(fn)
 	if v.Kind() != reflect.Func {
 		return fmt.Errorf("bind: %s is %s, want func", name, v.Kind())
 	}
+	b := binding{rv: v, raw: fn}
+	for _, opt := range opts {
+		opt(&b)
+	}
 	r.mu.Lock()
-	r.compiler.bindings[name] = binding{rv: v, raw: fn}
+	r.compiler.bindings[name] = b
 	if r.log != nil {
 		r.log.Debug("bind", "name", name, "signature", v.Type().String())
 	}
@@ -81,14 +85,14 @@ func (r *Runtime) Bind(name string, fn any) error {
 // Names are sorted before binding so a failure reports the same entry
 // on every run. The first failure stops the loop; entries already bound
 // stay bound.
-func (r *Runtime) BindScope(prefix string, fns map[string]any) error {
+func (r *Runtime) BindScope(prefix string, fns map[string]any, opts ...BindOption) error {
 	names := make([]string, 0, len(fns))
 	for name := range fns {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		if err := r.Bind(prefix+"."+name, fns[name]); err != nil {
+		if err := r.Bind(prefix+"."+name, fns[name], opts...); err != nil {
 			return err
 		}
 	}
