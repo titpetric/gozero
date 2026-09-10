@@ -38,7 +38,7 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 			if a.y != nil {
 				walkArg(a.y)
 			}
-		case vaUnary, vaLen:
+		case vaUnary, vaLen, vaAdapter:
 			walkArg(a.x)
 		}
 	}
@@ -314,7 +314,7 @@ func countArgReads(reads map[int]int, a *vmArg) {
 		if a.y != nil {
 			countArgReads(reads, a.y)
 		}
-	case vaUnary, vaLen:
+	case vaUnary, vaLen, vaAdapter:
 		countArgReads(reads, a.x)
 	}
 }

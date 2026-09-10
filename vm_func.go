@@ -111,6 +111,30 @@ func (fn *scriptFn) materialize(ctx context.Context, ft reflect.Type, env []refl
 	})
 }
 
+// materializeMethod is materialize with the receiver bound: the
+// returned func value has the receiverless signature and prepends
+// recv on every call.
+func (fn *scriptFn) materializeMethod(ctx context.Context, ft reflect.Type, recv reflect.Value) reflect.Value {
+	return reflect.MakeFunc(ft, func(args []reflect.Value) []reflect.Value {
+		full := make([]reflect.Value, 0, len(args)+1)
+		full = append(full, recv)
+		full = append(full, args...)
+		out, err := fn.call(ctx, nil, full)
+		if err != nil {
+			if fn.errIdx >= 0 {
+				out = zeroResults(fn.results)
+				out[fn.errIdx] = reflect.ValueOf(&err).Elem()
+				return out
+			}
+			panic(err)
+		}
+		if out == nil {
+			return zeroResults(fn.results)
+		}
+		return out
+	})
+}
+
 func zeroResults(results []reflect.Type) []reflect.Value {
 	out := make([]reflect.Value, len(results))
 	for i, t := range results {

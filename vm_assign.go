@@ -48,7 +48,7 @@ func (p *vmProgram) assignArg(a *vmArg) {
 		if a.y != nil {
 			p.assignArg(a.y)
 		}
-	case vaUnary, vaLen:
+	case vaUnary, vaLen, vaAdapter:
 		p.assignArg(a.x)
 	case vaStruct:
 		for i := range a.elems {

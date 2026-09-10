@@ -28,6 +28,9 @@ type Runtime struct {
 	// packages holds the BindPackage registrations, keyed by import
 	// path; a program's import block resolves against it.
 	packages map[string]*boundPackage
+	// adapters holds the BindAdapter registrations, keyed by the
+	// interface type.
+	adapters map[reflect.Type]*adapterSpec
 	// types is the registry a var statement resolves against. It is
 	// filled by walking every binding, so most types never need
 	// registering by hand.
@@ -62,10 +65,12 @@ type cacheEntry struct {
 func NewRuntime() *Runtime {
 	types := predeclared()
 	packages := map[string]*boundPackage{}
+	adapters := map[reflect.Type]*adapterSpec{}
 	return &Runtime{
-		compiler: Compiler{bindings: map[string]binding{}, types: types, packages: packages},
+		compiler: Compiler{bindings: map[string]binding{}, types: types, packages: packages, adapters: adapters},
 		cache:    map[string]cacheEntry{},
 		packages: packages,
+		adapters: adapters,
 		types:    types,
 	}
 }
@@ -228,6 +233,23 @@ func (r *Runtime) Invalidate() {
 	r.mu.Lock()
 	r.cache = map[string]cacheEntry{}
 	r.mu.Unlock()
+}
+
+// BindAdapter registers the adapter that carries a script type into
+// the interface I: a host struct with one func field per interface
+// method, ServeHTTPFunc for ServeHTTP, and forwarding methods over
+// them. Pass a nil pointer to the struct. A script value whose
+// method set covers I then passes anywhere I is wanted.
+func (r *Runtime) BindAdapter[I any](proto any) error {
+	spec, err := validateAdapter(reflect.TypeFor[I](), reflect.TypeOf(proto))
+	if err != nil {
+		return err
+	}
+	r.mu.Lock()
+	r.adapters[spec.iface] = spec
+	r.gen++
+	r.mu.Unlock()
+	return nil
 }
 
 // Load compiles a source file into a Program: its type and function

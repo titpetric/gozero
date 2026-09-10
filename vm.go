@@ -46,6 +46,7 @@ const (
 	vaIndex                  // x[y] on a slice, array, string or map
 	vaLen                    // len(x)
 	vaFuncLit                // a func literal, materialized per evaluation
+	vaAdapter                // a script value adapted into a host interface
 )
 
 var ctxType = reflect.TypeFor[context.Context]()
@@ -114,10 +115,13 @@ type vmArg struct {
 
 	// vaFuncLit: the compiled literal, the func type the value takes
 	// (possibly named), and the enclosing slots whose cells it
-	// captures.
-	fnLit   *scriptFn
-	litType reflect.Type
-	caps    []int
+	// captures. vaAdapter wraps x, a script value, into spec's struct
+	// with adapterFns behind its func fields.
+	fnLit      *scriptFn
+	litType    reflect.Type
+	caps       []int
+	spec       *adapterSpec
+	adapterFns []*scriptFn
 }
 
 // vmElem is one element of a compiled composite literal: the field it
@@ -478,6 +482,12 @@ func (a *vmArg) get(ctx context.Context, slots, frame []reflect.Value, ifaces []
 		return reflect.ValueOf(v.Len()), nil
 	case vaFuncLit:
 		return a.fnLit.materialize(ctx, a.litType, capturedCells(slots, a.caps)), nil
+	case vaAdapter:
+		recv, err := a.x.get(ctx, slots, frame, ifaces, stack, dest)
+		if err != nil {
+			return reflect.Value{}, err
+		}
+		return buildAdapter(ctx, a.spec, a.adapterFns, recv), nil
 	case vaDest:
 		if dest == nil {
 			return reflect.Zero(a.typ), fmt.Errorf("exec: dest is only set by Scan")

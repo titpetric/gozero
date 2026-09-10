@@ -453,6 +453,12 @@ func (c *Compiler) compileArg(sc *cscope, name string, pos int, pt reflect.Type,
 			return nil, fmt.Errorf("compile: %s argument %d: %w", name, pos+1, err)
 		}
 		if !st.AssignableTo(pt) {
+			if node, ok, aerr := c.adaptScript(sc, sa, st, pt); ok {
+				if aerr != nil {
+					return nil, aerr
+				}
+				return node, nil
+			}
 			return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, sc.typeName(st), sc.typeName(pt))
 		}
 		sa.typ = pt
@@ -465,6 +471,13 @@ func (c *Compiler) compileArg(sc *cscope, name string, pos int, pt reflect.Type,
 		if slot, ok := sc.slot(a.str); ok {
 			st := sc.typeOf(a.str)
 			if st != nil && !st.AssignableTo(pt) {
+				node := &vmArg{kind: vaSlot, slot: slot, name: a.str, typ: st, iface: -1}
+				if anode, isAdapt, aerr := c.adaptScript(sc, node, st, pt); isAdapt {
+					if aerr != nil {
+						return nil, aerr
+					}
+					return anode, nil
+				}
 				return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, st, pt)
 			}
 			return &vmArg{kind: vaSlot, slot: slot, name: a.str, typ: pt, iface: -1}, nil
