@@ -237,8 +237,8 @@ func (pc *progCompiler) compileLitAssign(sc *cscope, s stmt, dst *[]vmStmt) erro
 		*dst = append(*dst, vmStmt{assign: sa, out: []int{slot}})
 		return nil
 	}
-	t, ok := sc.env[name]
-	if !ok {
+	t := sc.typeOf(name)
+	if t == nil {
 		t = c.inferLiteralType(sc, prog, name, *s.lit)
 		if t == nil {
 			return fmt.Errorf("compile: %s = nil needs a var declaration or a use to take a type from", name)
@@ -250,6 +250,5 @@ func (pc *progCompiler) compileLitAssign(sc *cscope, s stmt, dst *[]vmStmt) erro
 	}
 	slot := pc.newSlot(sc, name, t, s.define)
 	*dst = append(*dst, vmStmt{lit: v, out: []int{slot}})
-	return nil
 	return nil
 }
