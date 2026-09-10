@@ -27,12 +27,18 @@ The mutex round trip in [concurrency.md](concurrency.md) drops 14%
 (151.0ns to 129.5ns, p=0.029) and its allocations halve (24 B, 2 to
 8 B, 1); the channel round trip is unchanged in time and one
 allocation lighter. Six of the eight fixtures qualify and each loses
-one allocation per run: json and url reach allocation parity with
-their handwritten mirrors, and http runs one allocation under its
-mirror. The first reset used reflect.Value.SetZero and cost 6% on
-the smallest frames; the linkname clear removed that.
-TestFramePoolGate pins the eligibility rule and that a reused frame
-starts from zero.
+one allocation per run: http, json and url reach allocation parity
+with their handwritten mirrors, http byte for byte. The first reset
+used reflect.Value.SetZero and cost 6% on the smallest frames; the
+linkname clear removed that. TestFramePoolGate pins the eligibility
+rule and that a reused frame starts from zero.
+
+Verifying the counts with an allocation profile also found a
+benchmark defect: the native mirror built its context.WithValue per
+iteration where the vm side built one before the loop, so
+http/native measured one allocation that belonged to the harness.
+The mirror's context is built once now, and the http pair is
+symmetric.
 
 ## 2026-09-10 12:30 +02:00: MutexMap binding and the concurrency chapter
 

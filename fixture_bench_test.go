@@ -18,16 +18,17 @@ var bytesNewBufferString = bytes.NewBufferString
 
 // testFixtures is the handwritten side of the comparison: each method
 // is the Go a fixture program stands for, doing the same work and the
-// same assertions, with the context taken from tb.Context the way the
-// runner derives the VM's execution context from it.
-type testFixtures struct{}
-
-func (testFixtures) ctx(tb testing.TB) context.Context {
-	return context.WithValue(tb.Context(), fixtureCtxKey{}, "fixture")
+// same assertions. ctx is built once before the measured loop, the
+// same way the vm side's execution context is: a per-iteration
+// context.WithValue on one side only showed up as a one-allocation
+// difference that belonged to the harness, not to either
+// implementation.
+type testFixtures struct {
+	ctx context.Context
 }
 
 func (f *testFixtures) testHTTP(tb testing.TB) {
-	req, err := http.NewRequestWithContext(f.ctx(tb), "GET", "https://example.com/a/b", nil)
+	req, err := http.NewRequestWithContext(f.ctx, "GET", "https://example.com/a/b", nil)
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -229,7 +230,7 @@ func BenchmarkFixtures(b *testing.B) {
 			}
 		})
 		b.Run(name+"/native", func(b *testing.B) {
-			f := &testFixtures{}
+			f := &testFixtures{ctx: context.WithValue(b.Context(), fixtureCtxKey{}, "fixture")}
 			b.ReportAllocs()
 			b.ResetTimer()
 			for b.Loop() {

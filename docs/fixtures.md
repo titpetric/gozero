@@ -105,25 +105,24 @@ remeasured 2026-09-10:
 
 | fixture  | vm               | native    | ratio |
 |----------|------------------|-----------|-------|
-| channels | 4.4us, 15 allocs | 2.1us, 8  | 2.1x  |
-| fmt      | 1.6us, 6 allocs  | 0.9us, 4  | 1.7x  |
-| http     | 3.1us, 8 allocs  | 2.5us, 9  | 1.2x  |
-| json     | 4.3us, 16 allocs | 3.6us, 16 | 1.2x  |
-| structs  | 7.7us, 25 allocs | 5.3us, 19 | 1.4x  |
+| channels | 4.3us, 15 allocs | 2.1us, 8  | 2.1x  |
+| fmt      | 1.5us, 6 allocs  | 0.9us, 4  | 1.7x  |
+| http     | 3.1us, 8 allocs  | 2.3us, 8  | 1.3x  |
+| json     | 4.4us, 16 allocs | 3.5us, 16 | 1.3x  |
+| structs  | 7.8us, 25 allocs | 5.3us, 19 | 1.5x  |
 | types    | 4.6us, 20 allocs | 3.3us, 11 | 1.4x  |
-| url      | 4.7us, 14 allocs | 3.9us, 14 | 1.2x  |
+| url      | 4.6us, 14 allocs | 4.0us, 14 | 1.2x  |
 | variadic | 0.6us, 3 allocs  | 0.5us, 3  | 1.1x  |
 
 The frame pool recycles the per-run frame of every program whose
-frame the compiler proves does not escape, so json, url and variadic
-sit at allocation parity with their mirrors and http runs one
-allocation under its mirror: the vm reuses its frame where the
-mirror's escape analysis cannot save every value. structs sits six
-over: a literal in argument or interface position allocates a fresh
-struct where Go keeps the mirror's on the stack. channels sits seven
-over and above 2x for a related reason: every reflect receive boxes
-the element where the mirror receives into a local, a cost the
-default build halves ([inlining.md](inlining.md)).
+frame the compiler proves does not escape, so http, json, url and
+variadic sit at allocation parity with their mirrors; http matches
+its mirror byte for byte. structs sits six over: a literal in
+argument or interface position allocates a fresh struct where Go
+keeps the mirror's on the stack. channels sits seven over and above
+2x for a related reason: every reflect receive boxes the element
+where the mirror receives into a local, a cost the default build
+halves ([inlining.md](inlining.md)).
 For the bridge cost
 of a call the shape table cannot express, and for the work-only
 comparison without assertions, see the benchmarks in
