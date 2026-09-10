@@ -17,6 +17,9 @@ import (
 // where the unit lowered, so the boundary boxing is the remaining
 // cost, paid per call rather than per operand.
 func (c *jitCompiler) scriptCallNode(call *vmCall) (node, error) {
+	if call.dispatch != nil {
+		return node{}, fmt.Errorf("a script-interface dispatch stays on the reflect tier")
+	}
 	getters := make([]func(unsafe.Pointer, context.Context, map[string]any, any) (reflect.Value, error), len(call.args))
 	for i, a := range call.args {
 		g, err := c.bridgeArg(a)

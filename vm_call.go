@@ -117,6 +117,25 @@ func (c *Compiler) compileExpr(sc *cscope, e *callExpr) (*vmCall, reflect.Type, 
 		curr, currType = call, c.resultType(call, 0)
 	}
 
+	// A base declared as one of the program's interfaces dispatches
+	// its first method call on the dynamic type.
+	if base < 0 && recv != nil && recv.kind == vaSlot && sc.ifaceOf != nil {
+		if tag := sc.ifaceOf[recv.slot]; tag != nil && len(links) > 0 {
+			l := links[0]
+			call, err := c.compileIfaceCall(sc, tag, l.name, recv, l.args)
+			if err != nil {
+				return nil, nil, err
+			}
+			curr = call
+			currType = nil
+			if call.nres > 0 {
+				currType = call.dispatch.method.results[0]
+			}
+			links = links[1:]
+			recv = nil
+		}
+	}
+
 	for _, l := range links {
 		if curr != nil {
 			recv = &vmArg{kind: vaCall, sub: curr, typ: currType}

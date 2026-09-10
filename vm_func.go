@@ -37,6 +37,10 @@ type scriptFn struct {
 	// variadic marks a ... tail; a call site hands the tail element
 	// by element and the entry packs, or spreads a slice whole.
 	variadic bool
+	// paramIfaces tags the parameters declared as one of the
+	// program's interfaces, aligned with params; nil entries are
+	// ordinary.
+	paramIfaces []*scriptIface
 }
 
 // packVariadic folds a call's trailing arguments into the variadic

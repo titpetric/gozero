@@ -32,6 +32,10 @@ type cscope struct {
 	// from expression positions, for func literals.
 	funcs   map[string]*scriptFn
 	methods map[reflect.Type]map[string]*scriptFn
+	// ifaceOf tags the slots whose declared type is one of the
+	// program's interfaces: the value travels as any, and a method
+	// call through it dispatches on the dynamic type.
+	ifaceOf map[int]*scriptIface
 	fn      *fnCompile
 	pc      *progCompiler
 }
@@ -77,6 +81,7 @@ func (sc *cscope) child() *cscope {
 		pkgs:     sc.pkgs,
 		funcs:    sc.funcs,
 		methods:  sc.methods,
+		ifaceOf:  sc.ifaceOf,
 		fn:       sc.fn,
 		pc:       sc.pc,
 	}

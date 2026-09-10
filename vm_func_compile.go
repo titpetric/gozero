@@ -85,6 +85,9 @@ func (pc *progCompiler) declareFuncs(decls []funcDecl, sc *cscope) error {
 			fn.recvT = rt
 			in = append(in, rt)
 		}
+		if fd.recv != nil {
+			fn.paramIfaces = append(fn.paramIfaces, nil)
+		}
 		for i, prm := range fd.params {
 			typ := prm.typ
 			if strings.HasPrefix(typ, "...") {
@@ -98,6 +101,11 @@ func (pc *progCompiler) declareFuncs(decls []funcDecl, sc *cscope) error {
 			if !ok {
 				return fmt.Errorf("compile: func %s: unknown parameter type %q", fd.name, prm.typ)
 			}
+			var tag *scriptIface
+			if sc.script != nil {
+				tag = sc.script.ifaces[typ]
+			}
+			fn.paramIfaces = append(fn.paramIfaces, tag)
 			in = append(in, t)
 		}
 		out := make([]reflect.Type, 0, len(fd.results))
@@ -185,7 +193,12 @@ func (pc *progCompiler) compileFuncBody(outer *cscope, fd *funcDecl, fn *scriptF
 	sigIn := 0
 	declare := func(prm *param) error {
 		t := fn.sig.In(sigIn)
+		var tag *scriptIface
+		if sigIn < len(fn.paramIfaces) {
+			tag = fn.paramIfaces[sigIn]
+		}
 		sigIn++
+		_ = tag
 		fn.paramNames = append(fn.paramNames, prm.name)
 		if prm.name == "" || prm.name == "_" {
 			// An unnamed parameter still owns a slot, so positions
@@ -199,7 +212,14 @@ func (pc *progCompiler) compileFuncBody(outer *cscope, fd *funcDecl, fn *scriptF
 		if err := fpc.checkName(prm.name); err != nil {
 			return err
 		}
-		fn.params = append(fn.params, fpc.newSlot(fsc, prm.name, t, true))
+		slot := fpc.newSlot(fsc, prm.name, t, true)
+		if tag != nil {
+			if fsc.ifaceOf == nil {
+				fsc.ifaceOf = map[int]*scriptIface{}
+			}
+			fsc.ifaceOf[slot] = tag
+		}
+		fn.params = append(fn.params, slot)
 		return nil
 	}
 	if fd.recv != nil {

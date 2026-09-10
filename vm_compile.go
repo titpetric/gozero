@@ -62,6 +62,7 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 	}
 	pc := &progCompiler{c: c, p: p, prog: prog, reserved: reserved}
 	sc.pc = pc
+	sc.ifaceOf = map[int]*scriptIface{}
 	// The top level is a unit like any other, so a literal capturing
 	// a program variable has an owner to mark address-taken.
 	sc.fn = &fnCompile{p: p}
@@ -141,6 +142,14 @@ func (pc *progCompiler) compileOne(sc *cscope, s stmt, dst *[]vmStmt, top bool) 
 			return fmt.Errorf("compile: unknown type %q, register it with BindType", s.varType)
 		}
 		slot := pc.newSlot(sc, s.varName, t, true)
+		if sc.script != nil {
+			if iface := sc.script.ifaces[s.varType]; iface != nil {
+				if sc.ifaceOf == nil {
+					sc.ifaceOf = map[int]*scriptIface{}
+				}
+				sc.ifaceOf[slot] = iface
+			}
+		}
 		if top {
 			p.inits = append(p.inits, slotInit{slot: slot, zero: reflect.Zero(t)})
 		} else {
@@ -457,6 +466,9 @@ func (c *Compiler) resultCount(call *vmCall) int {
 	if call.dyn != nil {
 		return call.dyn.typ.NumOut()
 	}
+	if call.dispatch != nil {
+		return len(call.dispatch.method.results)
+	}
 	return call.fn.Type().NumOut()
 }
 
@@ -466,6 +478,9 @@ func (c *Compiler) resultAt(call *vmCall, i int) reflect.Type {
 	}
 	if call.dyn != nil {
 		return call.dyn.typ.Out(i)
+	}
+	if call.dispatch != nil {
+		return call.dispatch.method.results[i]
 	}
 	return call.fn.Type().Out(i)
 }

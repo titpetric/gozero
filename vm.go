@@ -167,9 +167,11 @@ type vmCall struct {
 	bindErr bool
 	// script, when set, makes this a call of a declared function or
 	// method rather than a binding; fn is then unused. dyn calls a
-	// func-typed value instead: a closure held by a name.
-	script *scriptFn
-	dyn    *vmArg
+	// func-typed value instead: a closure held by a name, and
+	// dispatch a method through one of the program's interfaces.
+	script   *scriptFn
+	dyn      *vmArg
+	dispatch *ifaceDispatch
 }
 
 // vmStmt is one statement: a call, the slots its results bind to, and
@@ -377,6 +379,11 @@ func (c *vmCall) invoke(ctx context.Context, slots, frame []reflect.Value, iface
 	var out []reflect.Value
 	if c.script != nil {
 		out, err = c.script.invoke(ctx, nil, c.script.packVariadic(args, c.spread))
+		if err != nil {
+			return nil, err
+		}
+	} else if c.dispatch != nil {
+		out, err = c.dispatch.invokeDispatch(ctx, c.name, args)
 		if err != nil {
 			return nil, err
 		}

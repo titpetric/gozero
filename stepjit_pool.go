@@ -107,7 +107,7 @@ func (c *jitCompiler) planPools(plan *jitPlan) {
 		}
 	}
 	walkCall = func(call *vmCall) {
-		if call.script != nil || call.dyn != nil {
+		if call.script != nil || call.dyn != nil || call.dispatch != nil {
 			// A script or closure call carries its arguments through
 			// the bridge getters; nothing of it pools.
 			return

@@ -13,7 +13,7 @@ import (
 // direct. The vmCall tree was already type-checked by the program
 // compiler, so a miss here is a capability gap, never a type error.
 func (c *jitCompiler) exprNode(call *vmCall) (node, error) {
-	if call.script != nil || call.dyn != nil {
+	if call.script != nil || call.dyn != nil || call.dispatch != nil {
 		return c.scriptCallNode(call)
 	}
 	n, err := c.directNode(call)

@@ -1,6 +1,7 @@
 package gozero
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 )
@@ -174,4 +175,100 @@ func (c *Compiler) compileDynCall(sc *cscope, fnVal *vmArg, ft reflect.Type, nam
 		call.nres--
 	}
 	return call, nil
+}
+
+// ifaceDispatch is a method call through a value declared as one of
+// the program's interfaces: the receiver's dynamic type picks the
+// implementation at run time, a script method first, a host method
+// second.
+type ifaceDispatch struct {
+	iface  *scriptIface
+	method scriptMethod
+	// script maps a receiver's base type to its declared method.
+	script map[reflect.Type]*scriptFn
+}
+
+// compileIfaceCall compiles one dispatched call against the declared
+// method signature.
+func (c *Compiler) compileIfaceCall(sc *cscope, tag *scriptIface, name string, recv *vmArg, src []arg) (*vmCall, error) {
+	var m *scriptMethod
+	for i := range tag.methods {
+		if tag.methods[i].name == name {
+			m = &tag.methods[i]
+			break
+		}
+	}
+	if m == nil {
+		return nil, fmt.Errorf("compile: %s has no method %s", tag.name, name)
+	}
+	d := &ifaceDispatch{iface: tag, method: *m, script: map[reflect.Type]*scriptFn{}}
+	for rt, ms := range sc.methods {
+		if fn := ms[name]; fn != nil {
+			d.script[rt] = fn
+		}
+	}
+	call := &vmCall{dispatch: d, name: tag.name + "." + name, errIdx: -1}
+	call.args = append(call.args, recv)
+	if len(src) != len(m.params) {
+		return nil, fmt.Errorf("compile: %s.%s takes %d arguments, got %d", tag.name, name, len(m.params), len(src))
+	}
+	for i, a := range src {
+		if a.spread {
+			return nil, fmt.Errorf("compile: %s.%s: an interface method call does not spread", tag.name, name)
+		}
+		va, err := c.compileArg(sc, call.name, i, m.params[i], a)
+		if err != nil {
+			return nil, err
+		}
+		call.args = append(call.args, va)
+	}
+	call.nres = len(m.results)
+	if n := len(m.results); n > 0 && m.results[n-1] == errType {
+		call.errIdx = n - 1
+		call.nres--
+	}
+	return call, nil
+}
+
+// invokeDispatch runs a dispatched call: the receiver's dynamic type
+// decides.
+func (d *ifaceDispatch) invokeDispatch(ctx context.Context, name string, args []reflect.Value) ([]reflect.Value, error) {
+	recv := args[0]
+	if recv.Kind() == reflect.Interface {
+		if recv.IsNil() {
+			return nil, fmt.Errorf("exec: %s on a nil %s", name, d.iface.name)
+		}
+		recv = recv.Elem()
+	}
+	if !recv.IsValid() {
+		return nil, fmt.Errorf("exec: %s on an unset %s", name, d.iface.name)
+	}
+	rt := recv.Type()
+	if fn := d.script[rt]; fn != nil {
+		full := append([]reflect.Value{recv}, args[1:]...)
+		return fn.invoke(ctx, nil, full)
+	}
+	if rt.Kind() != reflect.Pointer {
+		if fn := d.script[reflect.PointerTo(rt)]; fn != nil {
+			// A value boxed in an interface is not addressable, so
+			// its pointer-receiver methods are outside its set, as
+			// they are in Go.
+			return nil, fmt.Errorf("exec: %s of %s has a pointer receiver; store a pointer in the %s", name, rt, d.iface.name)
+		}
+	}
+	if m := recv.MethodByName(d.method.name); m.IsValid() {
+		mt := m.Type()
+		ok := mt.NumIn() == len(d.method.params) && mt.NumOut() == len(d.method.results)
+		for i := 0; ok && i < mt.NumIn(); i++ {
+			ok = mt.In(i) == d.method.params[i]
+		}
+		for i := 0; ok && i < mt.NumOut(); i++ {
+			ok = mt.Out(i) == d.method.results[i]
+		}
+		if !ok {
+			return nil, fmt.Errorf("exec: %s.%s is %s, want the declared %s signature", rt, d.method.name, mt, d.iface.name)
+		}
+		return m.Call(args[1:]), nil
+	}
+	return nil, fmt.Errorf("exec: %s does not implement %s.%s", rt, d.iface.name, d.method.name)
 }
