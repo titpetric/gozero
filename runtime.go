@@ -17,7 +17,15 @@ import (
 type Runtime struct {
 	mu       sync.RWMutex
 	compiler Compiler
-	cache    map[string]CompiledFunc
+	cache    map[string]cacheEntry
+	// gen counts the binding surface's revisions. Every Bind, BindType,
+	// BindPackage and Import bumps it, and a cache entry compiled under
+	// an older generation is a miss, so a rebind is visible to the next
+	// Compile of the same source.
+	gen uint64
+	// packages holds the BindPackage registrations, keyed by import
+	// path; a program's import block resolves against it.
+	packages map[string]*boundPackage
 	// types is the registry a var statement resolves against. It is
 	// filled by walking every binding, so most types never need
 	// registering by hand.
@@ -41,12 +49,21 @@ func (r *Runtime) SetLogger(l *slog.Logger) {
 	r.mu.Unlock()
 }
 
+// cacheEntry is one compiled program and the binding generation it
+// compiled under.
+type cacheEntry struct {
+	fn  CompiledFunc
+	gen uint64
+}
+
 // NewRuntime returns an empty Runtime.
 func NewRuntime() *Runtime {
 	types := predeclared()
+	packages := map[string]*boundPackage{}
 	return &Runtime{
-		compiler: Compiler{bindings: map[string]binding{}, types: types},
-		cache:    map[string]CompiledFunc{},
+		compiler: Compiler{bindings: map[string]binding{}, types: types, packages: packages},
+		cache:    map[string]cacheEntry{},
+		packages: packages,
 		types:    types,
 	}
 }
@@ -74,6 +91,7 @@ func (r *Runtime) Bind(name string, fn any) error {
 	r.origin = name
 	r.discover(v.Type(), 1)
 	r.origin = ""
+	r.gen++
 	r.mu.Unlock()
 	return nil
 }
@@ -99,6 +117,115 @@ func (r *Runtime) BindScope(prefix string, fns map[string]any) error {
 		}
 	}
 	return nil
+}
+
+// BindPackage registers symbols under a Go import path, e.g.
+// BindPackage("net/http", map[string]any{"NewRequest": http.NewRequest}).
+// The funcs become callable once a program imports the path, under
+// the path's base name or the import's alias; discovery walks the
+// signatures into the package's own type table. Registering the same
+// path again replaces the package, which is the hot-reload path. The
+// borrowed-arguments contract of Bind applies unchanged.
+func (r *Runtime) BindPackage(path string, symbols map[string]any) error {
+	if path == "" {
+		return fmt.Errorf("bindpackage: empty import path")
+	}
+	names := make([]string, 0, len(symbols))
+	for name := range symbols {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	pkg := &boundPackage{
+		path:  path,
+		base:  pkgBase(path),
+		fns:   map[string]binding{},
+		types: map[string]reflect.Type{},
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, name := range names {
+		fn := symbols[name]
+		v := reflect.ValueOf(fn)
+		if v.Kind() != reflect.Func {
+			return fmt.Errorf("bindpackage: %s.%s is %s, want func", path, name, v.Kind())
+		}
+		pkg.fns[name] = binding{rv: v, raw: fn}
+		r.origin = path + "." + name
+		r.discoverInto(pkg.types, v.Type(), 1)
+		r.origin = ""
+	}
+	r.packages[path] = pkg
+	r.gen++
+	return nil
+}
+
+// BindPackageType registers a type into a package, for the rare type
+// no bound signature reaches. The contract matches BindType: pass a
+// value, or a nil pointer to an interface.
+func (r *Runtime) BindPackageType(path, name string, v any) error {
+	t := reflect.TypeOf(v)
+	if t == nil {
+		return fmt.Errorf("bindpackage: %s.%s: cannot take the type of a nil value", path, name)
+	}
+	if t.Kind() == reflect.Pointer && t.Elem().Kind() == reflect.Interface {
+		t = t.Elem()
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	pkg, ok := r.packages[path]
+	if !ok {
+		return fmt.Errorf("bindpackage: %q is not registered, call BindPackage first", path)
+	}
+	pkg.types[name] = t
+	r.origin = path + "." + name
+	r.discoverInto(pkg.types, t, 1)
+	r.origin = ""
+	r.gen++
+	return nil
+}
+
+// Import activates a registered package into the flat namespace under
+// its base name, so a headerless snippet calls http.NewRequest after
+// Import("net/http") the way it would after a BindScope. The package's
+// type table merges into the registry without overwriting names the
+// registry already holds.
+func (r *Runtime) Import(path string) error {
+	return r.ImportAs("", path)
+}
+
+// ImportAs is Import with an explicit prefix in place of the path's
+// base name.
+func (r *Runtime) ImportAs(alias, path string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	pkg, ok := r.packages[path]
+	if !ok {
+		return fmt.Errorf("import: %q is not registered, call BindPackage first", path)
+	}
+	name := alias
+	if name == "" {
+		name = pkg.base
+	}
+	for fname, b := range pkg.fns {
+		r.compiler.bindings[name+"."+fname] = b
+	}
+	for tname, t := range pkg.types {
+		if _, seen := r.types[tname]; !seen {
+			r.types[tname] = t
+		}
+	}
+	r.gen++
+	return nil
+}
+
+// Invalidate drops the compile cache. The generation check already
+// keeps stale entries from being served after a rebind; Invalidate is
+// for reclaiming the memory of a cache grown under repeated reloads.
+func (r *Runtime) Invalidate() {
+	r.mu.Lock()
+	r.cache = map[string]cacheEntry{}
+	r.mu.Unlock()
 }
 
 // guard installs the panic boundary. It covers both tiers, because it
@@ -157,10 +284,11 @@ func (r *Runtime) Supports(src string) error {
 // same source is a map lookup.
 func (r *Runtime) Compile(stmt string) (CompiledFunc, error) {
 	r.mu.RLock()
-	fn, ok := r.cache[stmt]
+	e, ok := r.cache[stmt]
+	gen := r.gen
 	r.mu.RUnlock()
-	if ok {
-		return fn, nil
+	if ok && e.gen == gen {
+		return e.fn, nil
 	}
 
 	fn, err := r.compileUncached(stmt)
@@ -168,8 +296,10 @@ func (r *Runtime) Compile(stmt string) (CompiledFunc, error) {
 		return nil, err
 	}
 	fn = guard(fn)
+	// The entry records the generation read before compiling, so a
+	// bind landing mid-compile marks it stale rather than fresh.
 	r.mu.Lock()
-	r.cache[stmt] = fn
+	r.cache[stmt] = cacheEntry{fn: fn, gen: gen}
 	r.mu.Unlock()
 	return fn, nil
 }

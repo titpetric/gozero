@@ -163,6 +163,10 @@ type program struct {
 	// from the statements: a declaration compiles to a reflect type,
 	// not to anything that runs.
 	types []typeDecl
+	// pkg and imports are the file header. pkg is empty for a snippet;
+	// a file resolves names only through its import block.
+	pkg     string
+	imports []importSpec
 }
 
 // flatCall reports the single call of a one-statement program whose
@@ -190,6 +194,10 @@ func (p *Parser) Parse(src string) (*program, error) {
 	p.src, p.pos, p.badComment = src, 0, -1
 
 	prog := &program{}
+	file, err := p.fileHeader(prog)
+	if err != nil {
+		return nil, err
+	}
 	for {
 		p.skipSpace()
 		if p.badComment >= 0 {
@@ -204,13 +212,18 @@ func (p *Parser) Parse(src string) (*program, error) {
 			prog.types = append(prog.types, td)
 			continue
 		}
+		if file {
+			// A file holds declarations, as in Go; statements are the
+			// snippet form.
+			return nil, p.errAt(p.pos, "expected a declaration")
+		}
 		s, err := p.stmt()
 		if err != nil {
 			return nil, err
 		}
 		prog.stmts = append(prog.stmts, s)
 	}
-	if len(prog.stmts) == 0 {
+	if len(prog.stmts) == 0 && !file {
 		return nil, fmt.Errorf("parse: empty program")
 	}
 	return prog, nil

@@ -14,6 +14,14 @@ type cscope struct {
 	slots  map[string]int
 	env    map[string]reflect.Type
 	script *scriptTypes
+	// bindings is what dotted paths resolve against: the Compiler's
+	// flat map for a snippet, a map assembled from the import block
+	// for a file.
+	bindings map[string]binding
+	// pkgs maps the local name of each import to its package; non-nil
+	// exactly when the program has a file header, which is also what
+	// scopes type resolution to the imports.
+	pkgs map[string]*boundPackage
 }
 
 // scriptTypes holds the types a program declares in its own source:
@@ -57,10 +65,18 @@ func (sc *cscope) typeName(t reflect.Type) string {
 	return t.String()
 }
 
-// resolveType resolves a type name against the program's own
-// declarations first, then the shared registry, then structurally for
-// pointer, slice, channel and map spellings over either.
+// predeclaredTypes is the immutable seed set, nameable in any mode.
+// The registry each Runtime mutates is its own copy.
+var predeclaredTypes = predeclared()
+
+// resolveType resolves a type name: compound spellings construct
+// their type structurally, base names resolve against the program's
+// own declarations, then, for a file, its imports and the predeclared
+// names only; a snippet falls through to the shared registry.
 func (c *Compiler) resolveType(sc *cscope, name string) (reflect.Type, bool) {
+	if t, ok := c.resolveTypeExpr(sc, name); ok {
+		return t, true
+	}
 	if sc != nil && sc.script != nil {
 		if t, ok := sc.script.structs[name]; ok {
 			return t, true
@@ -71,10 +87,21 @@ func (c *Compiler) resolveType(sc *cscope, name string) (reflect.Type, bool) {
 			return anyType, true
 		}
 	}
-	if t, ok := c.lookupType(name); ok {
-		return t, true
+	if sc != nil && sc.pkgs != nil {
+		if i := strings.IndexByte(name, '.'); i > 0 {
+			if pkg := sc.pkgs[name[:i]]; pkg != nil {
+				// The table is keyed by reflect spellings, which carry
+				// the real base name whatever the import's alias.
+				if t, ok := pkg.types[pkg.base+name[i:]]; ok {
+					return t, true
+				}
+			}
+			return nil, false
+		}
+		t, ok := predeclaredTypes[name]
+		return t, ok
 	}
-	return c.resolveTypeExpr(sc, name)
+	return c.lookupType(name)
 }
 
 // resolveTypeExpr builds a compound type from its spelling when the
@@ -145,30 +172,30 @@ func splitMapSpec(spec string) (string, string, bool) {
 // many passes as it takes, so a declaration can reference one written
 // after it; what never resolves is undefined or recursive, which
 // reflect.StructOf cannot express even through a pointer.
-func (c *Compiler) buildScriptTypes(prog *program) (*scriptTypes, error) {
+func (c *Compiler) buildScriptTypes(sc *cscope, prog *program) error {
 	if len(prog.types) == 0 {
-		return nil, nil
+		return nil
 	}
 	st := &scriptTypes{
 		structs: map[string]reflect.Type{},
 		names:   map[reflect.Type]string{},
 		ifaces:  map[string]*scriptIface{},
 	}
+	sc.script = st
 	seen := map[string]bool{}
 	for _, td := range prog.types {
 		if seen[td.name] {
-			return nil, fmt.Errorf("compile: type %s redeclared", td.name)
+			return fmt.Errorf("compile: type %s redeclared", td.name)
 		}
 		seen[td.name] = true
-		if _, ok := c.lookupType(td.name); ok {
-			return nil, fmt.Errorf("compile: type %s shadows a registered type", td.name)
+		if _, ok := c.resolveType(sc, td.name); ok {
+			return fmt.Errorf("compile: type %s shadows a registered type", td.name)
 		}
 		if td.iface {
 			st.ifaces[td.name] = &scriptIface{name: td.name}
 		}
 	}
 
-	sc := &cscope{script: st}
 	pending := make([]*typeDecl, 0, len(prog.types))
 	for i := range prog.types {
 		if !prog.types[i].iface {
@@ -181,7 +208,7 @@ func (c *Compiler) buildScriptTypes(prog *program) (*scriptTypes, error) {
 		for _, td := range pending {
 			t, ok, err := c.buildStruct(sc, td)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			if !ok {
 				rest = append(rest, td)
@@ -196,10 +223,10 @@ func (c *Compiler) buildScriptTypes(prog *program) (*scriptTypes, error) {
 			td := pending[0]
 			for _, fd := range td.fields {
 				if _, ok := c.resolveType(sc, fd.typ); !ok {
-					return nil, fmt.Errorf("compile: type %s: field type %q is undefined or recursive; a script struct cannot contain itself, even through a pointer", td.name, fd.typ)
+					return fmt.Errorf("compile: type %s: field type %q is undefined or recursive; a script struct cannot contain itself, even through a pointer", td.name, fd.typ)
 				}
 			}
-			return nil, fmt.Errorf("compile: type %s cannot be built", td.name)
+			return fmt.Errorf("compile: type %s cannot be built", td.name)
 		}
 	}
 
@@ -215,21 +242,21 @@ func (c *Compiler) buildScriptTypes(prog *program) (*scriptTypes, error) {
 			for _, prm := range m.params {
 				t, ok := c.resolveType(sc, prm.typ)
 				if !ok {
-					return nil, fmt.Errorf("compile: interface %s: method %s: unknown type %q", td.name, m.name, prm.typ)
+					return fmt.Errorf("compile: interface %s: method %s: unknown type %q", td.name, m.name, prm.typ)
 				}
 				sm.params = append(sm.params, t)
 			}
 			for _, r := range m.results {
 				t, ok := c.resolveType(sc, r.typ)
 				if !ok {
-					return nil, fmt.Errorf("compile: interface %s: method %s: unknown type %q", td.name, m.name, r.typ)
+					return fmt.Errorf("compile: interface %s: method %s: unknown type %q", td.name, m.name, r.typ)
 				}
 				sm.results = append(sm.results, t)
 			}
 			iface.methods = append(iface.methods, sm)
 		}
 	}
-	return st, nil
+	return nil
 }
 
 // buildStruct builds one declared struct if every field type already

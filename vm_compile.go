@@ -33,14 +33,19 @@ import (
 // called on.
 func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 	p := &vmProgram{addrTaken: map[int]bool{}}
-	script, err := c.buildScriptTypes(prog)
-	if err != nil {
+	sc := &cscope{
+		slots: map[string]int{},
+		env:   map[string]reflect.Type{},
+	}
+
+	if err := c.buildNamespace(sc, prog); err != nil {
 		return nil, err
 	}
-	sc := &cscope{
-		slots:  map[string]int{},
-		env:    map[string]reflect.Type{},
-		script: script,
+
+	// Declared types build after the namespace, because a field type
+	// may name an imported package.
+	if err := c.buildScriptTypes(sc, prog); err != nil {
+		return nil, err
 	}
 
 	// A name that collides with a binding can never be read back:
@@ -48,7 +53,7 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 	// bound compiles and then silently resolves the other way. Shadowing
 	// is rejected instead.
 	reserved := map[string]bool{"dest": true, "true": true, "false": true, "nil": true, "var": true, "return": true}
-	for name := range c.bindings {
+	for name := range sc.bindings {
 		if i := strings.IndexByte(name, '.'); i > 0 {
 			reserved[name[:i]] = true
 		} else {
@@ -207,7 +212,7 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			}
 			t, ok := sc.env[name]
 			if !ok {
-				t = c.inferLiteralType(prog, name, *s.lit)
+				t = c.inferLiteralType(sc, prog, name, *s.lit)
 				if t == nil {
 					return nil, fmt.Errorf("compile: %s = nil needs a var declaration or a use to take a type from", name)
 				}
@@ -227,7 +232,7 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 		// instead, the way a var declaration would. The var form stays:
 		// the hint only covers a name assigned a literal.
 		if s.call != nil && !s.ret && len(s.lhs) > 0 {
-			if t, ok := c.conversionType(s.call); ok {
+			if t, ok := c.conversionType(sc, s.call); ok {
 				if len(s.lhs) != 1 {
 					return nil, fmt.Errorf("compile: a conversion assigns to exactly one name")
 				}

@@ -49,14 +49,20 @@ func predeclared() map[string]reflect.Type {
 // discover records t and the types reachable from it, so a var
 // statement can name anything the bindings imply.
 func (r *Runtime) discover(t reflect.Type, depth int) {
+	r.discoverInto(r.types, t, depth)
+}
+
+// discoverInto is discover against an explicit table: the shared
+// registry for Bind, a package's own table for BindPackage.
+func (r *Runtime) discoverInto(types map[string]reflect.Type, t reflect.Type, depth int) {
 	if t == nil || depth > discoverDepth {
 		return
 	}
 	name := t.String()
-	if _, seen := r.types[name]; seen {
+	if _, seen := types[name]; seen {
 		return // also what stops a recursive type looping
 	}
-	r.types[name] = t
+	types[name] = t
 	if r.log != nil {
 		r.log.Debug("type discovered",
 			"name", name,
@@ -68,30 +74,30 @@ func (r *Runtime) discover(t reflect.Type, depth int) {
 
 	switch t.Kind() {
 	case reflect.Pointer, reflect.Slice, reflect.Array, reflect.Chan:
-		r.discover(t.Elem(), depth+1)
+		r.discoverInto(types, t.Elem(), depth+1)
 	case reflect.Map:
-		r.discover(t.Key(), depth+1)
-		r.discover(t.Elem(), depth+1)
+		r.discoverInto(types, t.Key(), depth+1)
+		r.discoverInto(types, t.Elem(), depth+1)
 	case reflect.Struct:
 		// Field types matter because a program can read a field, so
 		// req.Header has to make http.Header nameable.
 		for i := 0; i < t.NumField(); i++ {
 			if f := t.Field(i); f.PkgPath == "" {
-				r.discover(f.Type, depth+1)
+				r.discoverInto(types, f.Type, depth+1)
 			}
 		}
 	case reflect.Func:
 		for i := 0; i < t.NumIn(); i++ {
-			r.discover(t.In(i), depth+1)
+			r.discoverInto(types, t.In(i), depth+1)
 		}
 		for i := 0; i < t.NumOut(); i++ {
-			r.discover(t.Out(i), depth+1)
+			r.discoverInto(types, t.Out(i), depth+1)
 		}
 	}
 	// A method's signature names types the program can reach by calling
 	// it, so they belong in the registry too.
 	for i := 0; i < t.NumMethod(); i++ {
-		r.discover(t.Method(i).Type, depth+1)
+		r.discoverInto(types, t.Method(i).Type, depth+1)
 	}
 }
 
@@ -115,6 +121,7 @@ func (r *Runtime) BindType(name string, v any) error {
 	r.origin = name
 	r.discover(t, 1)
 	r.origin = ""
+	r.gen++
 	r.mu.Unlock()
 	return nil
 }

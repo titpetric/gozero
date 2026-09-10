@@ -40,7 +40,7 @@ func (c *Compiler) compileExpr(sc *cscope, e *callExpr) (*vmCall, reflect.Type, 
 	// http.NewRequest is one name while req.Cookies is a method on req.
 	base := -1
 	for i := len(e.path); i >= 1; i-- {
-		if _, ok := c.bindings[joinPath(e.path[:i])]; ok {
+		if _, ok := sc.bindings[joinPath(e.path[:i])]; ok {
 			base = i
 			break
 		}
@@ -53,6 +53,11 @@ func (c *Compiler) compileExpr(sc *cscope, e *callExpr) (*vmCall, reflect.Type, 
 	default:
 		slot, ok := sc.slots[e.path[0]]
 		if !ok {
+			// A known import with an unknown symbol errors the way Go
+			// spells it; anything else keeps the binding message.
+			if sc.pkgs != nil && sc.pkgs[e.path[0]] != nil && len(e.path) > 1 {
+				return nil, nil, fmt.Errorf("compile: undefined: %s", joinPath(e.path[:2]))
+			}
 			return nil, nil, fmt.Errorf("compile: unknown binding %q", joinPath(e.path))
 		}
 		recv = &vmArg{kind: vaSlot, slot: slot, typ: sc.env[e.path[0]], iface: -1}
@@ -82,7 +87,7 @@ func (c *Compiler) compileExpr(sc *cscope, e *callExpr) (*vmCall, reflect.Type, 
 		if len(methods) == 0 {
 			args = e.args
 		}
-		call, err := c.compileCall(sc, c.bindings[name].rv, name, nil, args)
+		call, err := c.compileCall(sc, sc.bindings[name].rv, name, nil, args)
 		if err != nil {
 			return nil, nil, err
 		}

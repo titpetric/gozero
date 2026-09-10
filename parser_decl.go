@@ -19,6 +19,110 @@ import (
 // Everything accepted is legal Go. The parser records the shapes; the
 // compiler builds the reflect types and owns every semantic check.
 
+// importSpec is one import: an optional local alias and the quoted
+// path, which is a BindPackage registration key.
+type importSpec struct {
+	alias string
+	path  string
+}
+
+// fileHeader claims "package name" at the top of the source and the
+// import declarations after it. The sniff needs the full clause and
+// rewinds otherwise, so a snippet assigning to a name called package
+// keeps parsing. It reports whether the source is a file: a file
+// holds declarations only, the way a Go file does.
+func (p *Parser) fileHeader(prog *program) (bool, error) {
+	save := p.pos
+	if !p.keyword("package") {
+		return false, nil
+	}
+	name := p.ident()
+	if name == "" || !p.terminated() {
+		p.pos = save
+		return false, nil
+	}
+	prog.pkg = name
+	for {
+		p.skipSpace()
+		if !p.keyword("import") {
+			return true, nil
+		}
+		if err := p.importDecl(prog); err != nil {
+			return true, err
+		}
+	}
+}
+
+// importDecl reads one import declaration after the keyword: a single
+// spec or the factored block.
+func (p *Parser) importDecl(prog *program) error {
+	p.skipSpace()
+	if p.consume('(') {
+		for {
+			p.skipSpace()
+			if p.consume(')') {
+				break
+			}
+			if p.pos >= len(p.src) {
+				return p.errAt(p.pos, "unterminated import block")
+			}
+			spec, err := p.importSpec()
+			if err != nil {
+				return err
+			}
+			prog.imports = append(prog.imports, spec)
+			if !p.fieldTerm() {
+				return p.errAt(p.pos, "expected ';' or end of line after import")
+			}
+		}
+		if !p.terminated() {
+			return p.errAt(p.pos, "expected ';' or end of line after import block")
+		}
+		return nil
+	}
+	spec, err := p.importSpec()
+	if err != nil {
+		return err
+	}
+	prog.imports = append(prog.imports, spec)
+	if !p.terminated() {
+		return p.errAt(p.pos, "expected ';' or end of line after import")
+	}
+	return nil
+}
+
+// importSpec reads one [alias] "path" pair. The path is double-quoted
+// as in Go; dot and blank imports have no meaning against a binding
+// registry and are rejected.
+func (p *Parser) importSpec() (importSpec, error) {
+	alias := ""
+	p.skipSpace()
+	if p.pos < len(p.src) && p.src[p.pos] == '\'' {
+		return importSpec{}, p.errAt(p.pos, "expected a double-quoted import path")
+	}
+	if p.pos < len(p.src) && p.src[p.pos] != '"' {
+		alias = p.ident()
+		if alias == "" {
+			return importSpec{}, p.errAt(p.pos, "expected an import path or alias")
+		}
+		if alias == "_" {
+			return importSpec{}, p.errAt(p.pos, "blank imports are not supported: an unused package is simply not imported")
+		}
+		p.skipSpace()
+	}
+	if p.pos >= len(p.src) || p.src[p.pos] != '"' {
+		return importSpec{}, p.errAt(p.pos, "expected a double-quoted import path")
+	}
+	a, err := p.stringLit('"')
+	if err != nil {
+		return importSpec{}, err
+	}
+	if a.str == "" {
+		return importSpec{}, p.errAt(p.pos, "empty import path")
+	}
+	return importSpec{alias: alias, path: a.str}, nil
+}
+
 // typeDecl is one "type Name struct{...}" or "type Name interface{...}"
 // declaration.
 type typeDecl struct {

@@ -14,15 +14,15 @@ import (
 // method chain, and a path that names a registered type. A binding
 // wins over a type of the same name, which keeps every program that
 // compiled before hints existed meaning what it meant.
-func (c *Compiler) conversionType(e *callExpr) (reflect.Type, bool) {
+func (c *Compiler) conversionType(sc *cscope, e *callExpr) (reflect.Type, bool) {
 	if len(e.chain) != 0 {
 		return nil, false
 	}
 	name := joinPath(e.path)
-	if _, bound := c.bindings[name]; bound {
+	if _, bound := sc.bindings[name]; bound {
 		return nil, false
 	}
-	return c.lookupType(name)
+	return c.resolveType(sc, name)
 }
 
 // conversionArg is the single literal a conversion hint wraps. A name
@@ -48,10 +48,10 @@ func conversionArg(e *callExpr) (arg, error) {
 // the name to a binding decides, because that is the only type the
 // value has to satisfy. Failing that the literal keeps the width the
 // parser gave it.
-func (c *Compiler) inferLiteralType(prog *program, name string, lit arg) reflect.Type {
+func (c *Compiler) inferLiteralType(sc *cscope, prog *program, name string, lit arg) reflect.Type {
 	for si := range prog.stmts {
 		if call := prog.stmts[si].call; call != nil {
-			if t := c.useType(call, name); t != nil {
+			if t := c.useType(sc, call, name); t != nil {
 				return t
 			}
 		}
@@ -75,8 +75,8 @@ func (c *Compiler) inferLiteralType(prog *program, name string, lit arg) reflect
 // nested calls. Only a call whose whole path is a binding is
 // considered: a method's receiver type may itself depend on a type not
 // worked out yet.
-func (c *Compiler) useType(e *callExpr, name string) reflect.Type {
-	if b, ok := c.bindings[joinPath(e.path)]; ok && len(e.chain) == 0 {
+func (c *Compiler) useType(sc *cscope, e *callExpr, name string) reflect.Type {
+	if b, ok := sc.bindings[joinPath(e.path)]; ok && len(e.chain) == 0 {
 		ft := b.rv.Type()
 		fixed := ft.NumIn()
 		if ft.IsVariadic() {
@@ -111,7 +111,7 @@ func (c *Compiler) useType(e *callExpr, name string) reflect.Type {
 	}
 	for _, a := range e.args {
 		if a.kind == argCall {
-			if t := c.useType(a.sub, name); t != nil {
+			if t := c.useType(sc, a.sub, name); t != nil {
 				return t
 			}
 		}
@@ -119,7 +119,7 @@ func (c *Compiler) useType(e *callExpr, name string) reflect.Type {
 	for _, l := range e.chain {
 		for _, a := range l.args {
 			if a.kind == argCall {
-				if t := c.useType(a.sub, name); t != nil {
+				if t := c.useType(sc, a.sub, name); t != nil {
 					return t
 				}
 			}
