@@ -15,10 +15,10 @@ are the investigations that produced both.
 ## The imperative principle
 
 The language has statements and nothing else: a call, a name bound to
-a call's results, a var declaration, a field read or write, a return.
-There are no operators, no conditionals, no loops and no standard
-library. Everything a program can do, it does by calling a Go function
-the host bound:
+a call's results, a var declaration, a field read or write, a channel
+receive or send, a return. There are no operators beyond the channel
+arrow, no conditionals, no loops and no standard library. Everything
+a program can do, it does by calling a Go function the host bound:
 
 ```go
 rt := gozero.NewRuntime()
@@ -39,7 +39,11 @@ unless a function that opens files was bound.
 Methods extend the reach without extending the bindings. `Cookies` and
 `Encode` are not bound; they are resolved on the static result types
 of the two calls when the program compiles, so an unknown method is a
-compile error rather than an execution one.
+compile error rather than an execution one. Resolution covers Go's
+method sets in full - value and pointer receivers, methods promoted
+from embedded types - with Go's addressability rule: a pointer
+receiver method needs a named value or a field of one, never the
+direct result of a call.
 
 ## The pipeline
 
@@ -228,9 +232,10 @@ because `Compile` wraps what it returns.
 ## Costs
 
 A cached single call costs tens of nanoseconds over native with the
-same allocations ([overheads.md](overheads.md)); the seven-fixture
-suite runs at 1.1x-1.6x of handwritten mirrors with inlining disabled and
-closer with it on ([fixtures.md](fixtures.md),
+same allocations ([overheads.md](overheads.md)); the eight-fixture
+suite runs at 1.0x-1.7x of handwritten mirrors with inlining
+disabled - channels at 2.2x, paying reflect's per-operation element
+boxing - and 1.1x-1.5x with it on ([fixtures.md](fixtures.md),
 [inlining.md](inlining.md)). Parse and compile cost about 2us and are
 paid once per source string.
 
@@ -247,5 +252,8 @@ paid once per source string.
   approaches are recorded at the end of
   [overheads.md](overheads.md).
 - Extending the syntax with conditionals, loops, closures, operator
-  expressions or channels is researched and declined, feature by
-  feature, in [design/](design/).
+  expressions or struct type declarations is researched and
+  declined, feature by feature, in [design/](design/). Channel
+  receive and send started as the same research and moved into the
+  syntax; [design/channels.md](design/channels.md) records what
+  landed and what stayed out.

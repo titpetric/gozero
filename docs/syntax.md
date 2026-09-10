@@ -21,24 +21,27 @@ friends, with the test's `testing.TB` on the stack as `tb`.
 program := { stmt }
 stmt    := "var" name typeref term
          | "return" [ arg ] term
+         | path "<-" arg term
          | [ name { "," name } ( ":=" | "=" ) ] rhs term
 term    := ";" | EOL | EOF
-rhs     := expr | string | number | "true" | "false" | "nil" | composite
-typeref := { "*" | "[]" } path
+rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv
+typeref := { "*" | "[]" | "chan" | "chan<-" | "<-chan" } path
 expr    := path "(" [ args ] ")" { "." ident "(" [ args ] ")" }
 path    := ident { "." ident }
 args    := arg { "," arg }
-arg     := string | number | path | expr | composite | path "..."
+arg     := string | number | path | expr | composite | recv | path "..."
+recv    := "<-" ( path | expr )
 composite := [ "&" ] path "{" [ elem { "," elem } [ "," ] ] "}"
 elem    := [ ident ":" ] arg
 ```
 
-There are no operators. A value is a literal, a name, a field read,
-a composite literal, or the result of a call; a condition, a loop or
-an arithmetic expression is a Go function the host binds
-([design/](design/) records why). The end of a line closes a
-statement; the semicolon is a delimiter between statements sharing
-one, so both spellings below are the same program:
+The channel arrow is the only operator. A value is a literal, a
+name, a field read, a composite literal, a receive, or the result of
+a call; a condition, a loop or an arithmetic expression is a Go
+function the host binds ([design/](design/) records why). The end of
+a line closes a statement; the semicolon is a delimiter between
+statements sharing one, so both spellings below are the same
+program:
 
 ```
 u := url.Parse("https://example.com"); assert.Equal(tb, "https", u.Scheme)
@@ -221,13 +224,20 @@ assert.Equal(tb, "a/b/c", joined, "path.Join over spread fields")
 </tr>
 </table>
 
-## Field reads and writes
+## Fields and methods
 
-A dotted path after a name is a field read or a field write,
-resolved against the name's static type at compile time; an unknown
-field is a compile error. Reads chain through pointers, and writes
-require an addressable base - a pointer, or a value declared with
-`var` or built by a composite literal:
+A dotted path after a name is a field read, a field write, or a
+method call, resolved against the name's static type at compile
+time; an unknown selector is a compile error. Methods follow Go's
+method sets in full: value receivers, pointer receivers, and methods
+promoted from embedded types, on both value- and pointer-typed
+names. A pointer-receiver method on a value needs the value's
+address, and a name or a field of one has an address the way a Go
+variable does; only the direct result of a call does not, so
+`f().Bump()` is a compile error where `o := f(); o.Bump()` mutates
+`o`. Reads chain through pointers, and writes require an addressable
+base - a pointer, or a value declared with `var` or built by a
+composite literal:
 
 <table>
 <tr>
@@ -330,6 +340,95 @@ joined := path.Join(parts...)
 </td>
 </tr>
 </table>
+
+## Channels
+
+A channel is a value like any other: made by a binding, held by a
+name, passed to calls, read off a field, declared with `var` in the
+`chan T`, `<-chan T` and `chan<- T` spellings. Receive and send are
+the two operations Go spells with `<-`, and both carry the
+language's implicit rules. The `ok` of Go's two-value receive is
+implicit the way the trailing error of a call is: a receive from a
+closed channel ends the program with `io.EOF`, so the host loops
+`Exec` until `errors.Is(err, io.EOF)` and never writes the check.
+Both operations are armed with the execution context: a blocked
+receive or send ends the program with `ctx.Err()` when the
+`ExecContext` deadline passes, which also bounds a nil channel.
+
+<table>
+<tr>
+<th>go</th>
+<th>gozero</th>
+</tr>
+<tr>
+<td>
+
+```go
+line, ok := <-lines
+if !ok {
+	return io.EOF
+}
+out := fmt.Sprintf("got %s", line)
+results <- out
+```
+
+</td>
+<td>
+
+```go
+line := <-lines
+out := fmt.Sprintf("got %s", line)
+results <- out
+```
+
+</td>
+</tr>
+</table>
+
+The peer is the host's: there is no `go` statement, so goroutines,
+channel construction and topology stay in Go, and a compiled program
+is safe to run from as many goroutines as the host starts. A worker
+is the same program run per message:
+
+<table>
+<tr>
+<th>go</th>
+<th>gozero</th>
+</tr>
+<tr>
+<td>
+
+```go
+for {
+	job, ok := <-jobs
+	if !ok {
+		return
+	}
+	u, err := url.Parse(job)
+	if err != nil {
+		return err
+	}
+	done <- u.Host
+}
+```
+
+</td>
+<td>
+
+```go
+// the host loops Exec until io.EOF
+job := <-jobs
+u := url.Parse(job)
+done <- u.Host
+```
+
+</td>
+</tr>
+</table>
+
+`select`, `range` over a channel and `go` remain outside the
+language; [design/channels.md](design/channels.md) records why they
+decompose onto conditions, loops and closures.
 
 ## The stack and dest
 
@@ -440,9 +539,11 @@ the program before the next statement, the way `set -e` ends a shell
 script.
 
 What the syntax deliberately leaves out - conditionals, loops,
-closures, operator expressions and channels - and what each would
-cost the design is researched feature by feature in
+closures, operator expressions and struct type declarations - and
+what each would cost the design is researched feature by feature in
 [design/](design/): [conditions](design/conditions.md),
 [loops](design/loops.md), [closures](design/closures.md),
 [expressions](design/expressions.md),
-[channels](design/channels.md).
+[structs](design/structs.md). Channel receive and send started
+there and moved into the syntax; [channels](design/channels.md)
+records what landed and what stayed out.

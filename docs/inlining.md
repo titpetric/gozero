@@ -7,33 +7,34 @@ date: "2026-09-07T10:02:54+02:00"
 default build, and `-gcflags=all=-l`, which disables inlining in every
 package including the standard library. Pinned core (`taskset -c 3`),
 Intel N150, go1.27, one 1s run per benchmark. The tables were
-remeasured on 2026-09-09, after composite literals put the structs
-fixture on the direct tier and conversion hints grew the types fixture
-([changelog](changelog.md)).
+remeasured on 2026-09-10, after the channels fixture landed on the
+direct tier ([changelog](changelog.md)).
 
 ## With inlining (default build)
 
 | fixture  | vm                        | native            | ratio |
 |----------|---------------------------|-------------------|-------|
-| fmt      | 907ns, 152 B, 7 allocs    | 649ns, 48 B, 4    | 1.4x  |
-| http     | 1778ns, 616 B, 9 allocs   | 1611ns, 640 B, 9  | 1.1x  |
-| json     | 2252ns, 1016 B, 17 allocs | 1536ns, 728 B, 14 | 1.5x  |
-| structs  | 4933ns, 2120 B, 26 allocs | 3416ns, 680 B, 19 | 1.4x  |
-| types    | 3058ns, 440 B, 21 allocs  | 2276ns, 120 B, 11 | 1.3x  |
-| url      | 2673ns, 816 B, 15 allocs  | 2307ns, 384 B, 12 | 1.2x  |
-| variadic | 390ns, 69 B, 3 allocs     | 353ns, 69 B, 3    | 1.1x  |
+| channels | 1883ns, 640 B, 15 allocs  | 1223ns, 400 B, 8  | 1.5x  |
+| fmt      | 822ns, 152 B, 7 allocs    | 615ns, 48 B, 4    | 1.3x  |
+| http     | 1723ns, 616 B, 9 allocs   | 1498ns, 640 B, 9  | 1.2x  |
+| json     | 2128ns, 1016 B, 17 allocs | 1467ns, 728 B, 14 | 1.5x  |
+| structs  | 4761ns, 2120 B, 26 allocs | 3206ns, 680 B, 19 | 1.5x  |
+| types    | 2848ns, 440 B, 21 allocs  | 2131ns, 120 B, 11 | 1.3x  |
+| url      | 2586ns, 816 B, 15 allocs  | 2175ns, 384 B, 12 | 1.2x  |
+| variadic | 369ns, 69 B, 3 allocs     | 317ns, 69 B, 3    | 1.2x  |
 
 ## Without inlining (-gcflags=all=-l)
 
 | fixture  | vm                        | native            | ratio |
 |----------|---------------------------|-------------------|-------|
-| fmt      | 1583ns, 152 B, 7 allocs   | 996ns, 48 B, 4    | 1.6x  |
-| http     | 3032ns, 616 B, 9 allocs   | 2673ns, 640 B, 9  | 1.1x  |
-| json     | 4449ns, 1016 B, 17 allocs | 3802ns, 984 B, 16 | 1.2x  |
-| structs  | 8223ns, 2120 B, 26 allocs | 5380ns, 680 B, 19 | 1.5x  |
-| types    | 5339ns, 440 B, 21 allocs  | 3488ns, 120 B, 11 | 1.5x  |
-| url      | 4658ns, 816 B, 15 allocs  | 4187ns, 784 B, 14 | 1.1x  |
-| variadic | 575ns, 69 B, 3 allocs     | 513ns, 69 B, 3    | 1.1x  |
+| channels | 4346ns, 640 B, 15 allocs  | 1978ns, 400 B, 8  | 2.2x  |
+| fmt      | 1528ns, 152 B, 7 allocs   | 922ns, 48 B, 4    | 1.7x  |
+| http     | 2765ns, 616 B, 9 allocs   | 2664ns, 640 B, 9  | 1.0x  |
+| json     | 4166ns, 1016 B, 17 allocs | 3510ns, 984 B, 16 | 1.2x  |
+| structs  | 7763ns, 2120 B, 26 allocs | 5025ns, 680 B, 19 | 1.5x  |
+| types    | 4871ns, 440 B, 21 allocs  | 3117ns, 120 B, 11 | 1.6x  |
+| url      | 4323ns, 816 B, 15 allocs  | 4007ns, 784 B, 14 | 1.1x  |
+| variadic | 525ns, 69 B, 3 allocs     | 490ns, 69 B, 3    | 1.1x  |
 
 ## What the difference says
 
@@ -47,10 +48,14 @@ pointers. The compiler can never inline across those calls, in either
 build, so the vm column changes only by what the standard library
 loses. The native column additionally loses the inlining of its own
 statements. Fixtures whose per-statement work is small show it most:
-fmt goes 1.4x to 1.6x, because a fixed per-node dispatch cost stands
+fmt goes 1.3x to 1.7x, because a fixed per-node dispatch cost stands
 out once the statements around it stop being folded away. variadic
-stays at 1.1x in both builds: its work is one spread call, and the vm
-and the mirror make the same calls once nothing inlines.
+sits near 1.1x in both builds: its work is one spread call, and the
+vm and the mirror make the same calls once nothing inlines. channels
+moves furthest, 1.5x to 2.2x: its per-operation cost is the reflect
+receive and the element box, both immune to inlining, while the
+mirror's channel operations are runtime calls whose surroundings
+inline away.
 
 Inlining also feeds escape analysis, which shows in the alloc columns.
 With inlining, json/native drops from 16 allocs to 14 and url/native

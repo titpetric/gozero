@@ -114,3 +114,4 @@ they happened; each ends with what it taught.
 | [Design](docs/DESIGN.md)                                  | 2026-09-07 |
 | [Changelog](docs/changelog.md)                            | 2026-09-08 |
 | [Language syntax](docs/syntax.md)                         | 2026-09-09 |
+| [Concurrency](docs/concurrency.md)                        | 2026-09-10 |

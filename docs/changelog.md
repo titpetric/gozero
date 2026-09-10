@@ -7,6 +7,101 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-10 12:30 +02:00: MutexMap binding and the concurrency chapter
+
+`gozero.MutexMap` is a mutex-protected `map[string]int` exported for
+hosts to bind: shared state as method calls, the alternative to
+moving values through a channel. Its `Set` and `Get` land on the
+direct tier through two new shapes, `PSi64_` and `PS_i64`.
+
+[concurrency.md](concurrency.md) measures the two against each
+other: an uncontended native channel round trip costs within 5ns of
+the native mutex round trip, so the channel itself is not the
+overhead; the compiled channel program pays +192ns over native
+against the mutex program's +106ns, and the difference is the
+reflect layer channel operations run through, one element box per
+operation. Shared state belongs behind the mutex binding; handoff,
+blocking and end-of-stream stay on channels.
+
+## 2026-09-10 11:31 +02:00: channel receive and send
+
+Channels moved from research ([design/channels.md](design/channels.md))
+into the syntax, on every tier:
+
+```
+c := chanOf("a", "b");
+v := <-c;               receive, binds the element
+c <- "sent";            send
+<-c;                    bare receive, for its blocking effect
+var d chan string;      chan, <-chan and chan<- in a typeref
+```
+
+The implicit rules carry over. The ok of Go's two-value receive is
+implicit the way a trailing error is: never a value, checked after
+every receive, and a closed channel ends the program with io.EOF, so
+a host loops Exec until errors.Is(err, io.EOF). Both operations are
+armed with the execution context: a blocked receive or send ends the
+program with ctx.Err() when the ExecContext deadline passes, which
+also bounds a nil channel. A send on a closed channel panics as in
+Go, arriving as *PanicError. The channel itself must have a static
+type - a name, a field, or a call result; a stack name is rejected
+at compile the way a method on one is. There is no go statement:
+goroutines and channel construction stay in the host, and a compiled
+program is safe to run from as many goroutines as the host starts.
+
+On the direct tier the operations compile to a try fast path
+(reflect TryRecv/TrySend, no allocation when the channel is ready)
+falling back to a two-case reflect.Select with the context's Done.
+The channels fixture runs at 1.6x its handwritten mirror in a
+default build (1977ns vs 1253ns, pinned) and 2.1x with inlining off;
+the gap is the per-operation element boxing reflect requires, 15
+allocations against the mirror's 8. A typed fast path per element
+class, reinterpreting the frame word as the concrete channel type,
+is the unexplored next step. select, go and range stay outside the
+language; the research records why.
+
+## 2026-09-10 11:20 +02:00: full Go method sets
+
+Methods resolve against Go's method sets in full. Value receivers
+worked; what landed is pointer receivers on value-typed names and
+promoted methods from embedded types through both receiver kinds.
+Given a host type with a pointer-receiver method behind an embedding:
+
+```go
+type counter struct{ n int }
+
+func (c *counter) Add() int { c.n++; return c.n }
+
+type stats struct{ counter }
+
+rt.Bind("newStats", func() stats { return stats{} })
+```
+
+a program calls the promoted method on the value and the writes
+reach the variable:
+
+```
+var u url.URL;
+u.Path = "/x";
+s := u.String();        pointer receiver on a var-declared value
+
+st := newStats();
+st.Add();               promoted pointer receiver, st.n is 1
+n := st.Add();          n is 2: both writes reached st
+```
+
+Addressability is Go's rule: a name is a variable and has an
+address, a field of one does too, and the direct result of a call
+does not, so f().Bump() is a compile error naming the fix. The
+receiver resolves to the variable's real address - on the direct
+tier the frame slot's offset, no load at all - so a method that
+writes through its receiver writes the program's variable. A slot
+whose address is taken is stored through an addressable cell on the
+reflect tier, is never spliced away by the planner, and does not
+back an aliased interface argument, the same hazard class as a
+rewritten slot. The existing fixture benchmarks are unchanged: the
+checks are compile-time.
+
 ## 2026-09-09 11:27 +02:00: declaration follows Go's rule
 
 `:=` declares, `var` declares with a type, and `=` assigns to a name

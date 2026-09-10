@@ -50,7 +50,8 @@ pass vacuously.
 
 Adding a test is adding a file. Scope it the way the existing ones are
 scoped, one concern per file: `http.txt`, `url.txt`, `json.txt`,
-`fmt.txt`, `types.txt`, `structs.txt`, `variadic.txt`.
+`fmt.txt`, `types.txt`, `structs.txt`, `variadic.txt`,
+`channels.txt`.
 
 ## The assert bindings
 
@@ -96,25 +97,32 @@ the request, and back out.
 
 `BenchmarkFixtures` runs every fixture against a handwritten mirror: a
 `testFixtures` method doing the same work with the same assertions,
-context from `tb.Context()` on both sides. All seven fixtures run
+context from `tb.Context()` on both sides. All eight fixtures run
 fully on the direct-call tier, structs since composite literals landed
-on it ([changelog](changelog.md)). Pinned core, inlining disabled:
+on it and channels since receive and send became language nodes
+([changelog](changelog.md)). Pinned core, inlining disabled,
+remeasured 2026-09-10:
 
 | fixture  | vm               | native    | ratio |
 |----------|------------------|-----------|-------|
-| fmt      | 1.6us, 7 allocs  | 1.0us, 4  | 1.6x  |
-| http     | 3.0us, 9 allocs  | 2.7us, 9  | 1.1x  |
-| json     | 4.4us, 17 allocs | 3.8us, 16 | 1.2x  |
-| structs  | 8.2us, 26 allocs | 5.4us, 19 | 1.5x  |
-| types    | 5.3us, 21 allocs | 3.5us, 11 | 1.5x  |
-| url      | 4.7us, 15 allocs | 4.2us, 14 | 1.1x  |
-| variadic | 0.6us, 3 allocs  | 0.5us, 3  | 1.1x  |
+| channels | 4.3us, 15 allocs | 2.0us, 8  | 2.2x  |
+| fmt      | 1.5us, 7 allocs  | 0.9us, 4  | 1.7x  |
+| http     | 2.8us, 9 allocs  | 2.7us, 9  | 1.0x  |
+| json     | 4.2us, 17 allocs | 3.5us, 16 | 1.2x  |
+| structs  | 7.8us, 26 allocs | 5.0us, 19 | 1.5x  |
+| types    | 4.9us, 21 allocs | 3.1us, 11 | 1.6x  |
+| url      | 4.3us, 15 allocs | 4.0us, 14 | 1.1x  |
+| variadic | 0.5us, 3 allocs  | 0.5us, 3  | 1.1x  |
 
 http and variadic reach allocation parity with their mirrors; json and
 url are within one allocation, which is the frame. structs sits seven
 over: a literal in argument or interface position allocates a fresh
 struct where Go's escape analysis keeps the mirror's on the stack. The
 fixtures that lean on formatting and assertion plumbing sit under 2x.
+channels sits seven over and above 2x for a related reason: every
+reflect receive boxes the element where the mirror receives into a
+local, a cost the default build halves
+([inlining.md](inlining.md)).
 For the bridge cost
 of a call the shape table cannot express, and for the work-only
 comparison without assertions, see the benchmarks in
