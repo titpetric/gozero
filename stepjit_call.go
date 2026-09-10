@@ -97,7 +97,7 @@ func (c *jitCompiler) packNode(call *vmCall, st reflect.Type, elems []*vmArg) (n
 		}
 		nodes[i] = n
 	}
-	// A NonRetaining callee lets the pack reuse a pooled backing
+	// The binding contract lets the pack reuse a pooled backing
 	// array instead of allocating one per call; the slice the callee
 	// receives is dead when the call returns, and finish repools it.
 	// takeBacking is nil for an ordinary call, and the pack allocates

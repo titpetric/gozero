@@ -109,14 +109,13 @@ Two pools produce the allocation columns of those tables. The frame
 pool recycles
 the per-run frame of a program whose frame provably does not escape,
 and argument pooling recycles the pack slices, string boxes and
-literal blocks behind calls to NonRetaining bindings; the fixture
-runtime annotates its fmt and assert scopes. Seven of the eight
+literal blocks behind every call, under the binding contract that
+arguments are borrowed. Seven of the eight
 fixtures run at or below their mirrors' allocation counts - fmt at
-half its mirror's. channels is the exception at 15 against 8: every
+half its mirror's. channels is the exception at 13 against 8: every
 reflect receive boxes the element where the mirror receives into a
 local, and its asserts read write-once string slots that alias the
-frame instead of boxing, so it has no pooled sites
-([inlining.md](inlining.md)).
+frame instead of boxing ([inlining.md](inlining.md)).
 For the bridge cost
 of a call the shape table cannot express, and for the work-only
 comparison without assertions, see the benchmarks in

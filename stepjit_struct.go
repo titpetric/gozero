@@ -144,7 +144,7 @@ func (c *jitCompiler) structNode(a *vmArg) (node, error) {
 	if err != nil {
 		return node{}, err
 	}
-	// A literal handed to a NonRetaining callee reuses a pooled block:
+	// A literal in argument position reuses a pooled block:
 	// the block is dead when the call returns, release clears it, so
 	// a reused block starts from the zero value like a fresh one.
 	if site, ok := c.blockOf[a]; ok {

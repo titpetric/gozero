@@ -82,15 +82,16 @@ Table 2, with `-gcflags=all=-l`:
 Both programs qualify for the frame pool, which removed the per-run
 frame allocation and 14% of the mutex program's time when it landed
 ([changelog](changelog.md)); the remaining allocation on the mutex
-side is the returned value's box. Neither program has NonRetaining
-bindings, so argument pooling does not apply here.
+side is the returned value's box. Neither program passes packs,
+boxes or literal arguments, so argument pooling has nothing to
+recycle here.
 
 ## What the numbers say
 
 **The channel itself is not the cost.** The native columns sit 5ns
 apart: an uncontended send-and-receive on a buffered channel costs
 45ns against the mutex round trip's 41ns. A channel send carries no
-meaningful inherent overhead at this grain, so the 2.0x of the
+meaningful inherent overhead at this grain, so the 2.1x of the
 channels fixture ([fixtures.md](fixtures.md)) cannot be the channel:
 the gap has another owner.
 

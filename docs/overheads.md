@@ -251,9 +251,10 @@ aliased interface argument, an addressed receiver), and a program
 with none recycles its frame through a `sync.Pool`, cleared on reuse
 with the typed clear reflect performs, while every other program
 allocates fresh. The retention annotation this chapter lists below
-under approaches not tried landed the same day as `NonRetaining` at
-Bind, and extends the same release discipline to the pack slices,
-string boxes and literal blocks behind an annotated call
+under approaches not tried became the binding contract instead:
+arguments are borrowed for the duration of the call, so the pack
+slices, string boxes and literal blocks behind every call repool
+after the run, and a binding that keeps an argument copies it
 ([changelog](changelog.md)).
 
 One measurement to be careful with. Under `-gcflags=all=-l` the numbers

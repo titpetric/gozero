@@ -52,18 +52,20 @@ func NewRuntime() *Runtime {
 }
 
 // Bind registers a Go function under a name, e.g.
-// Bind("NewRequest", http.NewRequest).
-func (r *Runtime) Bind(name string, fn any, opts ...BindOption) error {
+// Bind("NewRequest", http.NewRequest). Arguments are borrowed: they
+// are valid for the duration of the call, because the runtime pools
+// the memory behind packs, boxes and literal arguments and reuses it
+// after the call returns. A binding that keeps a received any, slice
+// or literal pointer copies it first, the way a type assertion
+// copies a value out of its box; plain string and scalar parameters
+// need no copy.
+func (r *Runtime) Bind(name string, fn any) error {
 	v := reflect.ValueOf(fn)
 	if v.Kind() != reflect.Func {
 		return fmt.Errorf("bind: %s is %s, want func", name, v.Kind())
 	}
-	b := binding{rv: v, raw: fn}
-	for _, opt := range opts {
-		opt(&b)
-	}
 	r.mu.Lock()
-	r.compiler.bindings[name] = b
+	r.compiler.bindings[name] = binding{rv: v, raw: fn}
 	if r.log != nil {
 		r.log.Debug("bind", "name", name, "signature", v.Type().String())
 	}
@@ -85,14 +87,14 @@ func (r *Runtime) Bind(name string, fn any, opts ...BindOption) error {
 // Names are sorted before binding so a failure reports the same entry
 // on every run. The first failure stops the loop; entries already bound
 // stay bound.
-func (r *Runtime) BindScope(prefix string, fns map[string]any, opts ...BindOption) error {
+func (r *Runtime) BindScope(prefix string, fns map[string]any) error {
 	names := make([]string, 0, len(fns))
 	for name := range fns {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		if err := r.Bind(prefix+"."+name, fns[name], opts...); err != nil {
+		if err := r.Bind(prefix+"."+name, fns[name]); err != nil {
 			return err
 		}
 	}

@@ -212,7 +212,6 @@ recompile only when it calls an API nothing has bound yet.
 ```go
 rt := gozero.NewRuntime()
 err := rt.Bind("NewRequest", http.NewRequest)
-err = rt.Bind("Sprintf", fmt.Sprintf, gozero.NonRetaining()) // arguments pool
 err = rt.BindScope("json", map[string]any{"NewEncoder": json.NewEncoder})
 err = rt.BindType("io.Closer", (*io.Closer)(nil))
 rt.SetLogger(logger) // discovery reports at debug level
@@ -235,7 +234,7 @@ because `Compile` wraps what it returns.
 A cached single call costs tens of nanoseconds over native with the
 same allocations ([overheads.md](overheads.md)); the eight-fixture
 suite runs at 1.1x-1.5x of handwritten mirrors with inlining
-disabled - channels at 2.0x, paying reflect's per-operation element
+disabled - channels at 2.1x, paying reflect's per-operation element
 boxing - and 1.1x-1.6x with it on, with seven of the eight at or
 below their mirrors' allocation counts (tables 1 and 2 in
 [inlining.md](inlining.md); the analysis is in

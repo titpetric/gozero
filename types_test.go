@@ -23,11 +23,14 @@ func typeRuntime(t *testing.T) (*Runtime, *any) {
 		}
 	}
 	for name, fn := range map[string]any{
-		"takesInt":  func(n int) (*url.URL, error) { seen = n; return &url.URL{}, nil },
-		"takesI8":   func(n int8) (*url.URL, error) { seen = n; return &url.URL{}, nil },
-		"takesU32":  func(n uint32) (*url.URL, error) { seen = n; return &url.URL{}, nil },
-		"takesF32":  func(n float32) (*url.URL, error) { seen = n; return &url.URL{}, nil },
-		"takesAny":  func(v any) (*url.URL, error) { seen = v; return &url.URL{}, nil },
+		"takesInt": func(n int) (*url.URL, error) { seen = n; return &url.URL{}, nil },
+		"takesI8":  func(n int8) (*url.URL, error) { seen = n; return &url.URL{}, nil },
+		"takesU32": func(n uint32) (*url.URL, error) { seen = n; return &url.URL{}, nil },
+		"takesF32": func(n float32) (*url.URL, error) { seen = n; return &url.URL{}, nil },
+		// The binding contract makes v borrowed: copyBoxed moves it
+		// into a fresh box before it is stored, or a pooled box would
+		// be cleared under the recorder after the run.
+		"takesAny":  func(v any) (*url.URL, error) { seen = copyBoxed(v); return &url.URL{}, nil },
 		"takesI64":  func(n int64) (*url.URL, error) { seen = n; return &url.URL{}, nil },
 		"takesBool": func(b bool) (*url.URL, error) { seen = b; return &url.URL{}, nil },
 	} {

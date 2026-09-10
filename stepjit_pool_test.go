@@ -7,16 +7,16 @@ import (
 	"testing"
 )
 
-// poolRuntime binds one NonRetaining formatter and one retaining
-// collector, so the tests can hold the two promises against each
-// other.
+// poolRuntime binds a formatter and a collector. The collector
+// follows the binding contract: its arguments are borrowed, so it
+// copies what it keeps.
 func poolRuntime(t *testing.T) (*Runtime, *[][]any) {
 	t.Helper()
 	rt := NewRuntime()
-	if err := rt.Bind("format", fmt.Sprint, NonRetaining()); err != nil {
+	if err := rt.Bind("format", fmt.Sprint); err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.Bind("describe", func(v any) string { return fmt.Sprintf("%v", v) }, NonRetaining()); err != nil {
+	if err := rt.Bind("describe", func(v any) string { return fmt.Sprintf("%v", v) }); err != nil {
 		t.Fatal(err)
 	}
 	if err := rt.Bind("url.Parse", url.Parse); err != nil {
@@ -24,7 +24,14 @@ func poolRuntime(t *testing.T) (*Runtime, *[][]any) {
 	}
 	var kept [][]any
 	if err := rt.Bind("keep", func(vs ...any) int {
-		kept = append(kept, vs)
+		// vs and its elements are borrowed: the slice is cloned and
+		// each element re-boxed by the copy, per the contract in
+		// Bind's documentation.
+		own := make([]any, len(vs))
+		for i, v := range vs {
+			own[i] = fmt.Sprint(v)
+		}
+		kept = append(kept, own)
 		return len(kept)
 	}); err != nil {
 		t.Fatal(err)
@@ -33,9 +40,9 @@ func poolRuntime(t *testing.T) (*Runtime, *[][]any) {
 }
 
 // TestArgumentPools checks the pooled kinds end to end: the pack
-// slice and string box of a NonRetaining call are reused between runs
-// and every run still computes the right value, sequentially and
-// concurrently under the race detector.
+// slice and string box of a call are reused between runs and every
+// run still computes the right value, sequentially and concurrently
+// under the race detector.
 func TestArgumentPools(t *testing.T) {
 	rt, _ := poolRuntime(t)
 
@@ -73,9 +80,9 @@ func TestArgumentPools(t *testing.T) {
 	wg.Wait()
 }
 
-// TestPooledLiteralBlock checks a composite literal handed to a
-// NonRetaining callee: the block is pooled, and every run sees its
-// own fill, not a previous run's.
+// TestPooledLiteralBlock checks a composite literal in argument
+// position: the block is pooled, and every run sees its own fill,
+// not a previous run's.
 func TestPooledLiteralBlock(t *testing.T) {
 	rt, _ := poolRuntime(t)
 	fn, err := rt.Compile(`s := describe(&url.URL{Path: "/block"}); return s`)
@@ -90,10 +97,10 @@ func TestPooledLiteralBlock(t *testing.T) {
 	}
 }
 
-// TestRetainingBindingUnpooled pins the safety boundary: a binding
-// without the annotation keeps fresh allocations, so a slice it
-// retains is never overwritten by a later run.
-func TestRetainingBindingUnpooled(t *testing.T) {
+// TestBindingContractCopy pins the contract from the caller's side:
+// a binding that copies its borrowed arguments observes stable
+// values across later runs of the same program.
+func TestBindingContractCopy(t *testing.T) {
 	rt, kept := poolRuntime(t)
 	fn, err := rt.Compile(`u := url.Parse("https://example.com/r"); n := keep("first", u.Path); return n`)
 	if err != nil {
@@ -106,13 +113,14 @@ func TestRetainingBindingUnpooled(t *testing.T) {
 	}
 	for i, vs := range *kept {
 		if len(vs) != 2 || vs[0] != "first" || vs[1] != "/r" {
-			t.Fatalf("retained slice %d corrupted: %v", i, vs)
+			t.Fatalf("copied slice %d corrupted: %v", i, vs)
 		}
 	}
 }
 
-// TestPoolSitesPlanned pins the plan itself: the annotated program
-// has sites, the unannotated one has none.
+// TestPoolSitesPlanned pins the plan: a program with packs and boxes
+// has pool sites, and a program whose arguments are all constants
+// and plain values has none.
 func TestPoolSitesPlanned(t *testing.T) {
 	rt, _ := poolRuntime(t)
 	compile := func(src string) *jitProgram {
@@ -133,10 +141,10 @@ func TestPoolSitesPlanned(t *testing.T) {
 	}
 	pooled := compile(`u := url.Parse("https://example.com/p"); s := format("path=", u.Path); return s`)
 	if len(pooled.sites) == 0 {
-		t.Error("annotated call planned no pool sites")
+		t.Error("a pack-and-box program planned no pool sites")
 	}
-	plain := compile(`u := url.Parse("https://example.com/p"); n := keep("path=", u.Path); return n`)
+	plain := compile(`u := url.Parse("https://example.com/p"); return u`)
 	if len(plain.sites) != 0 {
-		t.Errorf("unannotated call planned %d pool sites", len(plain.sites))
+		t.Errorf("a constant-argument program planned %d pool sites", len(plain.sites))
 	}
 }

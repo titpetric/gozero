@@ -54,6 +54,17 @@ value. gozero avoids boxing where it can: constants box once at
 compile time, small integers point into a static table instead of a
 fresh cell, and an eligible frame slot is aliased instead of copied.
 
+## borrowed argument
+
+The binding contract: a call's arguments are valid for the duration
+of the call, and a binding that keeps one copies it first. The
+runtime relies on the contract to recycle the memory behind
+arguments - the pack slice, the boxed values, the literal blocks -
+once the call returns. A type assertion copies a value out of its
+box; a plain interface assignment copies only the box's address and
+is not a copy in this sense. String and scalar parameters carry
+their values directly and need no copy.
+
 ## direct-call tier
 
 The fastest of the three execution tiers. A bound function whose
@@ -120,16 +131,6 @@ fixture, used as the native baseline in benchmarks. Every fixture
 has one mirror in `fixture_bench_test.go`; `BenchmarkFixtures` runs
 the compiled fixture and its mirror under the same measurement and
 reports both.
-
-## non-retaining
-
-A promise made per binding with the `NonRetaining` option at `Bind`:
-the function neither stores its arguments beyond the call nor
-returns them. The memory behind an annotated call's arguments is
-dead when the call returns, so the JIT recycles it through pools -
-the pack slice, the boxed values, the literal blocks. The compiler
-cannot verify the promise; a binding that breaks it observes its
-retained argument overwritten by a later run.
 
 ## reflect bridge
 

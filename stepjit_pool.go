@@ -6,11 +6,11 @@ import (
 	"unsafe" // also required by go:linkname
 )
 
-// Argument pooling for NonRetaining bindings. A call annotated at
-// Bind promises the callee neither stores nor returns its arguments,
-// so the memory behind them is dead the moment the call returns.
-// Three allocation kinds qualify, each with a fixed shape known at
-// compile time:
+// Argument pooling. The binding contract (see Bind) makes every
+// call's arguments borrowed: valid for the duration of the call, with
+// the callee copying anything it keeps. The memory behind them is
+// therefore dead the moment the call returns. Three allocation kinds
+// qualify, each with a fixed shape known at compile time:
 //
 //   - the variadic pack slice a packed call builds
 //   - the heap cell a string boxes into for an interface parameter
@@ -76,8 +76,8 @@ func (c *jitCompiler) newPoolSite(t reflect.Type) *sitePool {
 }
 
 // planPools walks the planned statements and records every pooled
-// site of every NonRetaining call: pack slices by call, literal
-// blocks and certain string boxes by argument. The walk mirrors the
+// site of every call: pack slices by call, literal blocks and
+// certain string boxes by argument. The walk mirrors the
 // node builders loosely on purpose: a site recorded here that the
 // builder never uses is an idle scratch field, and a boxing site the
 // plan misses allocates fresh, so a mismatch in either direction is
@@ -112,7 +112,7 @@ func (c *jitCompiler) planPools(plan *jitPlan) {
 		if ft.IsVariadic() && !call.spread {
 			fixed--
 		}
-		if call.nonRet && ft.IsVariadic() && !call.spread {
+		if ft.IsVariadic() && !call.spread {
 			et := ft.In(ft.NumIn() - 1).Elem()
 			if n := len(call.args) - fixed; n > 0 && (et == anyType || et.Kind() == reflect.String) {
 				c.packOf[call] = c.newPoolSite(reflect.ArrayOf(n, et))
@@ -125,12 +125,10 @@ func (c *jitCompiler) planPools(plan *jitPlan) {
 			} else if ft.IsVariadic() {
 				pt = ft.In(ft.NumIn() - 1).Elem()
 			}
-			if call.nonRet {
-				if a.kind == vaStruct && pt.Kind() == reflect.Pointer && a.addr {
-					c.blockOf[a] = c.newPoolSite(a.styp)
-				} else {
-					markArg(a, pt)
-				}
+			if a.kind == vaStruct && pt.Kind() == reflect.Pointer && a.addr {
+				c.blockOf[a] = c.newPoolSite(a.styp)
+			} else {
+				markArg(a, pt)
 			}
 			walkArg(a, pt)
 		}

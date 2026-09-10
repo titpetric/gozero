@@ -7,28 +7,25 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
-## 2026-09-10 16:20 +02:00: argument pooling for NonRetaining bindings
+## 2026-09-10 16:58 +02:00: argument pooling under the binding contract
 
-Bind and BindScope accept options, and the first option is a
-promise:
+Arguments are borrowed. A binding receives values that are valid for
+the duration of the call, and a binding that keeps a received `any`,
+slice or literal pointer copies it first - a type assertion copies a
+value out of its box, where a plain interface assignment copies only
+the box's address. Plain string and scalar parameters carry their
+values directly and need no copy. The contract is documented on
+Bind, defined in the [glossary](GLOSSARY.md) under borrowed
+argument, and pinned from the caller's side by
+TestBindingContractCopy.
 
-```go
-rt.Bind("fmt.Sprintf", fmt.Sprintf, gozero.NonRetaining())
-```
-
-NonRetaining declares that the bound function neither stores its
-arguments beyond the call nor returns them, so the memory behind an
-annotated call's arguments is dead when the call returns. The JIT
-then pools three allocation kinds it previously made fresh per run:
-the variadic pack slice, the heap cell a string boxes into for an
-interface parameter, and the block behind a composite literal in
-argument position. Each pooled site holds its block through a hidden
-frame field, and run releases every site after the statements
-finish, clearing the block so it repools zeroed and referencing
-nothing. The compiler cannot check the promise: a binding that
-retains a pooled argument will observe it overwritten by a later
-run. Unannotated bindings keep fresh allocations unconditionally,
-pinned by TestRetainingBindingUnpooled.
+Under that contract the JIT pools three allocation kinds it
+previously made fresh per run, for every call: the variadic pack
+slice, the heap cell a string boxes into for an interface parameter,
+and the block behind a composite literal in argument position. Each
+pooled site holds its block through a hidden frame field, and run
+releases every site after the statements finish, clearing the block
+so it repools zeroed and referencing nothing.
 
 Verified with benchstat over four paired runs: allocations drop 25%
 geometric mean across the affected fixtures - fmt 6 to 2 per run

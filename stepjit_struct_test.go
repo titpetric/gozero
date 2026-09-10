@@ -57,7 +57,7 @@ type shapeOuter struct {
 func TestStructLiteralNestedValueField(t *testing.T) {
 	rt := NewRuntime()
 	var seen any
-	if err := rt.Bind("takes", func(v any) (*url.URL, error) { seen = v; return nil, nil }); err != nil {
+	if err := rt.Bind("takes", func(v any) (*url.URL, error) { seen = copyBoxed(v); return nil, nil }); err != nil {
 		t.Fatal(err)
 	}
 	if err := rt.BindType("shape.Inner", shapeInner{}); err != nil {
@@ -90,7 +90,7 @@ func TestStructLiteralNestedValueField(t *testing.T) {
 func TestStructLiteralValueIntoAny(t *testing.T) {
 	rt := NewRuntime()
 	var seen any
-	if err := rt.Bind("takes", func(v any) (*url.URL, error) { seen = v; return nil, nil }); err != nil {
+	if err := rt.Bind("takes", func(v any) (*url.URL, error) { seen = copyBoxed(v); return nil, nil }); err != nil {
 		t.Fatal(err)
 	}
 	if err := rt.BindType("shape.Inner", shapeInner{}); err != nil {

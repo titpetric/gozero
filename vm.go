@@ -136,9 +136,6 @@ type vmCall struct {
 	// spread marks a variadic call whose last argument is the slice
 	// itself, f(xs...): the invocation goes through CallSlice.
 	spread bool
-	// nonRet carries the binding's NonRetaining promise, which lets
-	// the step JIT pool the memory behind this call's arguments.
-	nonRet bool
 }
 
 // vmStmt is one statement: a call, the slots its results bind to, and

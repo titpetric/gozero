@@ -267,13 +267,7 @@ func newBenchFixtureRuntime(b *testing.B) *Runtime {
 			"True":  assertTrue,
 		},
 	} {
-		// Sprintf, Sprint and the asserts neither store nor return
-		// their arguments, so their packs and boxes are pooled.
-		var opts []BindOption
-		if scope == "fmt" || scope == "assert" {
-			opts = append(opts, NonRetaining())
-		}
-		if err := rt.BindScope(scope, fns, opts...); err != nil {
+		if err := rt.BindScope(scope, fns); err != nil {
 			b.Fatal(err)
 		}
 	}

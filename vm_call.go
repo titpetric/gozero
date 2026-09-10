@@ -82,12 +82,10 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 		if len(methods) == 0 {
 			args = e.args
 		}
-		b := c.bindings[name]
-		call, err := c.compileCall(slots, env, b.rv, name, nil, args)
+		call, err := c.compileCall(slots, env, c.bindings[name].rv, name, nil, args)
 		if err != nil {
 			return nil, nil, err
 		}
-		call.nonRet = b.nonRetaining
 		curr, currType = call, c.resultType(call, 0)
 	}
 

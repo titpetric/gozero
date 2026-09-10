@@ -125,8 +125,7 @@ type jitProgram struct {
 	// declarations and literal builders rely on.
 	pool *sync.Pool
 
-	// sites are the argument pools of the program's NonRetaining
-	// calls, released after every run: the blocks they lent out are
+	// sites are the argument pools of the program's calls, released after every run: the blocks they lent out are
 	// dead once the calls that received them returned.
 	sites []poolSite
 
@@ -221,7 +220,7 @@ type jitCompiler struct {
 	// frame to a callee: an aliased interface argument or an
 	// addressed receiver. A frame that escapes cannot be pooled.
 	frameEscapes bool
-	// The argument pools for NonRetaining calls, planned by planPools
+	// The argument pools of the program's calls, planned by planPools
 	// in stepjit_pool.go: pack slices by call, literal blocks and
 	// string boxes by argument, plus the list of every site for the
 	// release loop.
@@ -301,7 +300,7 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 		c.types = append(c.types, reflect.TypeFor[any]())
 	}
 
-	// The argument pools for NonRetaining calls claim their scratch
+	// The argument pools claim their scratch
 	// fields before the frame is laid out.
 	c.planPools(plan)
 
