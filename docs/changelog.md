@@ -7,6 +7,43 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-10 20:00 +02:00: the Go-subset surface and hot plugin loading
+
+The language grows toward a Go subset, landed as seven stages on one
+branch, each green under the full suite. The statement language is
+untouched: every headerless snippet compiles as it did.
+
+- Lexer: raw strings, block comments, operator scanners at Go's five
+  precedence levels, lazily positioned errors.
+- Type declarations: `type X struct{...}` via reflect.StructOf with
+  tags and embedded data fields, `type I interface{...}` as a
+  compiler-nominal method set.
+- Packages: BindPackage registers bindings under import paths,
+  Import activates them for snippets, and a file with a package
+  clause resolves names only through its import block. The compile
+  cache is generation-checked, fixing the rebind staleness.
+- Expressions and control flow: Go's operators, indexing, len,
+  if/for/range/break/continue/defer, block scoping, i++ and i--.
+  An oracle test pins operator semantics against compiled Go.
+- The hybrid error rule: a named trailing error is a value, an
+  elided one keeps the implicit check; the blank identifier lands
+  with it.
+- Functions, methods and closures: per-unit compilation, capture by
+  write-through cell, named-func-type conversions, per-function
+  defer, Load/LoadFile/LoadDir with func init() hooks, and the
+  Call/FuncOf bridge into Go space.
+- Host-interface adapters: BindAdapter carries a script type into a
+  Go interface through one host-declared struct per interface.
+- The plugin subpackage: the standard library's shape over hot
+  source, with Reloadable swapping implementations under held
+  symbols.
+
+The adopted surface is recorded in [packages.md](packages.md) and
+[plugin.md](plugin.md); the five design verdicts that declined these
+features carry dated status notes. Everything new runs on the
+reflect evaluator; the step JIT declines each construct with a named
+reason, and lowering them is the open perf edge.
+
 ## 2026-09-10 16:58 +02:00: argument pooling under the binding contract
 
 Arguments are borrowed. A binding receives values that are valid for

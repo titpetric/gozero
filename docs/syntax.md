@@ -586,12 +586,15 @@ Middleware-style guarding works through the error contract: a bound
 the program before the next statement, the way `set -e` ends a shell
 script.
 
-What the syntax deliberately leaves out - conditionals, loops,
-closures, operator expressions and struct type declarations - and
-what each would cost the design is researched feature by feature in
-[design/](design/): [conditions](design/conditions.md),
+This chapter is the statement language, and it is unchanged: every
+snippet above compiles as it did. The Go-subset surface layered over
+it on 2026-09-10 - conditionals, loops, operator expressions,
+declarations, closures, packages and hot loading - is recorded in
+[packages.md](packages.md). The research that first declined each
+feature is in [design/](design/): [conditions](design/conditions.md),
 [loops](design/loops.md), [closures](design/closures.md),
 [expressions](design/expressions.md),
-[structs](design/structs.md). Channel receive and send started
-there and moved into the syntax; [channels](design/channels.md)
-records what landed and what stayed out.
+[structs](design/structs.md), each verdict carrying its dated status
+note. Channel receive and send started there and moved into the
+syntax; [channels](design/channels.md) records what landed and what
+stayed out.

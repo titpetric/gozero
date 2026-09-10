@@ -148,3 +148,10 @@ resource the binding set would not control. Methods stay out
 regardless, so the feature is records for output shaping and
 nothing more. Until that pressure outweighs a host-side type and a
 `BindType` call, host-declared types remain the recorded position.
+
+## Status
+
+Superseded 2026-09-10. The verdict above declined struct type declarations for the
+statement-only language; the package extension adopts them by owner
+decision, and the adopted form is in [packages.md](../packages.md).
+The cost analysis above still binds the implementation.

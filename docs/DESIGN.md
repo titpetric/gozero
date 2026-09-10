@@ -254,9 +254,13 @@ paid once per source string.
   recycled through a pool, an aliased or addressed frame allocates
   fresh. The trade and the approaches not taken are recorded at the
   end of [overheads.md](overheads.md).
-- Extending the syntax with conditionals, loops, closures, operator
-  expressions or struct type declarations is researched and
-  declined, feature by feature, in [design/](design/). Channel
-  receive and send started as the same research and moved into the
-  syntax; [design/channels.md](design/channels.md) records what
+- The Go-subset surface - conditionals, loops, operator
+  expressions, declarations, closures, packages and the plugin
+  loader - runs on the reflect evaluator; the step JIT declines each
+  construct with a named reason Supports reports, and lowering them
+  to direct nodes is open. The adopted form is in
+  [packages.md](packages.md); the research that first declined each
+  feature is in [design/](design/), each verdict carrying a dated
+  status note. Channel receive and send moved into the syntax
+  earlier; [design/channels.md](design/channels.md) records what
   landed and what stayed out.

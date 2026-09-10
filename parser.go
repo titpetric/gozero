@@ -4,8 +4,13 @@ import (
 	"fmt"
 )
 
-// The grammar has no operators: a statement is a call, and every value
-// is a literal, a name, or the result of another call.
+// The statement grammar below is the language's core: a statement is
+// a call, and a value is a literal, a name, or the result of another
+// call. Layered over it are the Go-subset extensions, each in its
+// own file: operator expressions (parser_expr.go), blocks and
+// control flow (parser_block.go), type declarations and the file
+// header (parser_decl.go), and functions (parser_func.go);
+// docs/packages.md records the adopted surface.
 //
 //	program := { stmt }
 //	stmt    := "var" name typeref term

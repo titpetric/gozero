@@ -152,3 +152,10 @@ call-only, keep the types coming from signatures, keep the semantics
 in compiled Go, and cover the predicate-shaped uses that conditions
 ([conditions.md](conditions.md)) and middleware have. That is the
 recorded position; math-heavy programs are host code.
+
+## Status
+
+Superseded 2026-09-10. The verdict above declined operator expressions for the
+statement-only language; the package extension adopts them by owner
+decision, and the adopted form is in [packages.md](../packages.md).
+The cost analysis above still binds the implementation.

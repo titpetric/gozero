@@ -189,3 +189,43 @@ The value Go gives every type before assignment: `0`, `""`, `nil`,
 or a struct of zero fields. gozero fills omitted trailing arguments
 with the parameter's zero value, and a pooled frame is cleared back
 to zero before reuse so declarations start from it.
+
+## capture cell
+
+The storage behind a variable a closure reads or writes: an
+addressable cell the enclosing slot holds, shared with every closure
+that captured it, so a write on either side is seen by the other.
+Assignment to an address-taken slot writes through its cell rather
+than replacing it.
+
+## generation
+
+The Runtime's count of binding-surface revisions. Every Bind,
+BindType, BindPackage, BindAdapter and Import advances it, and a
+cache entry compiled under an older generation is a miss, so a
+rebind is visible to the next Compile of the same source.
+
+## hybrid error rule
+
+Naming one more value than a call returns binds its trailing error
+as an ordinary value; eliding it keeps the implicit check-and-abort.
+Both spellings are legal Go.
+
+## script function
+
+A function the program declares, compiled to its own unit with its
+own slot space and called with strict Go arity. A bridged script
+function is a reflect.MakeFunc value of a matching Go func type.
+
+## trampoline
+
+A func value whose body resolves its target at call entry rather
+than closing over it, which is how a plugin symbol follows a reload:
+the symbol reads the live version, and one atomic store swaps the
+implementation under every held symbol.
+
+## unit
+
+One function's compiled form: statements, slot space and frame,
+separate from every other function's, so calls are re-entrant and a
+closure's state is per call except for its capture cells.

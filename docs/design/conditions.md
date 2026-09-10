@@ -157,3 +157,10 @@ optimization, and it immediately raises the operand question that
 [expressions.md](expressions.md) declines to solve. The guard-binding
 pattern covers the dominant real use (middleware abort) with zero
 language change, and is where this design stops.
+
+## Status
+
+Superseded 2026-09-10. The verdict above declined conditions for the
+statement-only language; the package extension adopts them by owner
+decision, and the adopted form is in [packages.md](../packages.md).
+The cost analysis above still binds the implementation.

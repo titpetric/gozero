@@ -146,3 +146,10 @@ for itself, and even it requires blocks, control signals, multi-write
 slots and a termination caveat. The host-loops-program-runs split
 covers handlers, tests and middleware today with no language change,
 and is the recorded position.
+
+## Status
+
+Superseded 2026-09-10. The verdict above declined loops for the
+statement-only language; the package extension adopts them by owner
+decision, and the adopted form is in [packages.md](../packages.md).
+The cost analysis above still binds the implementation.
