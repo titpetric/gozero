@@ -57,7 +57,22 @@ func fixtureRuntime(t *testing.T) *Runtime {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// chanOf is the channel source for the channels fixture: buffered
+	// with headroom, so the fixture's sends never block.
+	if err := rt.Bind("chanOf", chanOf); err != nil {
+		t.Fatal(err)
+	}
 	return rt
+}
+
+// chanOf builds the buffered channel the channels fixture receives
+// from and sends into.
+func chanOf(vs ...string) chan string {
+	c := make(chan string, len(vs)+2)
+	for _, v := range vs {
+		c <- v
+	}
+	return c
 }
 
 // TestFixtures runs every testdata/*.txt program as a subtest. A

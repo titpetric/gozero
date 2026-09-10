@@ -112,6 +112,25 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 			curr, currType = call, c.resultType(call, 0)
 			continue
 		}
+		// The pointer type's method set completes Go's rule: a pointer
+		// receiver method is callable on a value as long as the value
+		// is addressable, and a named value or a field of one is. This
+		// also resolves promoted pointer-receiver methods, which only
+		// *T's method set carries for an embedded value.
+		if currType.Kind() != reflect.Pointer && currType.Kind() != reflect.Interface {
+			if m, ok := reflect.PointerTo(currType).MethodByName(l.name); ok {
+				arecv, err := addrOf(currType, recv)
+				if err != nil {
+					return nil, nil, fmt.Errorf("compile: cannot call pointer method %s on %s: %w", l.name, currType, err)
+				}
+				call, err := c.compileCall(slots, env, m.Func, currType.String()+"."+l.name, arecv, l.args)
+				if err != nil {
+					return nil, nil, err
+				}
+				curr, currType = call, c.resultType(call, 0)
+				continue
+			}
+		}
 		f, deref, ok := fieldOf(currType, l.name)
 		if !ok {
 			return nil, nil, fmt.Errorf("compile: %s has no method or field %s", currType, l.name)
@@ -130,6 +149,27 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 		return nil, nil, fmt.Errorf("compile: %q is not callable", joinPath(e.path))
 	}
 	return curr, currType, nil
+}
+
+// addrOf turns a receiver into the address of the value it names. Only
+// a name or a field chain rooted in one qualifies: those are variables
+// and have an address, where a call's result does not, which is Go's
+// addressability rule for pointer-receiver calls.
+func addrOf(t reflect.Type, a *vmArg) (*vmArg, error) {
+	root := a
+	for root.kind == vaField {
+		root = root.src
+	}
+	if root.kind != vaSlot {
+		return nil, fmt.Errorf("the value is not addressable, bind it to a name first")
+	}
+	// Built fresh rather than copied: vmArg carries an atomic cache
+	// that must not be copied.
+	return &vmArg{
+		kind: a.kind, slot: a.slot, name: a.name,
+		src: a.src, index: a.index, deref: a.deref,
+		addrOf: true, typ: reflect.PointerTo(t), iface: -1,
+	}, nil
 }
 
 // ifaceMethodFunc builds a callable func value for a method of an

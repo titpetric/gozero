@@ -50,6 +50,13 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 		if s.fieldSet != nil {
 			walkArg(s.fieldSet.val)
 		}
+		if s.recv != nil {
+			walkArg(s.recv.ch)
+		}
+		if s.send != nil {
+			walkArg(s.send.ch)
+			walkArg(s.send.val)
+		}
 	}
 	return counts
 }
@@ -69,6 +76,11 @@ type plannedStmt struct {
 
 	// fieldSet is a field assignment, compiled to a typed store.
 	fieldSet *vmFieldSet
+
+	// recv and send are the channel operations from vm_chan.go; a
+	// receive's value slot is out.
+	recv *vmRecv
+	send *vmSend
 }
 
 // jitPlan is everything planInline works out for the compiler.
@@ -122,6 +134,18 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 			stmts = append(stmts, plannedStmt{fieldSet: s.fieldSet, out: -1})
 			continue
 		}
+		if s.recv != nil {
+			out := -1
+			if len(s.out) > 0 {
+				out = s.out[0]
+			}
+			stmts = append(stmts, plannedStmt{recv: s.recv, out: out})
+			continue
+		}
+		if s.send != nil {
+			stmts = append(stmts, plannedStmt{send: s.send, out: -1})
+			continue
+		}
 		if s.lit.IsValid() {
 			out := -1
 			if len(s.out) > 0 {
@@ -158,12 +182,25 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 			reads[s.fieldSet.base]++
 			countArgReads(reads, s.fieldSet.val)
 		}
+		if s.recv != nil {
+			countArgReads(reads, s.recv.ch)
+		}
+		if s.send != nil {
+			countArgReads(reads, s.send.ch)
+			countArgReads(reads, s.send.val)
+		}
 	}
 
 	splices := map[*vmArg]*vmCall{}
 	for i := 0; i+1 < len(stmts); i++ {
 		s := stmts[i]
 		if s.call == nil || s.ret || s.out < 0 || s.call.nres != 1 || reads[s.out] != 1 {
+			continue
+		}
+		// A slot whose address the program takes must exist as
+		// storage: splicing its producer would take the address of a
+		// value travelling as a closure return.
+		if p.addrTaken[s.out] {
 			continue
 		}
 		if stmts[i+1].call == nil {
@@ -195,6 +232,16 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 		writes[in.slot]++
 	}
 	for _, s := range stmts {
+		if s.recv != nil {
+			if s.out >= 0 {
+				live[s.out] = true
+				writes[s.out]++
+			}
+			continue
+		}
+		if s.send != nil {
+			continue
+		}
 		if s.fieldSet != nil {
 			live[s.fieldSet.base] = true
 			// Writing a field of a struct held by value mutates the
@@ -253,7 +300,7 @@ func countArgReads(reads map[int]int, a *vmArg) {
 // wrote; a receiver is argument zero and always qualifies.
 func findSplice(c *vmCall, slot int, splices map[*vmArg]*vmCall) *vmArg {
 	for i, a := range c.args {
-		if a.kind == vaSlot && a.slot == slot && splices[a] == nil {
+		if a.kind == vaSlot && !a.addrOf && a.slot == slot && splices[a] == nil {
 			for _, before := range c.args[:i] {
 				if before.kind == vaCall || splices[before] != nil {
 					return nil

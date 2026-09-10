@@ -82,6 +82,13 @@ type vmArg struct {
 	index []int
 	deref bool
 
+	// addrOf resolves to the address of the slot or field instead of
+	// its value: the receiver of a pointer method on a value. typ is
+	// then the pointer type. Only a name or a field of one is
+	// addressable, matching Go's rule that a variable has an address
+	// and the result of a call does not.
+	addrOf bool
+
 	// vaStruct: styp is the struct type the literal builds, addr marks
 	// the &T{} form, and elems are the field writes. The value is built
 	// on every evaluation, the way a Go composite literal allocates
@@ -154,6 +161,11 @@ type vmStmt struct {
 
 	// fieldSet writes a value through a field: req.Method = "POST".
 	fieldSet *vmFieldSet
+
+	// recv is a channel receive, its value and ok slots in out; send
+	// is a channel send. Both in vm_chan.go.
+	recv *vmRecv
+	send *vmSend
 }
 
 // fieldStep is one selector of a field-assignment target.
@@ -193,6 +205,12 @@ type vmProgram struct {
 	// hold.
 	slotTypes   []reflect.Type
 	polymorphic bool
+
+	// addrTaken marks the slots whose address the program takes, so
+	// run stores their values through an addressable cell. The step
+	// JIT reads it too: an addressed slot cannot back an aliased
+	// interface argument or have its producer spliced away.
+	addrTaken map[int]bool
 
 	// inits are the var declarations, applied before the first
 	// statement so a name reads as its type's zero value even when
@@ -248,7 +266,7 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 	for i := range p.stmts {
 		s := &p.stmts[i]
 		if s.lit.IsValid() {
-			slots[s.out[0]] = s.lit
+			slots[s.out[0]] = p.addrCell(s.lit, s.out[0])
 			continue
 		}
 		if s.assign != nil {
@@ -261,6 +279,22 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 		}
 		if s.fieldSet != nil {
 			if err := s.fieldSet.apply(ctx, slots, frame, ifaces, stack, dest); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if s.recv != nil {
+			v, err := s.recv.exec(ctx, slots, frame, ifaces, stack, dest)
+			if err != nil {
+				return nil, err
+			}
+			if len(s.out) > 0 {
+				slots[s.out[0]] = p.addrCell(v, s.out[0])
+			}
+			continue
+		}
+		if s.send != nil {
+			if err := s.send.exec(ctx, slots, frame, ifaces, stack, dest); err != nil {
 				return nil, err
 			}
 			continue
@@ -288,7 +322,7 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 				continue
 			}
 			if n < len(s.out) {
-				slots[s.out[n]] = out[j]
+				slots[s.out[n]] = p.addrCell(out[j], s.out[n])
 			}
 			n++
 		}
@@ -300,6 +334,20 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 		}
 	}
 	return nil, nil
+}
+
+// addrCell stores v into a fresh addressable cell when the slot's
+// address is taken somewhere in the program. A call result and the
+// prebuilt literal value are not addressable, and the literal is also
+// shared between runs, so both go through the copy; every other slot
+// keeps the value as it is.
+func (p *vmProgram) addrCell(v reflect.Value, slot int) reflect.Value {
+	if !p.addrTaken[slot] {
+		return v
+	}
+	cell := reflect.New(v.Type()).Elem()
+	cell.Set(v)
+	return cell
 }
 
 func firstNonErr(out []reflect.Value, errIdx int) reflect.Value {
@@ -343,6 +391,12 @@ func (a *vmArg) get(ctx context.Context, slots, frame []reflect.Value, ifaces []
 		return a.val, nil
 	case vaSlot:
 		v := slots[a.slot]
+		if a.addrOf {
+			if !v.IsValid() || !v.CanAddr() {
+				return reflect.Value{}, fmt.Errorf("exec: cannot take the address of %s", a.name)
+			}
+			return v.Addr(), nil
+		}
 		if !v.IsValid() {
 			return reflect.Zero(a.typ), nil
 		}
@@ -366,7 +420,14 @@ func (a *vmArg) get(ctx context.Context, slots, frame []reflect.Value, ifaces []
 			}
 			v = v.Elem()
 		}
-		return v.FieldByIndex(a.index), nil
+		v = v.FieldByIndex(a.index)
+		if a.addrOf {
+			if !v.CanAddr() {
+				return reflect.Value{}, fmt.Errorf("exec: cannot take the address of the field")
+			}
+			return v.Addr(), nil
+		}
+		return v, nil
 	case vaStruct:
 		// New rather than a copied prototype, so every evaluation is its
 		// own allocation and the result is addressable: a field of the

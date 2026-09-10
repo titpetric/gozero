@@ -29,6 +29,45 @@ func callNode(key string, fptr unsafe.Pointer, a []node) (node, bool) {
 		}
 	}
 	switch key {
+	case "_P":
+		f := castFn[func() unsafe.Pointer](fptr)
+		return node{class: lPtr, P: func(_ unsafe.Pointer, _ context.Context, _ map[string]any, _ any) (unsafe.Pointer, error) {
+			return f(), nil
+		}}, true
+
+	case "PSi64_":
+		f, a0, a1, a2 := castFn[func(unsafe.Pointer, string, int64)](fptr), a[0].P, a[1].S, a[2].N
+		return node{class: lNone, E: func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) error {
+			p0, err := a0(fr, ctx, st, d)
+			if err != nil {
+				return err
+			}
+			s1, err := a1(fr, ctx, st, d)
+			if err != nil {
+				return err
+			}
+			n2, err := a2(fr, ctx, st, d)
+			if err != nil {
+				return err
+			}
+			f(p0, s1, int64(n2))
+			return nil
+		}}, true
+
+	case "PS_i64":
+		f, a0, a1 := castFn[func(unsafe.Pointer, string) int64](fptr), a[0].P, a[1].S
+		return node{class: lI64, N: func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (uint64, error) {
+			p0, err := a0(fr, ctx, st, d)
+			if err != nil {
+				return 0, err
+			}
+			s1, err := a1(fr, ctx, st, d)
+			if err != nil {
+				return 0, err
+			}
+			return uint64(f(p0, s1)), nil
+		}}, true
+
 	case "SL_S":
 		f, a0, a1 := castFn[func(string, sliceHdr) string](fptr), a[0].S, a[1].L
 		return node{class: lStr, S: func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (string, error) {
@@ -117,6 +156,16 @@ func callNode(key string, fptr unsafe.Pointer, a []node) (node, bool) {
 			}
 			f(i0, i1, i2, s3)
 			return nil
+		}}, true
+
+	case "L_P":
+		f, a0 := castFn[func(sliceHdr) unsafe.Pointer](fptr), a[0].L
+		return node{class: lPtr, P: func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (unsafe.Pointer, error) {
+			h, err := a0(fr, ctx, st, d)
+			if err != nil {
+				return nil, err
+			}
+			return f(h), nil
 		}}, true
 
 	case "L_S":

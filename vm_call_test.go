@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"testing"
 )
 
@@ -112,5 +113,67 @@ func TestInterfaceMethodOnNil(t *testing.T) {
 	var pe *PanicError
 	if !errors.As(err, &pe) {
 		t.Fatalf("err = %v, want *PanicError", err)
+	}
+}
+
+type msInner struct{ N int }
+
+func (i *msInner) Bump() int { i.N++; return i.N }
+func (i msInner) Get() int   { return i.N }
+
+type msOuter struct {
+	msInner
+	Tag string
+}
+
+// TestMethodSets pins Go's method-set rules: a pointer receiver method
+// is callable on a value-typed name because a name is a variable and
+// has an address, promotion reaches embedded methods through both
+// receiver kinds, and mutation through the receiver reaches the slot.
+func TestMethodSets(t *testing.T) {
+	rt := NewRuntime()
+	if err := rt.Bind("url.Parse", url.Parse); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.Bind("newOuter", func() msOuter { return msOuter{msInner: msInner{N: 1}} }); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, src string
+		want      any
+	}{
+		{"ptr receiver on var value", `var u url.URL
+u.Path = "/x"
+s := u.String()
+return s`, "/x"},
+		{"ptr receiver on bound result", `o := newOuter(); n := o.Bump(); return n`, int(2)},
+		{"mutation reaches the slot", `o := newOuter(); o.Bump(); n := o.Bump(); return n`, int(3)},
+		{"promoted value receiver", `o := newOuter(); n := o.Get(); return n`, int(1)},
+		{"promoted ptr receiver", `o := newOuter(); o.Bump(); n := o.Get(); return n`, int(2)},
+	} {
+		got, err := rt.Eval[any](tc.src, nil)
+		if err != nil {
+			t.Errorf("%s: %v", tc.name, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("%s: got %v (%T), want %v", tc.name, got, got, tc.want)
+		}
+	}
+
+	// The result of a call is not addressable, as in Go.
+	if _, err := rt.Compile(`n := newOuter().Bump();`); err == nil {
+		t.Error("expected a compile error for a pointer method on a call result")
+	} else {
+		t.Log(err)
+	}
+
+	// A pointer method on a var-declared value runs on the direct
+	// tier: the receiver is the frame slot's address.
+	if err := rt.Supports(`var u url.URL
+u.Path = "/jit"
+s := u.String()
+return s`); err != nil {
+		t.Errorf("pointer method kept the program off the direct tier: %v", err)
 	}
 }

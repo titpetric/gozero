@@ -24,6 +24,21 @@ func (c *jitCompiler) argNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 		return node{}, fmt.Errorf("a %s result cannot fill a %s parameter", sub.class, cl)
 
 	case vaSlot:
+		if a.addrOf {
+			// The frame is the variable's storage, so the address of a
+			// name is an offset from the frame pointer: no load at all.
+			field, ok := c.slotOf[a.slot]
+			if !ok {
+				return node{}, fmt.Errorf("an addressed name has no slot")
+			}
+			if cl != lPtr {
+				return node{}, fmt.Errorf("an address cannot fill a %s parameter", cl)
+			}
+			off := c.offs[field]
+			return node{class: lPtr, P: func(fr unsafe.Pointer, _ context.Context, _ map[string]any, _ any) (unsafe.Pointer, error) {
+				return unsafe.Add(fr, off), nil
+			}}, nil
+		}
 		if producer := c.splices[a]; producer != nil {
 			sub, err := c.exprNode(producer)
 			if err != nil {
@@ -58,9 +73,11 @@ func (c *jitCompiler) argNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 			// rather than a copy saves the allocation, but is only
 			// legal while the slot is written once: the frame outlives
 			// the call and the callee may keep the interface. A slot
-			// written more than once, and any scalar, is copied
-			// instead, which is what the Go compiler does anyway.
-			if c.writes[a.slot] == 1 && !layoutOf(st).scalar() {
+			// written more than once, one whose address the program
+			// takes (a pointer method may write through it), and any
+			// scalar, is copied instead, which is what the Go compiler
+			// does anyway.
+			if c.writes[a.slot] == 1 && !c.addr[a.slot] && !layoutOf(st).scalar() {
 				return node{class: lIface, I: func(fr unsafe.Pointer, ctx context.Context, _ map[string]any, _ any) (ifacePair, error) {
 					return ifacePair{tab: tab, data: unsafe.Add(fr, off)}, nil
 				}}, nil
@@ -148,6 +165,15 @@ func (c *jitCompiler) fieldNode(a *vmArg, pt reflect.Type, cl layout) (node, err
 	default:
 		return node{}, fmt.Errorf("this field source is not in the table")
 	}
+	// An addressed field is the address load itself: the receiver of a
+	// pointer method on a field value.
+	if a.addrOf {
+		if cl != lPtr {
+			return node{}, fmt.Errorf("an address cannot fill a %s parameter", cl)
+		}
+		return node{class: lPtr, P: load}, nil
+	}
+
 	fcl := layoutOf(sf.Type)
 	if fcl == lBad {
 		return node{}, fmt.Errorf("field %s of type %s has no layout class", sf.Name, sf.Type)

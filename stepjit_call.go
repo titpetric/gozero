@@ -279,6 +279,16 @@ func (c *jitCompiler) bridgeArg(a *vmArg) (func(unsafe.Pointer, context.Context,
 			return nil, fmt.Errorf("a bridged name has no slot")
 		}
 		off, st := c.offs[field], c.types[field]
+		if a.addrOf {
+			// NewAt of the frame slot is the address the receiver
+			// wants, already typed *T.
+			if reflect.PointerTo(st) != a.typ {
+				return nil, fmt.Errorf("cannot use *%s as %s", st, a.typ)
+			}
+			return func(fr unsafe.Pointer, _ context.Context, _ map[string]any, _ any) (reflect.Value, error) {
+				return reflect.NewAt(st, unsafe.Add(fr, off)), nil
+			}, nil
+		}
 		if !st.AssignableTo(a.typ) {
 			return nil, fmt.Errorf("cannot use %s as %s", st, a.typ)
 		}

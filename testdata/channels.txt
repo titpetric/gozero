@@ -1,0 +1,19 @@
+// channels: receive and send against a buffered channel a binding
+// hands out. The ok of the two-value receive is implicit: a closed
+// channel ends the program with io.EOF, and the execution context
+// arms every blocking operation.
+c := chanOf("a", "b");
+v := <-c;
+assert.Equal(tb, "a", v);
+
+w := <-c;
+assert.Equal(tb, "b", w);
+
+c <- "sent";
+r := <-c;
+assert.Equal(tb, "sent", r);
+
+var d chan string;
+d = chanOf("typed");
+s := <-d;
+assert.Equal(tb, "typed", s);

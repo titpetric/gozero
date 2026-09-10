@@ -151,6 +151,16 @@ func TestStepJITMatchesReflect(t *testing.T) {
 			u = url.URL{Host: "h"};
 			json.NewEncoder(dest).Encode(u.Path);
 		`,
+		"pointer method on a frame value": `
+			u := url.URL{Scheme: "https", Host: "h", Path: "/m"};
+			json.NewEncoder(dest).Encode(u.String());
+		`,
+		"addressed slot into an interface": `
+			u := url.URL{Path: "/alias"};
+			r := record(u);
+			json.NewEncoder(dest).Encode(u.String());
+			json.NewEncoder(dest).Encode(r);
+		`,
 	} {
 		stack := map[string]any{"link": "https://example.com/from-stack"}
 		jit, slow := compilePair(t, rt, src)

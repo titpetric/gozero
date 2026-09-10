@@ -151,6 +151,10 @@ type jitCompiler struct {
 	// aliases the slot and a later assignment would change the value
 	// behind an interface the callee may still hold.
 	writes map[int]int
+	// addr marks slots whose address the program takes: the same
+	// aliasing hazard as a rewritten slot, since a pointer method may
+	// write through it.
+	addr map[int]bool
 	// splices maps an argument that reads a name to the call that
 	// produced it, where planInline decided the value can travel as a
 	// return value instead of through a slot. It is a side table rather
@@ -180,7 +184,7 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 		return nil, err
 	}
 
-	c := &jitCompiler{slotOf: map[int]int{}, writes: plan.writes, splices: plan.splices, stackFields: map[string]int{}}
+	c := &jitCompiler{slotOf: map[int]int{}, writes: plan.writes, addr: p.addrTaken, splices: plan.splices, stackFields: map[string]int{}}
 	for slot := 0; slot < p.nslots; slot++ {
 		if !plan.live[slot] {
 			continue

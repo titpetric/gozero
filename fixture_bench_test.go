@@ -163,6 +163,24 @@ func (f *testFixtures) testVariadic(tb testing.TB) {
 	assertEqual(tb, "a/b/c", joined, "path.Join over spread fields")
 }
 
+func (f *testFixtures) testChannels(tb testing.TB) {
+	c := chanOf("a", "b")
+	v := <-c
+	assertEqual(tb, "a", v, "")
+
+	w := <-c
+	assertEqual(tb, "b", w, "")
+
+	c <- "sent"
+	r := <-c
+	assertEqual(tb, "sent", r, "")
+
+	var d chan string
+	d = chanOf("typed")
+	s := <-d
+	assertEqual(tb, "typed", s, "")
+}
+
 // BenchmarkFixtures runs each fixture program against its handwritten
 // method: same work, same assertions, same context source. The VM side
 // compiles once outside the loop, which is the compile-once/run-many
@@ -176,6 +194,7 @@ func BenchmarkFixtures(b *testing.B) {
 		"structs":  (*testFixtures).testStructs,
 		"types":    (*testFixtures).testTypes,
 		"variadic": (*testFixtures).testVariadic,
+		"channels": (*testFixtures).testChannels,
 	}
 
 	files, err := filepath.Glob(filepath.Join("testdata", "*.txt"))
@@ -255,6 +274,9 @@ func newBenchFixtureRuntime(b *testing.B) *Runtime {
 		v, _ := ctx.Value(fixtureCtxKey{}).(string)
 		return v
 	}); err != nil {
+		b.Fatal(err)
+	}
+	if err := rt.Bind("chanOf", chanOf); err != nil {
 		b.Fatal(err)
 	}
 	return rt
