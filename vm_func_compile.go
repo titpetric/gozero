@@ -3,6 +3,7 @@ package gozero
 import (
 	"fmt"
 	"reflect"
+	"strings"
 )
 
 // Compiling functions: each declaration or literal is its own unit
@@ -84,8 +85,16 @@ func (pc *progCompiler) declareFuncs(decls []funcDecl, sc *cscope) error {
 			fn.recvT = rt
 			in = append(in, rt)
 		}
-		for _, prm := range fd.params {
-			t, ok := c.resolveType(sc, prm.typ)
+		for i, prm := range fd.params {
+			typ := prm.typ
+			if strings.HasPrefix(typ, "...") {
+				if i != len(fd.params)-1 {
+					return fmt.Errorf("compile: func %s: only the last parameter is variadic", fd.name)
+				}
+				fn.variadic = true
+				typ = "[]" + typ[3:]
+			}
+			t, ok := c.resolveType(sc, typ)
 			if !ok {
 				return fmt.Errorf("compile: func %s: unknown parameter type %q", fd.name, prm.typ)
 			}
@@ -103,7 +112,7 @@ func (pc *progCompiler) declareFuncs(decls []funcDecl, sc *cscope) error {
 		if n := len(out); n > 0 && out[n-1] == errType {
 			fn.errIdx = n - 1
 		}
-		fn.sig = reflect.FuncOf(in, out, false)
+		fn.sig = reflect.FuncOf(in, out, fn.variadic)
 		if fd.recv != nil {
 			mt := sc.methods[fn.recvT]
 			if mt == nil {
@@ -225,9 +234,18 @@ func (pc *progCompiler) compileFuncBody(outer *cscope, fd *funcDecl, fn *scriptF
 func (pc *progCompiler) compileFuncLit(sc *cscope, a arg, want reflect.Type) (*vmArg, reflect.Type, error) {
 	fd := a.fn
 	c := pc.c
+	variadic := false
 	in := make([]reflect.Type, 0, len(fd.params))
-	for _, prm := range fd.params {
-		t, ok := c.resolveType(sc, prm.typ)
+	for i, prm := range fd.params {
+		typ := prm.typ
+		if strings.HasPrefix(typ, "...") {
+			if i != len(fd.params)-1 {
+				return nil, nil, fmt.Errorf("compile: func literal: only the last parameter is variadic")
+			}
+			variadic = true
+			typ = "[]" + typ[3:]
+		}
+		t, ok := c.resolveType(sc, typ)
 		if !ok {
 			return nil, nil, fmt.Errorf("compile: func literal: unknown parameter type %q", prm.typ)
 		}
@@ -241,7 +259,7 @@ func (pc *progCompiler) compileFuncLit(sc *cscope, a arg, want reflect.Type) (*v
 		}
 		out = append(out, t)
 	}
-	sig := reflect.FuncOf(in, out, false)
+	sig := reflect.FuncOf(in, out, variadic)
 	ft := sig
 	if want != nil && want.Kind() == reflect.Func {
 		if underlyingFunc(want) != sig {
@@ -250,7 +268,7 @@ func (pc *progCompiler) compileFuncLit(sc *cscope, a arg, want reflect.Type) (*v
 		// The literal adopts the wanted type, named or not.
 		ft = want
 	}
-	fn := &scriptFn{name: "func literal", sig: sig, results: out, errIdx: -1}
+	fn := &scriptFn{name: "func literal", sig: sig, results: out, errIdx: -1, variadic: variadic}
 	if n := len(out); n > 0 && out[n-1] == errType {
 		fn.errIdx = n - 1
 	}
@@ -259,53 +277,6 @@ func (pc *progCompiler) compileFuncLit(sc *cscope, a arg, want reflect.Type) (*v
 	}
 	node := &vmArg{kind: vaFuncLit, fnLit: fn, litType: ft, caps: fn.capsOuter, typ: ft, iface: -1}
 	return node, ft, nil
-}
-
-// underlyingFunc is the structural func type behind a possibly named
-// one.
-func underlyingFunc(t reflect.Type) reflect.Type {
-	in := make([]reflect.Type, t.NumIn())
-	for i := range in {
-		in[i] = t.In(i)
-	}
-	out := make([]reflect.Type, t.NumOut())
-	for i := range out {
-		out[i] = t.Out(i)
-	}
-	return reflect.FuncOf(in, out, t.IsVariadic())
-}
-
-// compileScriptCall compiles a call of a declared function or method
-// with Go's strict arity; the trailing error follows the hybrid
-// rule at the statement level, exactly as a binding's does.
-func (c *Compiler) compileScriptCall(sc *cscope, fn *scriptFn, name string, recv *vmArg, src []arg) (*vmCall, error) {
-	call := &vmCall{script: fn, name: name, errIdx: fn.errIdx}
-	sigOff := 0
-	if recv != nil {
-		if !recv.typ.AssignableTo(fn.sig.In(0)) {
-			return nil, fmt.Errorf("compile: %s: receiver is %s, want %s", name, sc.typeName(recv.typ), sc.typeName(fn.sig.In(0)))
-		}
-		call.args = append(call.args, recv)
-		sigOff = 1
-	}
-	if len(src) != fn.sig.NumIn()-sigOff {
-		return nil, fmt.Errorf("compile: %s takes %d arguments, got %d", name, fn.sig.NumIn()-sigOff, len(src))
-	}
-	for i, a := range src {
-		if a.spread {
-			return nil, fmt.Errorf("compile: %s: a script function is not variadic", name)
-		}
-		va, err := c.compileArg(sc, name, i, fn.sig.In(i+sigOff), a)
-		if err != nil {
-			return nil, err
-		}
-		call.args = append(call.args, va)
-	}
-	call.nres = len(fn.results)
-	if call.errIdx >= 0 {
-		call.nres--
-	}
-	return call, nil
 }
 
 // compileFuncReturn compiles a return inside a function body: the
@@ -341,69 +312,4 @@ func (pc *progCompiler) compileFuncReturn(sc *cscope, s stmt, dst *[]vmStmt) err
 	}
 	*dst = append(*dst, vmStmt{retList: list})
 	return nil
-}
-
-// compileDynCall compiles a call of a func-typed value with Go's
-// strict arity; the trailing error follows the hybrid rule.
-func (c *Compiler) compileDynCall(sc *cscope, fnVal *vmArg, ft reflect.Type, name string, src []arg) (*vmCall, error) {
-	call := &vmCall{dyn: fnVal, name: name, errIdx: -1}
-	if ft.IsVariadic() {
-		return nil, fmt.Errorf("compile: %s: a variadic func value is not callable yet", name)
-	}
-	if len(src) != ft.NumIn() {
-		return nil, fmt.Errorf("compile: %s takes %d arguments, got %d", name, ft.NumIn(), len(src))
-	}
-	for i, a := range src {
-		if a.spread {
-			return nil, fmt.Errorf("compile: %s: ... spreads only into a variadic parameter", name)
-		}
-		va, err := c.compileArg(sc, name, i, ft.In(i), a)
-		if err != nil {
-			return nil, err
-		}
-		call.args = append(call.args, va)
-	}
-	call.nres = ft.NumOut()
-	if n := ft.NumOut(); n > 0 && ft.Out(n-1) == errType {
-		call.errIdx = n - 1
-		call.nres--
-	}
-	return call, nil
-}
-
-// funcConversion reports a call-shaped expression that is a
-// conversion to a func type the program can name: one argument, no
-// chain, a path that is a type rather than a binding. The conversion
-// carries a func literal or a func value into a named func type,
-// which is how a handler-func adapter pattern spells.
-func (c *Compiler) funcConversion(sc *cscope, e *callExpr) (reflect.Type, bool) {
-	if len(e.chain) != 0 || len(e.args) != 1 || e.args[0].spread {
-		return nil, false
-	}
-	name := joinPath(e.path)
-	if _, bound := sc.bindings[name]; bound {
-		return nil, false
-	}
-	t, ok := c.resolveType(sc, name)
-	if !ok || t.Kind() != reflect.Func {
-		return nil, false
-	}
-	return t, true
-}
-
-// scriptMethodOf resolves a declared method on t or its pointee.
-func scriptMethodOf(sc *cscope, t reflect.Type, name string) *scriptFn {
-	if sc.methods == nil {
-		return nil
-	}
-	if fn := sc.methods[t][name]; fn != nil {
-		return fn
-	}
-	if t.Kind() == reflect.Pointer {
-		if fn := sc.methods[t.Elem()][name]; fn != nil {
-			return fn
-		}
-		return nil
-	}
-	return sc.methods[reflect.PointerTo(t)][name]
 }

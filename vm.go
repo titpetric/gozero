@@ -376,7 +376,7 @@ func (c *vmCall) invoke(ctx context.Context, slots, frame []reflect.Value, iface
 	}
 	var out []reflect.Value
 	if c.script != nil {
-		out, err = c.script.invoke(ctx, nil, args)
+		out, err = c.script.invoke(ctx, nil, c.script.packVariadic(args, c.spread))
 		if err != nil {
 			return nil, err
 		}
@@ -388,7 +388,12 @@ func (c *vmCall) invoke(ctx context.Context, slots, frame []reflect.Value, iface
 		if !fv.IsValid() || fv.IsNil() {
 			return nil, fmt.Errorf("exec: %s is nil, not a function", c.name)
 		}
-		out = fv.Call(args)
+		if c.spread {
+			out = fv.CallSlice(args)
+		} else {
+			// Call packs a variadic tail itself.
+			out = fv.Call(args)
+		}
 	} else if c.spread {
 		out = c.fn.CallSlice(args)
 	} else {

@@ -92,10 +92,11 @@ func (p *Parser) funcRest(fd *funcDecl) error {
 	fd.results = results
 	// The body brace, not a composite: clear the header flag the way
 	// parens do.
-	saved := p.hdr
+	saved, savedBody := p.hdr, p.inBody
 	p.hdr = false
+	p.inBody = true
 	body, err := p.block()
-	p.hdr = saved
+	p.hdr, p.inBody = saved, savedBody
 	if err != nil {
 		return err
 	}

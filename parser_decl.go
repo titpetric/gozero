@@ -374,12 +374,34 @@ func (p *Parser) paramList() ([]param, error) {
 		}
 		save := p.pos
 		n := p.ident()
-		if n != "" && !p.paramSepNext() {
+		if n != "" {
+			// The ... of a variadic tail reads before the separator
+			// test, which would take its first dot for a qualified
+			// type's.
+			if p.consumeStr("...") {
+				typ, err := p.typeRef()
+				if err != nil {
+					return nil, err
+				}
+				elems = append(elems, elem{prm: param{name: n, typ: "..." + typ}, named: true})
+				continue
+			}
+			if !p.paramSepNext() {
+				typ, err := p.typeRef()
+				if err != nil {
+					return nil, err
+				}
+				elems = append(elems, elem{prm: param{name: n, typ: typ}, named: true})
+				continue
+			}
+		}
+		p.pos = save
+		if p.consumeStr("...") {
 			typ, err := p.typeRef()
 			if err != nil {
 				return nil, err
 			}
-			elems = append(elems, elem{prm: param{name: n, typ: typ}, named: true})
+			elems = append(elems, elem{prm: param{typ: "..." + typ}})
 			continue
 		}
 		p.pos = save

@@ -185,6 +185,8 @@ func (c *Compiler) resolveTypeExpr(sc *cscope, spec string) (reflect.Type, bool)
 		if t, ok := c.resolveType(sc, spec[5:]); ok {
 			return reflect.ChanOf(reflect.BothDir, t), true
 		}
+	case strings.HasPrefix(spec, "func("):
+		return c.resolveFuncSpec(sc, spec)
 	case strings.HasPrefix(spec, "map["):
 		key, elem, ok := splitMapSpec(spec)
 		if !ok {
@@ -201,6 +203,97 @@ func (c *Compiler) resolveTypeExpr(sc *cscope, spec string) (reflect.Type, bool)
 		return reflect.MapOf(kt, et), true
 	}
 	return nil, false
+}
+
+// resolveFuncSpec builds a func type from its reflect spelling:
+// func(params) results, the variadic tail spelled ... and multiple
+// results parenthesised.
+func (c *Compiler) resolveFuncSpec(sc *cscope, spec string) (reflect.Type, bool) {
+	params, rest, ok := splitParen(spec[len("func"):])
+	if !ok {
+		return nil, false
+	}
+	var in []reflect.Type
+	variadic := false
+	for i, part := range splitTop(params) {
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(part, "...") {
+			variadic = true
+			part = "[]" + part[3:]
+		}
+		t, ok := c.resolveType(sc, part)
+		if !ok {
+			return nil, false
+		}
+		_ = i
+		in = append(in, t)
+	}
+	var out []reflect.Type
+	rest = strings.TrimSpace(rest)
+	if rest != "" {
+		outs := rest
+		if strings.HasPrefix(rest, "(") {
+			inner, tail, ok := splitParen(rest)
+			if !ok || strings.TrimSpace(tail) != "" {
+				return nil, false
+			}
+			outs = inner
+		}
+		for _, part := range splitTop(outs) {
+			t, ok := c.resolveType(sc, strings.TrimSpace(part))
+			if !ok {
+				return nil, false
+			}
+			out = append(out, t)
+		}
+	}
+	return reflect.FuncOf(in, out, variadic), true
+}
+
+// splitParen splits "(inner) tail" at the matching close.
+func splitParen(s string) (inner, tail string, ok bool) {
+	if !strings.HasPrefix(s, "(") {
+		return "", "", false
+	}
+	depth := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '(', '[':
+			depth++
+		case ']':
+			depth--
+		case ')':
+			depth--
+			if depth == 0 {
+				return s[1:i], s[i+1:], true
+			}
+		}
+	}
+	return "", "", false
+}
+
+// splitTop splits a comma list at depth zero.
+func splitTop(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	var out []string
+	depth, start := 0, 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '(', '[':
+			depth++
+		case ')', ']':
+			depth--
+		case ',':
+			if depth == 0 {
+				out = append(out, s[start:i])
+				start = i + 1
+			}
+		}
+	}
+	out = append(out, s[start:])
+	return out
 }
 
 // splitMapSpec splits "map[K]V" into K and V at the bracket matching

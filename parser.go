@@ -49,6 +49,10 @@ type Parser struct {
 	// hdr is set while an if or for header parses: a brace there
 	// opens the block, never a composite literal, as in Go.
 	hdr bool
+	// inBody is set inside a function body, where x := y copies a
+	// name as Go does; at the top of a snippet the same spelling
+	// stays an error, the dialect's typo guard.
+	inBody bool
 }
 
 // terminated consumes a statement end. The semicolon is a delimiter
@@ -474,9 +478,10 @@ func (p *Parser) stmt() (stmt, error) {
 		case argCall:
 			p.pos = save
 		case argVar, argPath:
-			// _ = n is Go's discard; anything else on the left reads
-			// as a copy the language does not have.
-			if !blankOnly {
+			// _ = n is Go's discard; inside a function body a name
+			// copies as Go's does; at the top of a snippet the
+			// spelling stays the dialect's typo guard.
+			if !blankOnly && !p.inBody {
 				return stmt{}, fmt.Errorf("parse: cannot assign a name to a name at offset %d", save)
 			}
 			if !p.terminated() {

@@ -43,6 +43,78 @@ func (p *Parser) typeRef() (string, error) {
 			}
 			continue
 		}
+		// A func type spells as reflect does: func(params) results,
+		// multiple results parenthesised. It ends the reference.
+		if p.keyword("func") {
+			if !p.consume('(') {
+				return "", fmt.Errorf("parse: expected '(' after func at offset %d", p.pos)
+			}
+			spec := "func("
+			first := true
+			for {
+				p.skipSpace()
+				if p.consume(')') {
+					break
+				}
+				if !first && !p.consume(',') {
+					return "", fmt.Errorf("parse: expected ',' or ')' in a func type at offset %d", p.pos)
+				}
+				variadic := p.consumeStr("...")
+				pt, err := p.typeRef()
+				if err != nil {
+					return "", err
+				}
+				if !first {
+					spec += ", "
+				}
+				if variadic {
+					spec += "..." + pt
+				} else {
+					spec += pt
+				}
+				first = false
+			}
+			spec += ")"
+			p.skipSpace()
+			if !p.nl && p.pos < len(p.src) {
+				switch p.src[p.pos] {
+				case '(':
+					p.pos++
+					p.nl = false
+					outs := ""
+					ofirst := true
+					for {
+						p.skipSpace()
+						if p.consume(')') {
+							break
+						}
+						if !ofirst && !p.consume(',') {
+							return "", fmt.Errorf("parse: expected ',' or ')' in func results at offset %d", p.pos)
+						}
+						rt, err := p.typeRef()
+						if err != nil {
+							return "", err
+						}
+						if !ofirst {
+							outs += ", "
+						}
+						outs += rt
+						ofirst = false
+					}
+					spec += " (" + outs + ")"
+				default:
+					if c := p.src[p.pos]; c == '_' || c == '*' || c == '[' || c == '<' ||
+						(c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') {
+						rt, err := p.typeRef()
+						if err != nil {
+							return "", err
+						}
+						spec += " " + rt
+					}
+				}
+			}
+			return prefix + spec, nil
+		}
 		// A map key is a full type reference of its own; the value is
 		// whatever the rest of the loop reads.
 		if p.keyword("map") {

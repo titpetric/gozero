@@ -33,7 +33,7 @@ func (c *jitCompiler) scriptCallNode(call *vmCall) (node, error) {
 		}
 		dynGet = g
 	}
-	fn, name, errIdx, bindErr := call.script, call.name, call.errIdx, call.bindErr
+	fn, name, errIdx, bindErr, spread := call.script, call.name, call.errIdx, call.bindErr, call.spread
 	invoke := func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) ([]reflect.Value, error) {
 		args := make([]reflect.Value, len(getters))
 		for i, g := range getters {
@@ -46,7 +46,7 @@ func (c *jitCompiler) scriptCallNode(call *vmCall) (node, error) {
 		var out []reflect.Value
 		var err error
 		if fn != nil {
-			out, err = fn.invoke(ctx, nil, args)
+			out, err = fn.invoke(ctx, nil, fn.packVariadic(args, spread))
 		} else {
 			fv, ferr := dynGet(fr, ctx, st, d)
 			if ferr != nil {
@@ -55,7 +55,12 @@ func (c *jitCompiler) scriptCallNode(call *vmCall) (node, error) {
 			if !fv.IsValid() || fv.IsNil() {
 				return nil, fmt.Errorf("exec: %s is nil, not a function", name)
 			}
-			out = fv.Call(args)
+			if spread {
+				out = fv.CallSlice(args)
+			} else {
+				// Call packs a variadic tail itself.
+				out = fv.Call(args)
+			}
 		}
 		if err != nil {
 			return nil, err

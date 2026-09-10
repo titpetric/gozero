@@ -202,6 +202,23 @@ func (pc *progCompiler) compileLitAssign(sc *cscope, s stmt, dst *[]vmStmt) erro
 			return err
 		}
 	}
+	// A name copies through its operand node, Go's x := y.
+	if s.lit.kind == argVar || s.lit.kind == argPath {
+		node, t, err := c.compileOperand(sc, *s.lit)
+		if err != nil {
+			return err
+		}
+		st := t
+		if prev := sc.typeOf(name); prev != nil && prev != t {
+			if !t.AssignableTo(prev) {
+				return fmt.Errorf("compile: %s: cannot use %s as %s", name, sc.typeName(t), sc.typeName(prev))
+			}
+			st = prev
+		}
+		slot := pc.newSlot(sc, name, st, s.define)
+		*dst = append(*dst, vmStmt{assign: node, out: []int{slot}})
+		return nil
+	}
 	// An operator expression compiles to a per-run evaluation;
 	// its type is its own unless the name already has one.
 	if isExprKind(s.lit.kind) {

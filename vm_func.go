@@ -33,7 +33,31 @@ type scriptFn struct {
 	// paramNames are the declared parameter names in order, receiver
 	// included, for calling by stack map.
 	paramNames []string
-	recvT    reflect.Type // method receiver type, nil for a plain func
+	recvT      reflect.Type // method receiver type, nil for a plain func
+	// variadic marks a ... tail; a call site hands the tail element
+	// by element and the entry packs, or spreads a slice whole.
+	variadic bool
+}
+
+// packVariadic folds a call's trailing arguments into the variadic
+// slice parameter, or passes a spread slice through.
+func (fn *scriptFn) packVariadic(args []reflect.Value, spread bool) []reflect.Value {
+	if !fn.variadic || spread {
+		return args
+	}
+	nfixed := fn.sig.NumIn() - 1
+	if len(args) == fn.sig.NumIn() && args[nfixed].IsValid() && args[nfixed].Type() == fn.sig.In(nfixed) {
+		// Already packed: a reflect.Call boundary hands the tail as
+		// the slice.
+		return args
+	}
+	st := fn.sig.In(nfixed)
+	tail := args[nfixed:]
+	pack := reflect.MakeSlice(st, len(tail), len(tail))
+	for i, v := range tail {
+		pack.Index(i).Set(v)
+	}
+	return append(args[:nfixed:nfixed], pack)
 }
 
 // invoke runs the function down whichever tier its unit compiled
