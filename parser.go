@@ -78,6 +78,12 @@ const (
 	// argRecv is a channel receive, <-c. The source is a name, a
 	// field, or a call; the compiler types it.
 	argRecv
+	// argBinary is op applied to x and y; argUnary is op applied to
+	// x. Short-circuiting and typing are the compiler's.
+	argBinary
+	argUnary
+	// argIndex is x[y].
+	argIndex
 )
 
 // structElem is one element of a composite literal: the field name
@@ -106,6 +112,10 @@ type arg struct {
 	addr  bool
 	// argRecv: the channel the receive reads.
 	recv *arg
+	// argBinary, argUnary, argIndex: the operator and its operands.
+	op string
+	x  *arg
+	y  *arg
 }
 
 // link is one ".Method(args)" step chained onto a call.
@@ -181,8 +191,14 @@ func (p *program) flatCall() (*callExpr, bool) {
 	if !s.ret || s.call == nil || len(s.call.chain) != 0 || len(s.call.path) != 1 {
 		return nil, false
 	}
+	// An allow list of exactly the leaf kinds compileStatement
+	// handles, rather than a list of exclusions, so a new argument
+	// kind can never leak into the single-statement shape table by
+	// omission.
 	for _, a := range s.call.args {
-		if a.kind == argCall || a.kind == argStruct {
+		switch a.kind {
+		case argString, argInt, argFloat, argVar:
+		default:
 			return nil, false
 		}
 	}
@@ -251,21 +267,22 @@ func (p *Parser) stmt() (stmt, error) {
 			return s, nil
 		}
 		// The call form is tried first so "return f(x);" parses its
-		// path once; only when that fails is the value form read.
-		save := p.pos
-		if call, err := p.expr(); err == nil {
+		// path once, but only kept when the statement ends there:
+		// "return f(x) + 1" reparses as an expression.
+		save, saveNL := p.pos, p.nl
+		if call, err := p.expr(); err == nil && p.terminated() {
 			s.call = call
+			return s, nil
+		}
+		p.pos, p.nl = save, saveNL
+		a, err := p.exprArg()
+		if err != nil {
+			return s, err
+		}
+		if a.kind == argCall {
+			s.call = a.sub
 		} else {
-			p.pos = save
-			a, err := p.arg()
-			if err != nil {
-				return s, err
-			}
-			if a.kind == argCall {
-				s.call = a.sub
-			} else {
-				s.retVal = &a
-			}
+			s.retVal = &a
 		}
 		if !p.terminated() {
 			return s, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
@@ -284,7 +301,7 @@ func (p *Parser) stmt() (stmt, error) {
 			p.skipSpace()
 			if p.pos < len(p.src) && p.src[p.pos] == '=' && (p.pos+1 >= len(p.src) || p.src[p.pos+1] != '=') {
 				p.pos++
-				a, err := p.arg()
+				a, err := p.exprArg()
 				if err != nil {
 					return stmt{}, err
 				}
@@ -312,7 +329,7 @@ func (p *Parser) stmt() (stmt, error) {
 		path, _ := p.path()
 		p.skipSpace()
 		if p.consumeStr("<-") {
-			v, err := p.arg()
+			v, err := p.exprArg()
 			if err != nil {
 				return stmt{}, err
 			}
@@ -352,7 +369,7 @@ func (p *Parser) stmt() (stmt, error) {
 	// message rather than surfacing as "expected '('".
 	if len(lhs) > 0 {
 		save := p.pos
-		a, err := p.arg()
+		a, err := p.exprArg()
 		if err != nil {
 			return stmt{}, err
 		}

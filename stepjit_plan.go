@@ -33,6 +33,13 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 			for i := range a.elems {
 				walkArg(a.elems[i].val)
 			}
+		case vaBinary, vaIndex:
+			walkArg(a.x)
+			if a.y != nil {
+				walkArg(a.y)
+			}
+		case vaUnary, vaLen:
+			walkArg(a.x)
 		}
 	}
 	walkCall = func(call *vmCall) {
@@ -291,6 +298,13 @@ func countArgReads(reads map[int]int, a *vmArg) {
 		for i := range a.elems {
 			countArgReads(reads, a.elems[i].val)
 		}
+	case vaBinary, vaIndex:
+		countArgReads(reads, a.x)
+		if a.y != nil {
+			countArgReads(reads, a.y)
+		}
+	case vaUnary, vaLen:
+		countArgReads(reads, a.x)
 	}
 }
 

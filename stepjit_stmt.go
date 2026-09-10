@@ -19,6 +19,12 @@ func (c *jitCompiler) stmtNode(s plannedStmt, jp *jitProgram) (nodeE, error) {
 		return c.fieldSetNode(s.fieldSet)
 	}
 	if s.assign != nil {
+		switch s.assign.kind {
+		case vaBinary, vaUnary, vaIndex, vaLen, vaConst:
+			// Operator expressions run on the reflect tier until the
+			// direct nodes land.
+			return nil, fmt.Errorf("an operator expression is not in the shape table yet")
+		}
 		return c.structAssignNode(s)
 	}
 	var n node

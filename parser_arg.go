@@ -79,7 +79,7 @@ func (p *Parser) args() ([]arg, error) {
 		if len(out) > 0 && !p.consume(',') {
 			return nil, fmt.Errorf("parse: expected ',' or ')' at offset %d", p.pos)
 		}
-		a, err := p.arg()
+		a, err := p.exprArg()
 		if err != nil {
 			return nil, err
 		}
@@ -189,7 +189,7 @@ func (p *Parser) composite(path []string, addr bool) (arg, error) {
 		} else {
 			p.pos = save
 		}
-		v, err := p.arg()
+		v, err := p.exprArg()
 		if err != nil {
 			return arg{}, err
 		}

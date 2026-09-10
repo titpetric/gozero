@@ -41,6 +41,10 @@ const (
 	vaField                  // a struct field read off another value
 	vaCtx                    // the execution context, auto-filled
 	vaStruct                 // a composite literal, built fresh per evaluation
+	vaBinary                 // op over x and y; && and || short-circuit
+	vaUnary                  // op over x
+	vaIndex                  // x[y] on a slice, array, string or map
+	vaLen                    // len(x)
 )
 
 var ctxType = reflect.TypeFor[context.Context]()
@@ -97,6 +101,15 @@ type vmArg struct {
 	styp  reflect.Type
 	addr  bool
 	elems []vmElem
+
+	// vaBinary, vaUnary, vaIndex, vaLen: the operands and, chosen at
+	// compile time, the evaluator closure carrying the operator's
+	// native semantics. binFn is nil for the forms get evaluates
+	// itself: the short-circuit ops and the nil comparisons.
+	op    string
+	x, y  *vmArg
+	binFn func(x, y reflect.Value) reflect.Value
+	unFn  func(x reflect.Value) reflect.Value
 }
 
 // vmElem is one element of a compiled composite literal: the field it
@@ -445,6 +458,22 @@ func (a *vmArg) get(ctx context.Context, slots, frame []reflect.Value, ifaces []
 			return pv, nil
 		}
 		return sv, nil
+	case vaBinary:
+		return a.evalBinary(ctx, slots, frame, ifaces, stack, dest)
+	case vaUnary:
+		v, err := a.x.get(ctx, slots, frame, ifaces, stack, dest)
+		if err != nil {
+			return reflect.Value{}, err
+		}
+		return a.unFn(v), nil
+	case vaIndex:
+		return a.evalIndex(ctx, slots, frame, ifaces, stack, dest)
+	case vaLen:
+		v, err := a.x.get(ctx, slots, frame, ifaces, stack, dest)
+		if err != nil {
+			return reflect.Value{}, err
+		}
+		return reflect.ValueOf(v.Len()), nil
 	case vaDest:
 		if dest == nil {
 			return reflect.Zero(a.typ), fmt.Errorf("exec: dest is only set by Scan")

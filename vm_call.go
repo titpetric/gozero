@@ -319,7 +319,26 @@ func (c *Compiler) compileArg(sc *cscope, name string, pos int, pt reflect.Type,
 			return nil, fmt.Errorf("compile: %s argument %d: %w", name, pos+1, err)
 		}
 		v = lit
+	case argBinary, argUnary, argIndex:
+		node, vt, err := c.compileValueExpr(sc, a, pt)
+		if err != nil {
+			return nil, err
+		}
+		if !vt.AssignableTo(pt) {
+			return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, sc.typeName(vt), sc.typeName(pt))
+		}
+		return node, nil
 	case argCall:
+		if c.isLenCall(sc, a.sub) {
+			node, vt, err := c.compileLen(sc, a.sub)
+			if err != nil {
+				return nil, err
+			}
+			if !vt.AssignableTo(pt) {
+				return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, vt, pt)
+			}
+			return node, nil
+		}
 		sub, st, err := c.compileExpr(sc, a.sub)
 		if err != nil {
 			return nil, err
