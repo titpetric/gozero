@@ -586,15 +586,4 @@ Middleware-style guarding works through the error contract: a bound
 the program before the next statement, the way `set -e` ends a shell
 script.
 
-This chapter is the statement language, and it is unchanged: every
-snippet above compiles as it did. The Go-subset surface layered over
-it on 2026-09-10 - conditionals, loops, operator expressions,
-declarations, closures, packages and hot loading - is recorded in
-[packages.md](packages.md). The research that first declined each
-feature is in [design/](design/): [conditions](design/conditions.md),
-[loops](design/loops.md), [closures](design/closures.md),
-[expressions](design/expressions.md),
-[structs](design/structs.md), each verdict carrying its dated status
-note. Channel receive and send started there and moved into the
-syntax; [channels](design/channels.md) records what landed and what
-stayed out.
+This chapter is the statement language, and it is unchanged: every snippet above compiles as it did. The Go-subset surface layered over it on 2026-09-10 - conditionals, loops, operator expressions, declarations, closures, packages and hot loading - is recorded in [packages.md](packages.md). The research that first declined each feature is in [design/](design/): [conditions](design/conditions.md), [loops](design/loops.md), [closures](design/closures.md), [expressions](design/expressions.md), [structs](design/structs.md), each verdict carrying its dated status note. Channel receive and send started there and moved into the syntax; [channels](design/channels.md) records what landed and what stayed out.

@@ -157,7 +157,4 @@ pressure becomes real.
 
 ## Status
 
-Superseded 2026-09-10. The verdict above declined closures for the
-statement-only language; the package extension adopts them by owner
-decision, and the adopted form is in [packages.md](../packages.md).
-The cost analysis above still binds the implementation.
+Superseded 2026-09-10. The verdict above declined closures for the statement-only language; the package extension adopts them by owner decision, and the adopted form is in [packages.md](../packages.md). The cost analysis above still binds the implementation.

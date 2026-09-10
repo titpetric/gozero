@@ -155,7 +155,4 @@ recorded position; math-heavy programs are host code.
 
 ## Status
 
-Superseded 2026-09-10. The verdict above declined operator expressions for the
-statement-only language; the package extension adopts them by owner
-decision, and the adopted form is in [packages.md](../packages.md).
-The cost analysis above still binds the implementation.
+Superseded 2026-09-10. The verdict above declined operator expressions for the statement-only language; the package extension adopts them by owner decision, and the adopted form is in [packages.md](../packages.md). The cost analysis above still binds the implementation.
