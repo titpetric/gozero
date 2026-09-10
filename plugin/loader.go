@@ -1,12 +1,14 @@
 package plugin
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -60,10 +62,13 @@ func (l *Loader) Open(path string) (Plugin, error) {
 }
 
 // file is the concrete handle: the live version swaps atomically
-// under the symbols already handed out.
+// under the symbols already handed out. src is set for a
+// source-backed handle, whose reload recompiles the same text
+// against the current bindings.
 type file struct {
 	loader  *Loader
 	path    string
+	src     string
 	mu      sync.Mutex
 	current atomic.Pointer[version]
 	symbols map[string]Symbol
@@ -76,8 +81,19 @@ type version struct {
 	fns  map[string]reflect.Value
 }
 
-// load compiles the path as it is on disk right now.
+// load compiles the source of truth as it is right now: the disk
+// path, or the held text for a source-backed handle.
 func (f *file) load() (*version, error) {
+	if f.src != "" {
+		prog, err := f.loader.Runtime.Load(f.src)
+		if err != nil {
+			return nil, fmt.Errorf("plugin: open %s: %w", f.path, err)
+		}
+		if prog.Package() == "" {
+			return nil, fmt.Errorf("plugin: open %s: a plugin needs a package clause", f.path)
+		}
+		return &version{prog: prog, fns: map[string]reflect.Value{}}, nil
+	}
 	info, err := os.Stat(f.path)
 	if err != nil {
 		return nil, fmt.Errorf("plugin: open %s: %w", f.path, err)
@@ -166,4 +182,74 @@ func (f *file) Reload() error {
 	}
 	f.current.Store(next)
 	return nil
+}
+
+// OpenSource opens a plugin from source held in memory, keyed by
+// name: the embed.FS and generated-code path. Reload recompiles the
+// same text, which picks up rebound packages.
+func (l *Loader) OpenSource(name, src string) (Plugin, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	key := "source:" + name
+	if f := l.files[key]; f != nil {
+		return f, nil
+	}
+	f := &file{loader: l, path: name, src: src, symbols: map[string]Symbol{}}
+	v, err := f.load()
+	if err != nil {
+		return nil, err
+	}
+	f.current.Store(v)
+	l.files[key] = f
+	return f, nil
+}
+
+// Watch polls a path-backed plugin's modification time and reloads
+// on change, until ctx ends or a reload is refused; the refusal
+// comes back. The interval is the caller's latency choice.
+func Watch(ctx context.Context, p Plugin, every time.Duration) error {
+	f, ok := p.(*file)
+	if !ok || f.src != "" {
+		return fmt.Errorf("plugin: only a path-backed handle watches")
+	}
+	// The zero baseline reloads once on the first tick, which also
+	// covers a change that landed before the watch began.
+	last := time.Time{}
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-t.C:
+		}
+		info, err := os.Stat(f.path)
+		if err != nil {
+			continue
+		}
+		stamp := watchStamp(f.path, info)
+		if stamp.Equal(last) {
+			continue
+		}
+		last = stamp
+		if err := f.Reload(); err != nil {
+			return err
+		}
+	}
+}
+
+// watchStamp is the newest modification time behind a path: the
+// file's own, or the newest .go file's for a package folder.
+func watchStamp(path string, info os.FileInfo) time.Time {
+	if !info.IsDir() {
+		return info.ModTime()
+	}
+	newest := info.ModTime()
+	files, _ := filepath.Glob(filepath.Join(path, "*.go"))
+	for _, file := range files {
+		if fi, err := os.Stat(file); err == nil && fi.ModTime().After(newest) {
+			newest = fi.ModTime()
+		}
+	}
+	return newest
 }

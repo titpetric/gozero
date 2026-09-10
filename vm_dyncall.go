@@ -272,3 +272,54 @@ func (d *ifaceDispatch) invokeDispatch(ctx context.Context, name string, args []
 	}
 	return nil, fmt.Errorf("exec: %s does not implement %s.%s", rt, d.iface.name, d.method.name)
 }
+
+// addrOf turns a receiver into the address of the value it names. Only
+// a name or a field chain rooted in one qualifies: those are variables
+// and have an address, where a call's result does not, which is Go's
+// addressability rule for pointer-receiver calls.
+func addrOf(t reflect.Type, a *vmArg) (*vmArg, error) {
+	root := a
+	for root.kind == vaField {
+		root = root.src
+	}
+	if root.kind != vaSlot {
+		return nil, fmt.Errorf("the value is not addressable, bind it to a name first")
+	}
+	// Built fresh rather than copied: vmArg carries an atomic cache
+	// that must not be copied.
+	return &vmArg{
+		kind: a.kind, slot: a.slot, name: a.name,
+		src: a.src, index: a.index, deref: a.deref,
+		addrOf: true, typ: reflect.PointerTo(t), iface: -1,
+	}, nil
+}
+
+// ifaceMethodFunc builds a callable func value for a method of an
+// interface type. MethodByName on an interface returns the signature
+// without a receiver and a zero Func, so the call site gets a
+// synthesized func whose first parameter is the interface and whose
+// body dispatches on the dynamic value, exactly what the compiled
+// method call on a concrete receiver gets from Method.Func. A nil
+// receiver panics inside reflect the way a nil interface method call
+// panics in Go, and arrives as *PanicError through the guard.
+func ifaceMethodFunc(t reflect.Type, m reflect.Method) reflect.Value {
+	mt := m.Type
+	in := make([]reflect.Type, 0, mt.NumIn()+1)
+	in = append(in, t)
+	for i := 0; i < mt.NumIn(); i++ {
+		in = append(in, mt.In(i))
+	}
+	out := make([]reflect.Type, 0, mt.NumOut())
+	for i := 0; i < mt.NumOut(); i++ {
+		out = append(out, mt.Out(i))
+	}
+	idx := m.Index
+	variadic := mt.IsVariadic()
+	return reflect.MakeFunc(reflect.FuncOf(in, out, variadic), func(args []reflect.Value) []reflect.Value {
+		if variadic {
+			// MakeFunc hands the variadic tail packed as a slice.
+			return args[0].Method(idx).CallSlice(args[1:])
+		}
+		return args[0].Method(idx).Call(args[1:])
+	})
+}

@@ -252,6 +252,14 @@ func (r *Runtime) BindAdapter[I any](proto any) error {
 	return nil
 }
 
+// Forget evicts one source from the compile cache, the reload
+// loop's narrow alternative to Invalidate.
+func (r *Runtime) Forget(src string) {
+	r.mu.Lock()
+	delete(r.cache, src)
+	r.mu.Unlock()
+}
+
 // Load compiles a source file into a Program: its type and function
 // declarations against this Runtime's registered packages, each
 // func init() run once in declaration order before Load returns. A

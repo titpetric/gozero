@@ -287,3 +287,26 @@ func TestRuntime_BindPackageType(t *testing.T) {
 		t.Fatal("a nil value has no type")
 	}
 }
+
+// TestRuntime_Forget evicts one source; the next Compile of it is a
+// fresh compilation.
+func TestRuntime_Forget(t *testing.T) {
+	rt := NewRuntime()
+	if err := rt.Bind("f", func() int64 { return 1 }); err != nil {
+		t.Fatal(err)
+	}
+	const src = `v := f(); return v;`
+	if _, err := rt.Compile(src); err != nil {
+		t.Fatal(err)
+	}
+	if len(rt.cache) != 1 {
+		t.Fatalf("cache holds %d entries", len(rt.cache))
+	}
+	rt.Forget(src)
+	if len(rt.cache) != 0 {
+		t.Fatal("Forget must evict the cached entry")
+	}
+	if _, err := rt.Compile(src); err != nil {
+		t.Fatal(err)
+	}
+}
