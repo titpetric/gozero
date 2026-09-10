@@ -285,6 +285,7 @@ func (c *jitCompiler) bridgeArg(a *vmArg) (func(unsafe.Pointer, context.Context,
 			if reflect.PointerTo(st) != a.typ {
 				return nil, fmt.Errorf("cannot use *%s as %s", st, a.typ)
 			}
+			c.frameEscapes = true
 			return func(fr unsafe.Pointer, _ context.Context, _ map[string]any, _ any) (reflect.Value, error) {
 				return reflect.NewAt(st, unsafe.Add(fr, off)), nil
 			}, nil

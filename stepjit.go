@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"sync"
 	"unsafe" // also required by go:linkname
 )
 
@@ -15,6 +16,15 @@ import (
 //
 //go:linkname unsafeNew reflect.unsafe_New
 func unsafeNew(rtype unsafe.Pointer) unsafe.Pointer
+
+// typedmemclr is the typed clear reflect.Value.SetZero performs,
+// without building the Value: the pointer fields keep their write
+// barriers because the rtype carries the pointer map. Used to reset
+// a pooled frame. Like unsafeNew, it is a pull linkname to an
+// internal symbol and a toolchain bump can break it.
+//
+//go:linkname typedmemclr reflect.typedmemclr
+func typedmemclr(rtype unsafe.Pointer, ptr unsafe.Pointer)
 
 // The step JIT compiles a program into a tree of typed closures.
 //
@@ -106,6 +116,15 @@ type jitProgram struct {
 	frameRT   unsafe.Pointer // nil when the program needs no slots
 	stmts     []nodeE
 
+	// pool recycles frames between runs. It is only set when the
+	// compiler proved no pointer into the frame leaves a run: an
+	// aliased interface argument or an addressed receiver hands the
+	// callee a frame pointer it may keep, and such a program
+	// allocates fresh. A reused frame is cleared on the way out of
+	// the pool, so every run still starts from the zero frame the
+	// declarations and literal builders rely on.
+	pool *sync.Pool
+
 	// retType and retOff describe the slot a trailing "return expr;"
 	// leaves its value in. retType is nil when the program has no
 	// value, which is the common case: the output goes through dest.
@@ -116,17 +135,45 @@ type jitProgram struct {
 func (p *jitProgram) run(ctx context.Context, stack map[string]any, dest any) (any, error) {
 	var f unsafe.Pointer
 	if p.frameRT != nil {
-		f = unsafeNew(p.frameRT)
+		f = p.getFrame()
 	}
 	for _, stmt := range p.stmts {
 		if err := stmt(f, ctx, stack, dest); err != nil {
+			p.putFrame(f)
 			return nil, err
 		}
 	}
 	if p.retType == nil {
+		p.putFrame(f)
 		return nil, nil
 	}
-	return reflect.NewAt(p.retType, unsafe.Add(f, p.retOff)).Elem().Interface(), nil
+	// Interface copies the value into a fresh box, so the frame is
+	// dead once it returns and can go back to the pool.
+	v := reflect.NewAt(p.retType, unsafe.Add(f, p.retOff)).Elem().Interface()
+	p.putFrame(f)
+	return v, nil
+}
+
+// getFrame takes a frame from the pool or allocates one. A pooled
+// frame is cleared with the typed clear, which keeps the write
+// barriers on its pointer fields; a fresh allocation comes back
+// zeroed already. An unsafe.Pointer is pointer-shaped, so boxing it
+// through the pool's any allocates nothing.
+func (p *jitProgram) getFrame() unsafe.Pointer {
+	if p.pool != nil {
+		if v := p.pool.Get(); v != nil {
+			f := v.(unsafe.Pointer)
+			typedmemclr(p.frameRT, f)
+			return f
+		}
+	}
+	return unsafeNew(p.frameRT)
+}
+
+func (p *jitProgram) putFrame(f unsafe.Pointer) {
+	if p.pool != nil && f != nil {
+		p.pool.Put(f)
+	}
 }
 
 // asError turns the raw words of an error result into an error.
@@ -155,6 +202,10 @@ type jitCompiler struct {
 	// aliasing hazard as a rewritten slot, since a pointer method may
 	// write through it.
 	addr map[int]bool
+	// frameEscapes records that some node hands a pointer into the
+	// frame to a callee: an aliased interface argument or an
+	// addressed receiver. A frame that escapes cannot be pooled.
+	frameEscapes bool
 	// splices maps an argument that reads a name to the call that
 	// produced it, where planInline decided the value can travel as a
 	// return value instead of through a slot. It is a side table rather
@@ -256,5 +307,8 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 		jp.retType, jp.retOff = c.types[field], c.offs[field]
 	}
 	jp.bridged = c.bridged
+	if jp.frameRT != nil && !c.frameEscapes {
+		jp.pool = &sync.Pool{}
+	}
 	return jp, nil
 }

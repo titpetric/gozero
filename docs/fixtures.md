@@ -105,24 +105,25 @@ remeasured 2026-09-10:
 
 | fixture  | vm               | native    | ratio |
 |----------|------------------|-----------|-------|
-| channels | 4.3us, 15 allocs | 2.0us, 8  | 2.2x  |
-| fmt      | 1.5us, 7 allocs  | 0.9us, 4  | 1.7x  |
-| http     | 2.8us, 9 allocs  | 2.7us, 9  | 1.0x  |
-| json     | 4.2us, 17 allocs | 3.5us, 16 | 1.2x  |
-| structs  | 7.8us, 26 allocs | 5.0us, 19 | 1.5x  |
-| types    | 4.9us, 21 allocs | 3.1us, 11 | 1.6x  |
-| url      | 4.3us, 15 allocs | 4.0us, 14 | 1.1x  |
-| variadic | 0.5us, 3 allocs  | 0.5us, 3  | 1.1x  |
+| channels | 4.4us, 15 allocs | 2.1us, 8  | 2.1x  |
+| fmt      | 1.6us, 6 allocs  | 0.9us, 4  | 1.7x  |
+| http     | 3.1us, 8 allocs  | 2.5us, 9  | 1.2x  |
+| json     | 4.3us, 16 allocs | 3.6us, 16 | 1.2x  |
+| structs  | 7.7us, 25 allocs | 5.3us, 19 | 1.4x  |
+| types    | 4.6us, 20 allocs | 3.3us, 11 | 1.4x  |
+| url      | 4.7us, 14 allocs | 3.9us, 14 | 1.2x  |
+| variadic | 0.6us, 3 allocs  | 0.5us, 3  | 1.1x  |
 
-http and variadic reach allocation parity with their mirrors; json and
-url are within one allocation, which is the frame. structs sits seven
+The frame pool recycles the per-run frame of every program whose
+frame the compiler proves does not escape, so json, url and variadic
+sit at allocation parity with their mirrors and http runs one
+allocation under its mirror: the vm reuses its frame where the
+mirror's escape analysis cannot save every value. structs sits six
 over: a literal in argument or interface position allocates a fresh
-struct where Go's escape analysis keeps the mirror's on the stack. The
-fixtures that lean on formatting and assertion plumbing sit under 2x.
-channels sits seven over and above 2x for a related reason: every
-reflect receive boxes the element where the mirror receives into a
-local, a cost the default build halves
-([inlining.md](inlining.md)).
+struct where Go keeps the mirror's on the stack. channels sits seven
+over and above 2x for a related reason: every reflect receive boxes
+the element where the mirror receives into a local, a cost the
+default build halves ([inlining.md](inlining.md)).
 For the bridge cost
 of a call the shape table cannot express, and for the work-only
 comparison without assertions, see the benchmarks in

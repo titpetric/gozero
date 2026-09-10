@@ -235,16 +235,22 @@ of a concurrent program. Pooling measures well:
 | sync.Pool, cleared on reuse | 22.85n |         0 |
 | sync.Pool, not cleared      | 20.39n |         0 |
 
-That is 40ns and one allocation, and it is not currently claimable.
-Pooling and the aliasing described above are mutually exclusive: an
-interface argument taken from a slot hands a pointer into the frame to
-the callee, and nothing proves the callee does not keep it past the
-run. Dropping the alias to allow pooling trades one allocation for
-another, 22.85n plus boxing the slice against 62.57n and no box.
+That is 40ns and one allocation. Pooling and the aliasing described
+above are mutually exclusive: an interface argument taken from a slot
+hands a pointer into the frame to the callee, and nothing proves the
+callee does not keep it past the run. Dropping the alias to allow
+pooling trades one allocation for another, 22.85n plus boxing the
+slice against 62.57n and no box.
 
 Pooling is a clean win for a program with no aliased slot, which is
 every program whose interface arguments are pointer-shaped, since those
-are stored directly and never point at the frame. It is not implemented.
+are stored directly and never point at the frame. It landed on
+2026-09-10 as a per-program pool gated on exactly that proof: the
+compiler marks the nodes that hand out frame pointers (an indirectly
+aliased interface argument, an addressed receiver), and a program
+with none recycles its frame through a `sync.Pool`, cleared on reuse
+with the typed clear reflect performs, while every other program
+allocates fresh ([changelog](changelog.md)).
 
 One measurement to be careful with. Under `-gcflags=all=-l` the numbers
 above show 6 allocations for both the program and its native
@@ -283,7 +289,8 @@ is the same combinatorial problem as fusing pairs.
   value, because reflect re-checks both on every call.
 - Aliasing a frame slot for an interface argument reaches allocation
   parity and forecloses frame pooling in the same move: the callee may
-  keep the pointer into the frame past the run.
+  keep the pointer into the frame past the run. The pool that later
+  landed is gated on the absence of exactly that aliasing.
 - Cost figures are differences of two noisy numbers. One benchmark per
   process, a pinned core and `-gcflags=all=-l` make them
   repeatable; the inlining flag also changes what "parity" means, which

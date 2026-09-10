@@ -44,19 +44,24 @@ constructor call, one write, one read - and both run on the direct
 tier, asserted by `TestConcurrencyPrograms` before the numbers mean
 anything. Pinned core, medians of three 1s runs, uncontended.
 
-Default build:
+Default build, with the frame pool:
 
 | write + read | native | vm               | vm overhead |
 |--------------|--------|------------------|-------------|
-| mutex map    | 36.4ns | 142.3ns, 24 B, 2 | +106ns      |
-| channel      | 41.8ns | 233.7ns, 56 B, 4 | +192ns      |
+| mutex map    | 36.2ns | 129.5ns, 8 B, 1  | +93ns       |
+| channel      | 42.0ns | 248.8ns, 40 B, 3 | +207ns      |
 
 With `-gcflags=all=-l`:
 
 | write + read | native | vm      |
 |--------------|--------|---------|
-| mutex map    | 46.8ns | 194.8ns |
-| channel      | 54.0ns | 417.1ns |
+| mutex map    | 50.9ns | 180.8ns |
+| channel      | 56.0ns | 432.4ns |
+
+Both programs qualify for the frame pool, which removed the per-run
+frame allocation and 14% of the mutex program's time
+([changelog](changelog.md)); the remaining allocation on the mutex
+side is the returned value's box.
 
 ## What the numbers say
 
@@ -68,14 +73,14 @@ channels fixture ([fixtures.md](fixtures.md)) cannot be the channel:
 the gap has another owner.
 
 **The reflect layer is the cost.** The compiled mutex program pays
-+106ns over native; the compiled channel program pays +192ns. The
++93ns over native; the compiled channel program pays +207ns. The
 difference is where the two paths run: the mutex methods are direct
 shape-table calls with no reflection, while receive and send are
 runtime-generic and go through `reflect.Value` - `TryRecv` and
 `TrySend`, each boxing the element it moves. The allocation columns
-carry the same story: two allocations are shared return plumbing,
-and the channel program's two extra are the element boxes, one per
-operation.
+carry the same story: one allocation is the returned value's box,
+shared by both programs, and the channel program's two extra are the
+element boxes, one per operation.
 
 **Method calls normalize onto the fast path; channel operations do
 not, yet.** A bound method with in-table shapes runs as a cast and

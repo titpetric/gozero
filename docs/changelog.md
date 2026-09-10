@@ -7,6 +7,33 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-10 15:29 +02:00: escape-gated frame pooling
+
+The per-run frame is recycled through a sync.Pool when the compiler
+proves no pointer into it leaves a run. The proof was the missing
+piece [overheads.md](overheads.md) recorded when it measured pooling
+at 22.85ns against 62.57ns and left it unimplemented: an indirectly
+aliased interface argument or an addressed receiver hands the callee
+a frame pointer it may keep, so those programs must allocate fresh.
+The compiler now marks exactly those nodes, and jitCompileProgram
+attaches a pool only when none were built. A reused frame is cleared
+on the way out of the pool with the typed clear reflect performs
+(reflect.typedmemclr, a pull linkname like unsafe_New, with the same
+toolchain caveat), so every run still starts from the zero frame the
+declarations and literal builders rely on.
+
+Verified with benchstat over four runs against the pre-pool tree.
+The mutex round trip in [concurrency.md](concurrency.md) drops 14%
+(151.0ns to 129.5ns, p=0.029) and its allocations halve (24 B, 2 to
+8 B, 1); the channel round trip is unchanged in time and one
+allocation lighter. Six of the eight fixtures qualify and each loses
+one allocation per run: json and url reach allocation parity with
+their handwritten mirrors, and http runs one allocation under its
+mirror. The first reset used reflect.Value.SetZero and cost 6% on
+the smallest frames; the linkname clear removed that.
+TestFramePoolGate pins the eligibility rule and that a reused frame
+starts from zero.
+
 ## 2026-09-10 12:30 +02:00: MutexMap binding and the concurrency chapter
 
 `gozero.MutexMap` is a mutex-protected `map[string]int` exported for

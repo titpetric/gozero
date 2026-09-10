@@ -248,9 +248,10 @@ paid once per source string.
   flat non-variadic call. Some of its shapes are unreachable from any
   test; whether the tier still earns its place against the program
   compiler is an open question.
-- Pooling the frame remains foreclosed by slot aliasing; the unexplored
-  approaches are recorded at the end of
-  [overheads.md](overheads.md).
+- Frame pooling is gated per program: a frame no pointer escapes is
+  recycled through a pool, an aliased or addressed frame allocates
+  fresh. The trade and the approaches not taken are recorded at the
+  end of [overheads.md](overheads.md).
 - Extending the syntax with conditionals, loops, closures, operator
   expressions or struct type declarations is researched and
   declined, feature by feature, in [design/](design/). Channel

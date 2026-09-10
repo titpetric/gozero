@@ -34,6 +34,7 @@ func (c *jitCompiler) argNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 			if cl != lPtr {
 				return node{}, fmt.Errorf("an address cannot fill a %s parameter", cl)
 			}
+			c.frameEscapes = true
 			off := c.offs[field]
 			return node{class: lPtr, P: func(fr unsafe.Pointer, _ context.Context, _ map[string]any, _ any) (unsafe.Pointer, error) {
 				return unsafe.Add(fr, off), nil
@@ -78,6 +79,7 @@ func (c *jitCompiler) argNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 			// scalar, is copied instead, which is what the Go compiler
 			// does anyway.
 			if c.writes[a.slot] == 1 && !c.addr[a.slot] && !layoutOf(st).scalar() {
+				c.frameEscapes = true
 				return node{class: lIface, I: func(fr unsafe.Pointer, ctx context.Context, _ map[string]any, _ any) (ifacePair, error) {
 					return ifacePair{tab: tab, data: unsafe.Add(fr, off)}, nil
 				}}, nil
@@ -166,11 +168,14 @@ func (c *jitCompiler) fieldNode(a *vmArg, pt reflect.Type, cl layout) (node, err
 		return node{}, fmt.Errorf("this field source is not in the table")
 	}
 	// An addressed field is the address load itself: the receiver of a
-	// pointer method on a field value.
+	// pointer method on a field value. A field behind a pointer is not
+	// frame memory, but the frame-resident case is, so both mark the
+	// escape conservatively.
 	if a.addrOf {
 		if cl != lPtr {
 			return node{}, fmt.Errorf("an address cannot fill a %s parameter", cl)
 		}
+		c.frameEscapes = true
 		return node{class: lPtr, P: load}, nil
 	}
 
