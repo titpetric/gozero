@@ -155,13 +155,13 @@ func ifCounters(p *vmProgram, stmts []vmStmt, inArm bool, plan *jitPlan) {
 // ifNode compiles an if chain: the condition as bool bits, each arm
 // its own statement list.
 func (c *jitCompiler) ifNode(n *vmIf, jp *jitProgram) (nodeE, error) {
-	// The comparison lowering lands with the direct-tier commit; until
-	// then a header comparison declines by name and the program runs
-	// on the reflect evaluator.
+	var cond nodeN
+	var err error
 	if n.cmp != nil {
-		return nil, fmt.Errorf("a header comparison is not lowered yet")
+		cond, err = c.cmpNode(n.cmp)
+	} else {
+		cond, err = c.condNode(n.cond)
 	}
-	cond, err := c.condNode(n.cond)
 	if err != nil {
 		return nil, err
 	}
@@ -216,6 +216,18 @@ func (c *jitCompiler) armNodes(stmts []vmStmt, jp *jitProgram) ([]nodeE, error) 
 // rung's conditions call, consulted by callNode after its own cases.
 func condShapes(key string, fptr unsafe.Pointer, a []node) (node, bool) {
 	switch key {
+	case "i64_b":
+		f, a0 := castFn[func(int64) bool](fptr), a[0].N
+		return node{class: lBool, N: func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (uint64, error) {
+			n0, err := a0(fr, ctx, st, d)
+			if err != nil {
+				return 0, err
+			}
+			if f(int64(n0)) {
+				return 1, nil
+			}
+			return 0, nil
+		}}, true
 	case "SS_b":
 		f, a0, a1 := castFn[func(string, string) bool](fptr), a[0].S, a[1].S
 		return node{class: lBool, N: func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (uint64, error) {
@@ -252,4 +264,194 @@ func (c *jitCompiler) condNode(a *vmArg) (nodeN, error) {
 		return nil, fmt.Errorf("an if condition of class %s is not in the table", n.class)
 	}
 	return n.N, nil
+}
+
+// cmpNode compiles a header comparison to bool bits. Both sides
+// carry one static type, so one layout class closes the whole node:
+// the operand loads and the compare are machine operations, and the
+// only reflect a comparison can pay sits inside an operand call the
+// shape table cannot express.
+func (c *jitCompiler) cmpNode(cm *vmCmp) (nodeN, error) {
+	cl := layoutOf(cm.typ)
+	if cl == lBad {
+		return nil, fmt.Errorf("a comparison over %s is not in the table", cm.typ)
+	}
+	x, err := c.cmpOperandNode(cm.lhs, cm.typ, cl)
+	if err != nil {
+		return nil, err
+	}
+	y, err := c.cmpOperandNode(cm.rhs, cm.typ, cl)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case cl == lStr:
+		return cmpNodeOf(cm.op, x.S, y.S)
+	case cl.float():
+		return cmpNodeOf(cm.op, x.F, y.F)
+	case cl == lBool:
+		// The vm compiler admits only == and != for bool, and the
+		// bits a nodeN carries are 0 or 1, so the integer compare is
+		// the bool compare.
+		return cmpNodeN(cm.op, cl, x.N, y.N)
+	case cl.scalar():
+		return cmpNodeN(cm.op, cl, x.N, y.N)
+	}
+	return nil, fmt.Errorf("a comparison over class %s is not in the table", cl)
+}
+
+// cmpOperandNode compiles one side of a comparison to the shared
+// class. A call goes through exprNode so a predicate operand
+// compiles exactly like a condition call does.
+func (c *jitCompiler) cmpOperandNode(a *vmArg, t reflect.Type, cl layout) (node, error) {
+	var n node
+	var err error
+	if a.kind == vaCall {
+		n, err = c.exprNode(a.sub)
+	} else {
+		n, err = c.argNode(a, t, cl)
+	}
+	if err != nil {
+		return node{}, err
+	}
+	if n.class != cl {
+		return node{}, fmt.Errorf("a %s operand cannot compare as %s", n.class, cl)
+	}
+	return n, nil
+}
+
+// signN sign-extends the zero-extended bits a nodeN carries, so a
+// signed class orders by value: int8(-1) travels as 0xFF and must
+// compare below 0.
+func signN(cl layout, v uint64) int64 {
+	switch cl {
+	case lI8:
+		return int64(int8(uint8(v)))
+	case lI16:
+		return int64(int16(uint16(v)))
+	case lI32:
+		return int64(int32(uint32(v)))
+	}
+	return int64(v) // lI64
+}
+
+// signedClass reports a class whose ordering sign-extends.
+func signedClass(cl layout) bool {
+	return cl == lI8 || cl == lI16 || cl == lI32 || cl == lI64
+}
+
+// cmpNodeN builds the comparison over integer and bool bits. A
+// signed class runs every operator through signN, which truncates
+// to the class width and sign-extends: that canonicalizes the two
+// bit conventions in play, the zero-extended loads and the
+// sign-extended constant bits scalarBits produces, before any
+// compare. Unsigned and bool bits are already canonical.
+func cmpNodeN(op string, cl layout, x, y nodeN) (nodeN, error) {
+	if signedClass(cl) {
+		return cmpNodeSigned(op, cl, x, y)
+	}
+	var f func(a, b uint64) bool
+	switch op {
+	case "==":
+		f = func(a, b uint64) bool { return a == b }
+	case "!=":
+		f = func(a, b uint64) bool { return a != b }
+	case "<":
+		f = func(a, b uint64) bool { return a < b }
+	case "<=":
+		f = func(a, b uint64) bool { return a <= b }
+	case ">":
+		f = func(a, b uint64) bool { return a > b }
+	case ">=":
+		f = func(a, b uint64) bool { return a >= b }
+	default:
+		return nil, fmt.Errorf("operator %s is not in the table", op)
+	}
+	return func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (uint64, error) {
+		a, err := x(fr, ctx, st, d)
+		if err != nil {
+			return 0, err
+		}
+		b, err := y(fr, ctx, st, d)
+		if err != nil {
+			return 0, err
+		}
+		if f(a, b) {
+			return 1, nil
+		}
+		return 0, nil
+	}, nil
+}
+
+// cmpNodeSigned is cmpNodeN's signed half.
+func cmpNodeSigned(op string, cl layout, x, y nodeN) (nodeN, error) {
+	var f func(a, b int64) bool
+	switch op {
+	case "==":
+		f = func(a, b int64) bool { return a == b }
+	case "!=":
+		f = func(a, b int64) bool { return a != b }
+	case "<":
+		f = func(a, b int64) bool { return a < b }
+	case "<=":
+		f = func(a, b int64) bool { return a <= b }
+	case ">":
+		f = func(a, b int64) bool { return a > b }
+	case ">=":
+		f = func(a, b int64) bool { return a >= b }
+	default:
+		return nil, fmt.Errorf("operator %s is not in the table", op)
+	}
+	return func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (uint64, error) {
+		a, err := x(fr, ctx, st, d)
+		if err != nil {
+			return 0, err
+		}
+		b, err := y(fr, ctx, st, d)
+		if err != nil {
+			return 0, err
+		}
+		if f(signN(cl, a), signN(cl, b)) {
+			return 1, nil
+		}
+		return 0, nil
+	}, nil
+}
+
+// cmpNodeOf builds the comparison over the classes whose nodes carry
+// their value directly: strings as nodeS, floats as nodeF. A float32
+// travels as float64, an exact conversion, so one compare covers
+// both widths.
+func cmpNodeOf[T string | float64](op string, x, y func(unsafe.Pointer, context.Context, map[string]any, any) (T, error)) (nodeN, error) {
+	var f func(a, b T) bool
+	switch op {
+	case "==":
+		f = func(a, b T) bool { return a == b }
+	case "!=":
+		f = func(a, b T) bool { return a != b }
+	case "<":
+		f = func(a, b T) bool { return a < b }
+	case "<=":
+		f = func(a, b T) bool { return a <= b }
+	case ">":
+		f = func(a, b T) bool { return a > b }
+	case ">=":
+		f = func(a, b T) bool { return a >= b }
+	default:
+		return nil, fmt.Errorf("operator %s is not in the table", op)
+	}
+	return func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (uint64, error) {
+		a, err := x(fr, ctx, st, d)
+		if err != nil {
+			return 0, err
+		}
+		b, err := y(fr, ctx, st, d)
+		if err != nil {
+			return 0, err
+		}
+		if f(a, b) {
+			return 1, nil
+		}
+		return 0, nil
+	}, nil
 }

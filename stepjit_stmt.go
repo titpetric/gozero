@@ -40,6 +40,15 @@ func (c *jitCompiler) stmtNode(s plannedStmt, jp *jitProgram) (nodeE, error) {
 		}
 		n = lit
 	} else {
+		// A call whose first result has no layout class cannot travel
+		// through a node, but a statement needs no transport: the
+		// frame slot is typed storage and reflect writes it in place.
+		// This is how a binding returning a struct by value, time.Now
+		// among them, stays on this tier as a named bridge instead of
+		// declining the whole program.
+		if rt := callResultType(s.call, 0); rt != nil && layoutOf(rt) == lBad {
+			return c.bridgeStmtNode(s, rt, jp)
+		}
 		var err error
 		n, err = c.exprNode(s.call)
 		if err != nil {
@@ -291,6 +300,54 @@ func (c *jitCompiler) fieldSetNode(fs *vmFieldSet) (nodeE, error) {
 		}, nil
 	}
 	return nil, fmt.Errorf("a %s field cannot be stored", cl)
+}
+
+// bridgeStmtNode compiles a statement whose call result has no
+// layout class: reflect invokes the call and sets the result into
+// the frame slot's typed storage. The call is a named bridge, so
+// Supports reports it and a benchmark knows which statement pays
+// reflect.
+func (c *jitCompiler) bridgeStmtNode(s plannedStmt, rt reflect.Type, jp *jitProgram) (nodeE, error) {
+	c.bridged = append(c.bridged, fmt.Sprintf("%s (a result of type %s has no layout class)", s.call.name, rt))
+	invoke, err := c.bridgeInvoke(s.call)
+	if err != nil {
+		return nil, err
+	}
+	drop := func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) error {
+		_, err := invoke(fr, ctx, st, d)
+		return err
+	}
+	if s.out < 0 {
+		return drop, nil
+	}
+	field, ok := c.slotOf[s.out]
+	if !ok {
+		// The slot is not live: nothing reads the name, so the call
+		// runs for its effects and its error.
+		return drop, nil
+	}
+	st := c.types[field]
+	if st != rt {
+		return nil, fmt.Errorf("cannot store a %s result into a %s slot", rt, st)
+	}
+	resIdx := 0
+	if s.call.errIdx == 0 {
+		resIdx = 1
+	}
+	off := c.offs[field]
+	if s.ret {
+		jp.retType, jp.retOff = st, off
+	}
+	return func(fr unsafe.Pointer, ctx context.Context, stk map[string]any, d any) error {
+		out, err := invoke(fr, ctx, stk, d)
+		if err != nil {
+			return err
+		}
+		// A typed set keeps the write barriers on the struct's
+		// pointer fields, the same guarantee storeN has for scalars.
+		reflect.NewAt(st, unsafe.Add(fr, off)).Elem().Set(out[resIdx])
+		return nil
+	}, nil
 }
 
 // dropped wraps a node whose value nothing binds, reporting a class
