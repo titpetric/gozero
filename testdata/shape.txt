@@ -1,0 +1,19 @@
+// shape: the go/parser front end admits Go struct grammar the hand
+// parser rejected by name: a field name list and a comment between
+// the fields, next to a tagged field with omitempty defeated.
+type Size struct {
+	// W and H share one spelling, as in Go.
+	W, H int64
+	Area int64 `json:"area,omitempty"`
+}
+s := Size{W: 3, H: 4, Area: 12};
+assert.Equal(tb, 3, s.W);
+assert.Equal(tb, 4, s.H);
+
+var u Size;
+u.W = 7;
+assert.Equal(tb, 7, u.W);
+
+buf := bytes.NewBufferString("");
+json.NewEncoder(buf).Encode(s);
+assert.Equal(tb, "{\"W\":3,\"H\":4,\"area\":12}\n", buf.String());

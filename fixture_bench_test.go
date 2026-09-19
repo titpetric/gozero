@@ -158,6 +158,97 @@ func (f *testFixtures) testStructs(tb testing.TB) {
 	assertEqual(tb, "https://h/m", m.String(), "")
 }
 
+func (f *testFixtures) testTypedecl(tb testing.TB) {
+	type Point struct {
+		X int64
+		Y int64
+	}
+	p := Point{X: 3, Y: 4}
+	assertEqual(tb, int64(3), p.X, "")
+	p.X = 5
+	assertEqual(tb, int64(5), p.X, "")
+
+	q := &Point{X: 1}
+	assertEqual(tb, int64(1), q.X, "")
+
+	var w Point
+	w.Y = 7
+	assertEqual(tb, int64(7), w.Y, "")
+
+	// Go resolves local types in order, so Base comes first here; the
+	// fixture declares Wrap first to prove declaration order is free.
+	type Base struct{ N int64 }
+	type Wrap struct {
+		Inner Base
+		M     int64
+	}
+	b := Wrap{Inner: Base{N: 3}, M: 4}
+	assertEqual(tb, int64(3), b.Inner.N, "")
+	assertEqual(tb, int64(4), b.M, "")
+
+	buf := bytesNewBufferString("")
+	if err := json.NewEncoder(buf).Encode(Point{X: 1, Y: 2}); err != nil {
+		tb.Fatal(err)
+	}
+	assertEqual(tb, "{\"X\":1,\"Y\":2}\n", buf.String(), "")
+}
+
+func (f *testFixtures) testReply(tb testing.TB) {
+	// Go resolves local types in order; the fixture declares Reply
+	// first to prove declaration order stays free with tags.
+	type Status struct {
+		Code int64  `json:"code"`
+		Text string `json:"text"`
+	}
+	type Reply struct {
+		Status Status `json:"status"`
+		Count  int64  `json:"count"`
+		Note   string `json:"note,omitempty"`
+		Skip   string `json:"-"`
+	}
+	r := Reply{Status: Status{Code: 200, Text: "ok"}, Count: 2, Skip: "never"}
+	assertEqual(tb, int64(200), r.Status.Code, "")
+	assertEqual(tb, "ok", r.Status.Text, "")
+
+	buf := bytesNewBufferString("")
+	if err := json.NewEncoder(buf).Encode(r); err != nil {
+		tb.Fatal(err)
+	}
+	assertEqual(tb, "{\"status\":{\"code\":200,\"text\":\"ok\"},\"count\":2}\n", buf.String(), "")
+
+	n := Reply{Status: Status{Code: 404, Text: "gone"}, Note: "retry"}
+	buf2 := bytesNewBufferString("")
+	if err := json.NewEncoder(buf2).Encode(n); err != nil {
+		tb.Fatal(err)
+	}
+	assertEqual(tb, "{\"status\":{\"code\":404,\"text\":\"gone\"},\"count\":0,\"note\":\"retry\"}\n", buf2.String(), "")
+
+	var d Reply
+	d.Note = "later"
+	assertEqual(tb, "later", d.Note, "")
+}
+
+func (f *testFixtures) testShape(tb testing.TB) {
+	type Size struct {
+		// W and H share one spelling, as in Go.
+		W, H int64
+		Area int64 `json:"area,omitempty"`
+	}
+	s := Size{W: 3, H: 4, Area: 12}
+	assertEqual(tb, int64(3), s.W, "")
+	assertEqual(tb, int64(4), s.H, "")
+
+	var u Size
+	u.W = 7
+	assertEqual(tb, int64(7), u.W, "")
+
+	buf := bytesNewBufferString("")
+	if err := json.NewEncoder(buf).Encode(s); err != nil {
+		tb.Fatal(err)
+	}
+	assertEqual(tb, "{\"W\":3,\"H\":4,\"area\":12}\n", buf.String(), "")
+}
+
 func (f *testFixtures) testVariadic(tb testing.TB) {
 	parts := strings.Fields("a b c")
 	joined := path.Join(parts...)
@@ -192,7 +283,10 @@ func BenchmarkFixtures(b *testing.B) {
 		"url":      (*testFixtures).testURL,
 		"json":     (*testFixtures).testJSON,
 		"fmt":      (*testFixtures).testFmt,
+		"reply":    (*testFixtures).testReply,
+		"shape":    (*testFixtures).testShape,
 		"structs":  (*testFixtures).testStructs,
+		"typedecl": (*testFixtures).testTypedecl,
 		"types":    (*testFixtures).testTypes,
 		"variadic": (*testFixtures).testVariadic,
 		"channels": (*testFixtures).testChannels,
