@@ -170,8 +170,8 @@ type vmStmt struct {
 	// inc is a step statement, n++ or n--, in vm_inc.go.
 	inc *vmInc
 
-	// binop is an operator assignment, s := a + b, in vm_binop.go.
-	binop *vmBinop
+	// expr is an operator assignment, s := a + b*c, in vm_expr.go.
+	expr *vmExpr
 }
 
 // slotInit is the zero value a var statement puts in scope before the
@@ -268,12 +268,8 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 			}
 			continue
 		}
-		if s.binop != nil {
-			v, err := s.binop.exec(slots)
-			if err != nil {
-				return nil, err
-			}
-			slots[s.out[0]] = p.addrCell(v, s.out[0])
+		if s.expr != nil {
+			slots[s.out[0]] = p.addrCell(s.expr.eval(slots), s.out[0])
 			continue
 		}
 		if s.retArg != nil {

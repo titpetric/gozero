@@ -129,25 +129,46 @@ func TestParser_IncDec(t *testing.T) {
 	}
 }
 
-// TestParser_BinOp covers the operator assignment: exactly one of +,
-// == or != between two values on the right of := or =, and a named
-// rejection everywhere else an operator could try to stand.
+// TestParser_BinOp covers the operator assignment: the full
+// expression grammar on the right of := or =, spelled back through
+// spellExpr so the tests read the tree's shape, and a named rejection
+// everywhere else an operator could try to stand.
 func TestParser_BinOp(t *testing.T) {
 	for name, tc := range map[string]struct {
-		src string
-		op  string
+		src   string
+		spell string
 	}{
-		"concat":            {`s := a + b;`, "+"},
-		"concat literal":    {`s := a + "x";`, "+"},
-		"literal first":     {`s := "x" + a;`, "+"},
-		"add":               {`m := n + 2;`, "+"},
-		"negative literal":  {`m := n + -2;`, "+"},
-		"equal":             {`ok := a == b;`, "=="},
-		"not equal":         {`ok := a != b;`, "!="},
-		"plain assign":      {`ok = a == b;`, "=="},
-		"no spaces":         {`ok:=a==b;`, "=="},
-		"no semicolon":      {"s := a + b\n", "+"},
-		"bool literal side": {`ok := a == true;`, "=="},
+		"concat":            {`s := a + b;`, `a + b`},
+		"concat literal":    {`s := a + "x";`, `a + "x"`},
+		"literal first":     {`s := "x" + a;`, `"x" + a`},
+		"add":               {`m := n + 2;`, `n + 2`},
+		"negative literal":  {`m := n + -2;`, `n + -2`},
+		"equal":             {`ok := a == b;`, `a == b`},
+		"not equal":         {`ok := a != b;`, `a != b`},
+		"plain assign":      {`ok = a == b;`, `a == b`},
+		"no spaces":         {`ok:=a==b;`, `a == b`},
+		"no semicolon":      {"s := a + b\n", `a + b`},
+		"bool literal side": {`ok := a == true;`, `a == true`},
+
+		// Precedence: * / % << >> & &^ bind tightest, then + - | ^,
+		// then the comparisons, then &&, then ||, left-associative
+		// inside a level. The spelling parenthesizes nested binary
+		// operands, so it reads the tree back.
+		"mul before add":     {`x := a + b*c;`, `a + (b * c)`},
+		"left assoc":         {`x := a - b - c;`, `(a - b) - c`},
+		"shift before add":   {`x := a<<2 + 1;`, `(a << 2) + 1`},
+		"cmp after arith":    {`ok := a + b == c;`, `(a + b) == c`},
+		"and after cmp":      {`ok := a < b && b < c;`, `(a < b) && (b < c)`},
+		"or loosest":         {`ok := a && b || c;`, `(a && b) || c`},
+		"parens group":       {`x := (a + b) * c;`, `(a + b) * c`},
+		"paren operand":      {`x := a + (b);`, `a + b`},
+		"unary minus":        {`x := -a + b;`, `-a + b`},
+		"unary not":          {`ok := !a;`, `!a`},
+		"unary complement":   {`x := ^a;`, `^a`},
+		"unary plus folds":   {`x := +a + b;`, `a + b`},
+		"double unary":       {`x := -(a + b);`, `-(a + b)`},
+		"maximal munch andn": {`x := a &^ b;`, `a &^ b`},
+		"modulo":             {`x := a % b;`, `a % b`},
 	} {
 		prog, err := (&Parser{}).Parse(tc.src)
 		if err != nil {
@@ -155,35 +176,37 @@ func TestParser_BinOp(t *testing.T) {
 			continue
 		}
 		s := prog.stmts[0]
-		if s.binOp != tc.op || s.binX == nil || s.binY == nil {
-			t.Errorf("%s: parsed op %q with x=%v y=%v, want %q with both operands", name, s.binOp, s.binX, s.binY, tc.op)
+		if s.expr == nil {
+			t.Errorf("%s: parsed no expression", name)
+			continue
+		}
+		if got := spellExpr(*s.expr); got != tc.spell {
+			t.Errorf("%s: parsed %s, want %s", name, got, tc.spell)
 		}
 	}
 
 	// An operator does not cross a newline: the line end closed the
 	// statement, so "s := a" is a name assigned to a name, which has
-	// its own error.
+	// its own error. A trailing operator continues the line, as under
+	// Go's semicolon rule.
 	if _, err := (&Parser{}).Parse("s := a\n+ b;"); err == nil {
 		t.Error("an operator on the next line should not join the assignment above it")
+	}
+	if prog, err := (&Parser{}).Parse("s := a +\nb;"); err != nil || len(prog.stmts) != 1 {
+		t.Errorf("a trailing operator should continue the statement: %v", err)
 	}
 
 	for name, tc := range map[string]struct {
 		src, want string
 	}{
-		"nested":              {`s := a + b + c;`, "one operator per assignment"},
-		"mixed nesting":       {`ok := a + b == c;`, "one operator per assignment"},
-		"parenthesized":       {`s := (a + b);`, "parentheses do not group a value"},
-		"paren operand":       {`s := a + (b);`, "parentheses do not group a value"},
-		"subtraction":         {`s := a - b;`, "operator - is not in the grammar"},
-		"multiplication":      {`s := a * b;`, "operator * is not in the grammar"},
-		"less than":           {`ok := a < b;`, "operator < is not in the grammar"},
-		"logical and":         {`ok := a && b;`, "operator && is not in the grammar"},
 		"argument":            {`f(a + b);`, "an operator expression cannot be an argument"},
 		"return value":        {`return a + b;`, "an operator expression cannot be returned"},
 		"returned comparison": {`return a == b;`, "an operator expression cannot be returned"},
 		"field value":         {`u.Path = a + b;`, "an operator expression cannot be assigned to a field"},
 		"send value":          {`c <- a + b;`, "an operator expression cannot be sent"},
 		"composite element":   {`u := url.URL{Path: a + b};`, "an operator expression cannot be an element"},
+		"unclosed paren":      {`x := (a + b;`, "expected ')'"},
+		"missing operand":     {`x := a + ;`, "expected a name"},
 	} {
 		_, err := (&Parser{}).Parse(tc.src)
 		if err == nil {

@@ -25,12 +25,12 @@ func (c *jitCompiler) stmtNode(s plannedStmt, jp *jitProgram) (nodeE, error) {
 		return c.structAssignNode(s)
 	}
 	var n node
-	if s.binop != nil {
-		bn, err := c.binopNode(s.binop)
+	if s.expr != nil {
+		en, err := c.exprTree(s.expr)
 		if err != nil {
 			return nil, err
 		}
-		n = bn
+		n = en
 	} else if s.lit.IsValid() {
 		field, ok := c.slotOf[s.out]
 		if !ok {

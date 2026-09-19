@@ -5,10 +5,10 @@ import (
 )
 
 // The grammar has one operator position: the right side of an
-// assignment may combine exactly two values with +, == or !=. There
-// is no expression tree beyond that pair - a second operator and
-// parentheses are rejected by rule, and every other value position
-// stays operator-free.
+// assignment to a name carries the full expression grammar, Go's five
+// binary precedence levels, unary + - ! ^ and parentheses, climbed in
+// parser_expr.go. Every other value position stays operator-free and
+// rejects an operator with its own message.
 //
 //	program := { stmt }
 //	stmt    := "var" name typeref term
@@ -17,8 +17,7 @@ import (
 //	         | name ( "++" | "--" ) term
 //	         | [ name { "," name } ( ":=" | "=" ) ] rhs term
 //	term    := ";" | EOL | EOF
-//	rhs     := binop | expr | string | number | "true" | "false" | "nil" | composite | recv
-//	binop   := arg ( "+" | "==" | "!=" ) arg
+//	rhs     := binexpr(1)                  // parser_expr.go
 //	typeref := { "*" | "[]" | "chan" | "chan<-" | "<-chan" } path
 //	expr    := path "(" [ args ] ")" { "." ident "(" [ args ] ")" }
 //	path    := ident { "." ident }
@@ -79,6 +78,11 @@ const (
 	// argRecv is a channel receive, <-c. The source is a name, a
 	// field, or a call; the compiler types it.
 	argRecv
+	// argBinary is op applied to x and y, argUnary is op applied to x
+	// alone. The tree only grows on the right side of an assignment;
+	// the compiler folds constant subtrees and types the rest.
+	argBinary
+	argUnary
 )
 
 // structElem is one element of a composite literal: the field name
@@ -107,6 +111,11 @@ type arg struct {
 	addr  bool
 	// argRecv: the channel the receive reads.
 	recv *arg
+
+	// argBinary and argUnary: the operator and its operands. y is nil
+	// for a unary node.
+	op   string
+	x, y *arg
 }
 
 // link is one ".Method(args)" step chained onto a call.
@@ -164,13 +173,10 @@ type stmt struct {
 	incName  string
 	incDelta int64
 
-	// binOp, binX and binY are an operator assignment,
-	// "s := a + b;". The operands stay flat args rather than a tree:
-	// one operator per assignment is the rule, so there is nothing
-	// to nest.
-	binOp string
-	binX  *arg
-	binY  *arg
+	// expr is an operator assignment's right side, "s := a + b*c;":
+	// an argBinary or argUnary tree. The compiler folds the constant
+	// subtrees and types the rest against the named operands.
+	expr *arg
 }
 
 // program is a parsed source unit.
@@ -367,25 +373,30 @@ func (p *Parser) stmt() (stmt, error) {
 		lhs, define = nil, false
 	}
 
-	// The right-hand side is one arg, or two joined by an operator: a
-	// call is the statement, a literal assigns, and a bare name is
-	// rejected here with its own message rather than surfacing as
-	// "expected '('".
+	// The right-hand side is a full expression: a call is the
+	// statement, an operator tree assigns its value, a literal
+	// assigns, and a bare name is rejected here with its own message
+	// rather than surfacing as "expected '('".
 	if len(lhs) > 0 {
-		if p.peek() == '(' {
-			return stmt{}, fmt.Errorf("parse: parentheses do not group a value, one operator per assignment")
-		}
 		save := p.pos
-		a, err := p.arg()
+		a, err := p.exprArg()
 		if err != nil {
 			return stmt{}, err
 		}
-		if op := p.peekBinOp(); op != "" {
-			return p.binopStmt(lhs, define, a, op)
-		}
 		switch a.kind {
+		case argBinary, argUnary:
+			if !p.terminated() {
+				return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
+			}
+			return stmt{lhs: lhs, define: define, expr: &a}, nil
 		case argCall:
-			p.pos = save
+			// The call parsed once inside the climber; reusing it
+			// keeps a parenthesized call working, which a reparse from
+			// save would not.
+			if !p.terminated() {
+				return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
+			}
+			return stmt{lhs: lhs, define: define, call: a.sub}, nil
 		case argVar, argPath:
 			return stmt{}, fmt.Errorf("parse: cannot assign a name to a name at offset %d", save)
 		default:
@@ -404,37 +415,6 @@ func (p *Parser) stmt() (stmt, error) {
 		return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
 	}
 	return stmt{lhs: lhs, define: define, call: call}, nil
-}
-
-// binopStmt finishes an assignment whose right side combines two
-// values with a binary operator, "s := a + b;". Exactly one operator
-// and no parentheses: a second operator is rejected by rule, so no
-// expression tree exists for later features to inherit. The operands
-// parse as any arg; the compiler narrows them to a bound name or a
-// literal.
-func (p *Parser) binopStmt(lhs []string, define bool, x arg, op string) (stmt, error) {
-	switch op {
-	case "+", "==", "!=":
-	default:
-		return stmt{}, fmt.Errorf("parse: operator %s is not in the grammar, an assignment combines two values with +, == or !=", op)
-	}
-	p.skipSpace()
-	p.pos += len(op)
-	p.nl = false
-	if p.peek() == '(' {
-		return stmt{}, fmt.Errorf("parse: parentheses do not group a value, one operator per assignment")
-	}
-	y, err := p.arg()
-	if err != nil {
-		return stmt{}, err
-	}
-	if next := p.peekBinOp(); next != "" {
-		return stmt{}, fmt.Errorf("parse: one operator per assignment, bind the %s result to a name before %s", op, next)
-	}
-	if !p.terminated() {
-		return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
-	}
-	return stmt{lhs: lhs, define: define, binOp: op, binX: &x, binY: &y}, nil
 }
 
 // assignList scans "a, b :=" or "a =" and reports whether one was

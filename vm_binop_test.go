@@ -178,14 +178,6 @@ func TestBinopReflect(t *testing.T) {
 func TestBinopCompileErrors(t *testing.T) {
 	rt := binopRuntime(t)
 	for name, tc := range map[string]struct{ src, want string }{
-		"two literals": {
-			`s := 1 + 2;`,
-			"both operands are literals, write the value it folds to",
-		},
-		"two string literals": {
-			`s := "a" + "b";`,
-			"both operands are literals",
-		},
 		"mismatched types": {
 			`n := 1; x := 2.5; z := n + x;`,
 			"mismatched types int64 and float64",
@@ -204,7 +196,31 @@ func TestBinopCompileErrors(t *testing.T) {
 		},
 		"compare pointers": {
 			`u := urlOf(); v := urlOf(); ok := u == v;`,
-			"== and != compare booleans, integers, floats and strings, not *url.URL",
+			"operator == is not defined on *url.URL",
+		},
+		"order strings only upward": {
+			`a := true; b := false; ok := a < b;`,
+			"operator < is not defined on bool",
+		},
+		"modulo on float": {
+			`x := 1.5; y := 0.5; z := x % y;`,
+			"operator % is not defined on float64",
+		},
+		"shift count float": {
+			`n := 1; f := 2.5; z := n << f;`,
+			"shift count type float64, must be integer",
+		},
+		"logic on ints": {
+			`n := 1; m := 2; ok := n && m;`,
+			"operator && wants bool operands, not int64",
+		},
+		"not on int": {
+			`n := 1; ok := !n;`,
+			"operator ! is not defined on int64",
+		},
+		"minus on string": {
+			`s := "a"; t := "b"; u := s - t;`,
+			"operator - is not defined on string",
 		},
 		"call operand": {
 			`n := 1; m := urlOf() == n;`,
