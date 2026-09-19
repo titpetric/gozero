@@ -69,6 +69,24 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 				walkStmts(s.rng.body)
 				mult = saved
 			}
+			if s.fors != nil {
+				if iv := s.fors.src.initVal; iv != nil {
+					walkArg(iv)
+				}
+				// The condition and the comparison run per iteration,
+				// like the body.
+				saved := mult
+				mult = 2
+				if c := s.fors.src.cond; c != nil {
+					walkArg(c)
+				}
+				if cmp := s.fors.src.cmp; cmp != nil {
+					walkArg(cmp.x)
+					walkArg(cmp.y)
+				}
+				walkStmts(s.fors.body)
+				mult = saved
+			}
 		}
 	}
 	walkStmts(plan.stmts)
@@ -102,8 +120,11 @@ type plannedStmt struct {
 	// its statement.
 	rng *plannedRange
 
+	// fors is a condition or three-clause loop, planned like rng.
+	fors *plannedFor
+
 	// brk and cont raise the loop signals; both only stand inside a
-	// range body.
+	// loop body.
 	brk  bool
 	cont bool
 }
@@ -111,6 +132,13 @@ type plannedStmt struct {
 // plannedRange pairs the compiled loop with its planned body.
 type plannedRange struct {
 	src  *vmRange
+	body []plannedStmt
+}
+
+// plannedFor pairs a compiled condition or three-clause loop with its
+// planned body.
+type plannedFor struct {
+	src  *vmFor
 	body []plannedStmt
 }
 
@@ -185,6 +213,14 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 			stmts = append(stmts, plannedStmt{rng: pr, out: -1})
 			continue
 		}
+		if s.fors != nil {
+			pf, err := planFor(s.fors)
+			if err != nil {
+				return nil, err
+			}
+			stmts = append(stmts, plannedStmt{fors: pf, out: -1})
+			continue
+		}
 		if s.brk || s.cont {
 			// Unreachable through the parser; mirrored here so a defect
 			// cannot compile a stray signal into a straight line.
@@ -235,6 +271,9 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 		}
 		if s.rng != nil {
 			countRangeReads(reads, s.rng)
+		}
+		if s.fors != nil {
+			countForReads(reads, s.fors)
 		}
 	}
 
@@ -291,6 +330,10 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 		}
 		if s.rng != nil {
 			accountRange(s.rng, live, writes, p)
+			continue
+		}
+		if s.fors != nil {
+			accountFor(s.fors, live, writes, p)
 			continue
 		}
 		if s.fieldSet != nil {
@@ -368,106 +411,6 @@ func findSplice(c *vmCall, slot int, splices map[*vmArg]*vmCall) *vmArg {
 	return nil
 }
 
-// planRange plans a loop's body 1:1: every body statement keeps its
-// slot, because a value produced in one iteration and read in the
-// next has to live somewhere the iterations share.
-func planRange(r *vmRange) (*plannedRange, error) {
-	pr := &plannedRange{src: r}
-	for i := range r.body {
-		s := &r.body[i]
-		out := -1
-		if len(s.out) > 0 {
-			out = s.out[0]
-		}
-		switch {
-		case s.brk || s.cont:
-			pr.body = append(pr.body, plannedStmt{brk: s.brk, cont: s.cont, out: -1})
-		case s.rng != nil:
-			sub, err := planRange(s.rng)
-			if err != nil {
-				return nil, err
-			}
-			pr.body = append(pr.body, plannedStmt{rng: sub, out: -1})
-		case s.assign != nil:
-			pr.body = append(pr.body, plannedStmt{assign: s.assign, out: out})
-		case s.fieldSet != nil:
-			pr.body = append(pr.body, plannedStmt{fieldSet: s.fieldSet, out: -1})
-		case s.recv != nil:
-			pr.body = append(pr.body, plannedStmt{recv: s.recv, out: out})
-		case s.send != nil:
-			pr.body = append(pr.body, plannedStmt{send: s.send, out: -1})
-		case s.lit.IsValid():
-			pr.body = append(pr.body, plannedStmt{lit: s.lit, out: out})
-		case s.ret || s.retArg != nil || s.call == nil:
-			return nil, fmt.Errorf("a statement inside a range body is not in the table")
-		default:
-			pr.body = append(pr.body, plannedStmt{call: s.call, out: out})
-		}
-	}
-	return pr, nil
-}
-
-// countRangeReads tallies the reads a loop makes: the ranged
-// expression once, and every read the body statements make.
-func countRangeReads(reads map[int]int, r *plannedRange) {
-	countArgReads(reads, r.src.over)
-	for _, s := range r.body {
-		if s.call != nil {
-			countReads(reads, s.call)
-		}
-		if s.assign != nil {
-			countArgReads(reads, s.assign)
-		}
-		if s.fieldSet != nil {
-			reads[s.fieldSet.base]++
-			countArgReads(reads, s.fieldSet.val)
-		}
-		if s.recv != nil {
-			countArgReads(reads, s.recv.ch)
-		}
-		if s.send != nil {
-			countArgReads(reads, s.send.ch)
-			countArgReads(reads, s.send.val)
-		}
-		if s.rng != nil {
-			countRangeReads(reads, s.rng)
-		}
-	}
-}
-
-// accountRange marks the loop's slots live and counts every write
-// conservatively at two: a slot assigned each iteration is written
-// more than once by definition, so the write-once rule that lets an
-// interface argument alias the frame turns off for it, and the
-// argument copies instead, which is what the Go compiler does at the
-// same call site.
-func accountRange(r *plannedRange, live map[int]bool, writes map[int]int, p *vmProgram) {
-	if k := r.src.keySlot; k >= 0 {
-		live[k] = true
-		writes[k] += 2
-	}
-	if v := r.src.valSlot; v >= 0 {
-		live[v] = true
-		writes[v] += 2
-	}
-	for _, s := range r.body {
-		if s.rng != nil {
-			accountRange(s.rng, live, writes, p)
-			continue
-		}
-		if s.fieldSet != nil {
-			live[s.fieldSet.base] = true
-			if t := p.slotTypes[s.fieldSet.base]; t != nil && t.Kind() != reflect.Pointer {
-				writes[s.fieldSet.base] += 2
-			}
-			continue
-		}
-		if s.out >= 0 {
-			live[s.out] = true
-			writes[s.out] += 2
-		}
-	}
-}
 
 // subCall is the call an argument evaluates, whether it was written
 // nested or spliced in by planInline.

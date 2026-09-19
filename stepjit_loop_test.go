@@ -254,7 +254,7 @@ func TestLoopsMatchReflect(t *testing.T) {
 }
 
 // TestLoopSignalsCannotEscape pins that break and continue are
-// rejected outside a range body, on the parser's say-so, which is
+// rejected outside a loop body, on the parser's say-so, which is
 // what keeps the loop signals from ever reaching a caller.
 func TestLoopSignalsCannotEscape(t *testing.T) {
 	rt, _ := loopRuntime(t)
@@ -265,8 +265,8 @@ func TestLoopSignalsCannotEscape(t *testing.T) {
 	} {
 		if _, err := rt.Compile(src); err == nil {
 			t.Errorf("%s: compiled, want a parse error", name)
-		} else if !strings.Contains(err.Error(), "only allowed inside a range body") {
-			t.Errorf("%s: err = %q, want the range-body rule", name, err)
+		} else if !strings.Contains(err.Error(), "only allowed inside a loop body") {
+			t.Errorf("%s: err = %q, want the loop-body rule", name, err)
 		}
 	}
 }

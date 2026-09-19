@@ -72,15 +72,15 @@ func TestRangeCompileErrors(t *testing.T) {
 		}
 	}
 	for name, tc := range map[string]struct{ src, want string }{
-		"break outside":     {`break`, "break is only allowed inside a range body"},
-		"continue outside":  {`continue`, "continue is only allowed inside a range body"},
+		"break outside":     {`break`, "break is only allowed inside a loop body"},
+		"continue outside":  {`continue`, "continue is only allowed inside a loop body"},
 		"break label":       {`for i := range 3 { break out }`, "a label after break is not in the language"},
 		"continue label":    {`for i := range 3 { continue out }`, "a label after continue is not in the language"},
-		"return in body":    {`for i := range 3 { return i }`, "return cannot stand inside a range body"},
-		"var in body":       {`for i := range 3 { var u url.URL }`, "var declaration cannot stand inside a range body"},
+		"return in body":    {`for i := range 3 { return i }`, "return cannot stand inside a loop body"},
+		"var in body":       {`for i := range 3 { var u url.URL }`, "var declaration cannot stand inside a loop body"},
 		"assign form":       {`i := 0; for i = range 3 { poke() }`, "declares its names with :="},
 		"three names":       {`for a, b, c := range 3 { poke() }`, "at most two names"},
-		"no range":          {`for poke() { }`, "only the range form"},
+		"no bool condition": {`for poke() { }`, "a loop condition must be a bool"},
 		"two int vars":      {`for i, v := range 3 { touch(i) }`, "permits one iteration variable"},
 		"two chan vars":     {`c := mkch(); for v, ok := range c { rec(v) }`, "permits one iteration variable"},
 		"two seq vars":      {`for a, b := range lines() { rec(a) }`, "permits one iteration variable"},
@@ -88,7 +88,7 @@ func TestRangeCompileErrors(t *testing.T) {
 		"not an iterator":   {`for v := range notseq() { idx(v) }`, "a range func is func(func(V) bool) or func(func(K, V) bool)"},
 		"struct bound":      {`u := parse("https://h/p"); for v := range u { poke() }`, "cannot range over *url.URL"},
 		"stack name":        {`for _, s := range xs { rec(s) }`, "not a name bound by the program"},
-		"unterminated":      {`for i := range 3 { poke();`, "unterminated range body"},
+		"unterminated":      {`for i := range 3 { poke();`, "unterminated loop body"},
 	} {
 		_, err := rt.Compile(tc.src)
 		if err == nil {

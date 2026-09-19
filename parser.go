@@ -11,10 +11,14 @@ import (
 //	stmt    := "var" name typeref term
 //	         | "return" [ arg ] term
 //	         | "for" [ name [ "," name ] ":=" ] "range" arg block term
+//	         | "for" cond block term
+//	         | "for" name ":=" arg ";" arg relop arg ";" name ( "++" | "--" ) block term
 //	         | "break" term
 //	         | "continue" term
 //	         | path "<-" arg term
 //	         | [ name { "," name } ( ":=" | "=" ) ] rhs term
+//	cond    := path | expr
+//	relop   := "==" | "!=" | "<" | "<=" | ">" | ">="
 //	block   := "{" { stmt } "}"
 //	term    := ";" | EOL | EOF
 //	rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv
@@ -41,10 +45,10 @@ type Parser struct {
 	// last token byte was consumed, which is what lets the end of a
 	// line close a statement the way a semicolon does.
 	nl bool
-	// hdr marks a range header, where a brace opens the body rather
+	// hdr marks a loop header, where a brace opens the body rather
 	// than a composite literal; parentheses lift the restriction.
 	hdr bool
-	// depth counts enclosing range bodies, so a statement kind that a
+	// depth counts enclosing loop bodies, so a statement kind that a
 	// body cannot hold is rejected where it is written.
 	depth int
 }
@@ -168,8 +172,12 @@ type stmt struct {
 	// rng is a range loop, "for x := range xs { ... }".
 	rng *rangeStmt
 
+	// fors is a condition or three-clause loop, "for cond { ... }" or
+	// "for i := 0; i < n; i++ { ... }".
+	fors *forStmt
+
 	// brk and cont are break and continue, which only stand inside a
-	// range body: the parser rejects them anywhere else, which is what
+	// loop body: the parser rejects them anywhere else, which is what
 	// keeps their control signals from escaping a loop.
 	brk  bool
 	cont bool
@@ -225,7 +233,7 @@ func (p *Parser) Parse(src string) (*program, error) {
 func (p *Parser) stmt() (stmt, error) {
 	if p.keyword("var") {
 		if p.depth > 0 {
-			return stmt{}, fmt.Errorf("parse: a var declaration cannot stand inside a range body, declare the name before the loop (offset %d)", p.pos)
+			return stmt{}, fmt.Errorf("parse: a var declaration cannot stand inside a loop body, declare the name before the loop (offset %d)", p.pos)
 		}
 		name := p.ident()
 		if name == "" {
@@ -242,7 +250,7 @@ func (p *Parser) stmt() (stmt, error) {
 	}
 	if p.keyword("return") {
 		if p.depth > 0 {
-			return stmt{}, fmt.Errorf("parse: return cannot stand inside a range body, a body runs every statement of every iteration (offset %d)", p.pos)
+			return stmt{}, fmt.Errorf("parse: return cannot stand inside a loop body, a body runs every statement of every iteration (offset %d)", p.pos)
 		}
 		s := stmt{ret: true}
 		p.skipSpace()
@@ -272,9 +280,9 @@ func (p *Parser) stmt() (stmt, error) {
 		return s, nil
 	}
 	if p.keyword("for") {
-		return p.forRange()
+		return p.forLoop()
 	}
-	// break and continue only stand inside a range body, which is the
+	// break and continue only stand inside a loop body, which is the
 	// guarantee that lets their signals travel the error return: a
 	// loop always encloses them, so a signal never reaches a caller.
 	if p.keyword("break") {
