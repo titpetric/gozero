@@ -134,6 +134,14 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			p.stmts = append(p.stmts, vmStmt{send: sn})
 			continue
 		}
+		if s.incName != "" {
+			in, err := c.compileInc(slots, env, s)
+			if err != nil {
+				return nil, err
+			}
+			p.stmts = append(p.stmts, vmStmt{inc: in})
+			continue
+		}
 		if s.lit != nil && s.lit.kind == argRecv {
 			// The ok of Go's two-value receive is implicit, like the
 			// trailing error of a call: a closed channel ends the
