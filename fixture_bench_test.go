@@ -164,6 +164,43 @@ func (f *testFixtures) testVariadic(tb testing.TB) {
 	assertEqual(tb, "a/b/c", joined, "path.Join over spread fields")
 }
 
+func (f *testFixtures) testIf(tb testing.TB) {
+	req, err := http.NewRequest("GET", "https://example.com/api/users", nil)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	ok := strings.HasPrefix(req.URL.Path, "/api")
+	assertTrue(tb, ok, "")
+
+	route := ""
+	if ok {
+		route = "api"
+	} else {
+		route = "static"
+	}
+	assertEqual(tb, "api", route, "")
+
+	verdict := ""
+	if req.Close {
+		verdict = "close"
+	} else if ok {
+		verdict = "keep"
+	} else {
+		verdict = "drop"
+	}
+	assertEqual(tb, "keep", verdict, "")
+
+	label := "none"
+	if strings.HasPrefix(req.URL.Path, "/api") {
+		if req.Close {
+			label = "api-close"
+		} else {
+			label = "api-alive"
+		}
+	}
+	assertEqual(tb, "api-alive", label, "")
+}
+
 func (f *testFixtures) testChannels(tb testing.TB) {
 	c := chanOf("a", "b")
 	v := <-c
@@ -196,6 +233,7 @@ func BenchmarkFixtures(b *testing.B) {
 		"types":    (*testFixtures).testTypes,
 		"variadic": (*testFixtures).testVariadic,
 		"channels": (*testFixtures).testChannels,
+		"if":       (*testFixtures).testIf,
 	}
 
 	files, err := filepath.Glob(filepath.Join("testdata", "*.txt"))
@@ -256,7 +294,7 @@ func newBenchFixtureRuntime(b *testing.B) *Runtime {
 		"json":    {"NewEncoder": json.NewEncoder},
 		"bytes":   {"NewBufferString": bytesNewBufferString},
 		"fmt":     {"Sprintf": fmt.Sprintf, "Sprint": fmt.Sprint},
-		"strings": {"Fields": strings.Fields},
+		"strings": {"Fields": strings.Fields, "HasPrefix": strings.HasPrefix},
 		"path":    {"Join": path.Join},
 		// Equal has no variadic tail, (tb, want, got, message): every
 		// parameter has a shape, so an assertion is a direct call. The

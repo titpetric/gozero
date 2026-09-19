@@ -10,8 +10,12 @@ import (
 //	program := { stmt }
 //	stmt    := "var" name typeref term
 //	         | "return" [ arg ] term
+//	         | ifstmt
 //	         | path "<-" arg term
 //	         | [ name { "," name } ( ":=" | "=" ) ] rhs term
+//	ifstmt  := "if" cond block [ "else" ( ifstmt | block ) ] term
+//	cond    := path | expr
+//	block   := "{" { stmt } "}"
 //	term    := ";" | EOL | EOF
 //	rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv
 //	typeref := { "*" | "[]" | "chan" | "chan<-" | "<-chan" } path
@@ -48,6 +52,11 @@ func (p *Parser) terminated() bool {
 		return true
 	}
 	p.skipSpace()
+	if p.pos < len(p.src) && p.src[p.pos] == '}' {
+		// The closing brace of a block ends the statement before it,
+		// Go's inserted semicolon; the block loop consumes it.
+		return true
+	}
 	return p.pos >= len(p.src) || p.nl
 }
 
@@ -150,6 +159,9 @@ type stmt struct {
 	// names the channel the way fieldLhs names a field target.
 	sendCh  []string
 	sendVal *arg
+
+	// ifs is an if statement with its else chain, parser_if.go.
+	ifs *ifStmt
 }
 
 // program is a parsed source unit.
@@ -241,6 +253,13 @@ func (p *Parser) stmt() (stmt, error) {
 			return s, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
 		}
 		return s, nil
+	}
+
+	if p.keyword("if") {
+		return p.parseIf()
+	}
+	if p.keyword("else") {
+		return stmt{}, fmt.Errorf("parse: else without if at offset %d", p.pos)
 	}
 
 	// A dotted path followed by a single "=" is a field assignment.
