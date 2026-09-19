@@ -152,21 +152,10 @@ func ifCounters(p *vmProgram, stmts []vmStmt, inArm bool, plan *jitPlan) {
 	}
 }
 
-// ifNode compiles an if chain: the condition as bool bits, each arm
+// ifNode compiles an if chain: the predicate as bool bits, each arm
 // its own statement list.
 func (c *jitCompiler) ifNode(n *vmIf, jp *jitProgram) (nodeE, error) {
-	var cond nodeN
-	var err error
-	switch {
-	case n.pred.op != "":
-		// Temporary, removed when the L3 nodes land: a composed
-		// header stays on the reflect evaluator.
-		return nil, fmt.Errorf("a composed if header is not yet in the table")
-	case n.pred.cmp != nil:
-		cond, err = c.cmpNode(n.pred.cmp)
-	default:
-		cond, err = c.condNode(n.pred.cond)
-	}
+	cond, err := c.predNode(n.pred)
 	if err != nil {
 		return nil, err
 	}
@@ -305,15 +294,19 @@ func (c *jitCompiler) cmpNode(cm *vmCmp) (nodeN, error) {
 	return nil, fmt.Errorf("a comparison over class %s is not in the table", cl)
 }
 
-// cmpOperandNode compiles one side of a comparison to the shared
-// class. A call goes through exprNode so a predicate operand
-// compiles exactly like a condition call does.
+// cmpOperandNode compiles one side of a comparison or an arithmetic
+// node to the shared class. A call goes through exprNode so a
+// predicate operand compiles exactly like a condition call does; an
+// arithmetic subtree recurses through arithNode.
 func (c *jitCompiler) cmpOperandNode(a *vmArg, t reflect.Type, cl layout) (node, error) {
 	var n node
 	var err error
-	if a.kind == vaCall {
+	switch a.kind {
+	case vaCall:
 		n, err = c.exprNode(a.sub)
-	} else {
+	case vaArith:
+		n, err = c.arithNode(a)
+	default:
 		n, err = c.argNode(a, t, cl)
 	}
 	if err != nil {
