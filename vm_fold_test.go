@@ -62,6 +62,27 @@ func TestFoldExpr(t *testing.T) {
 	}
 }
 
+// TestFoldFloatDivergence pins the one recorded divergence from Go's
+// constant arithmetic. Go folds 0.1 + 0.2 exactly and rounds once,
+// landing at float64(0.3); this fold works in float64 and rounds per
+// operation, so it lands at the runtime sum, one ulp away. The fold
+// agrees with what the same program computes through variables, which
+// is the cheaper consistency; matching Go's constants exactly is
+// go/constant territory and stays refused.
+func TestFoldFloatDivergence(t *testing.T) {
+	got, ok, err := foldExpr(parseRHS(t, `0.1 + 0.2`))
+	if err != nil || !ok {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+	x, y := 0.1, 0.2
+	if got.f != x+y {
+		t.Errorf("folded %v, want the runtime sum %v", got.f, x+y)
+	}
+	if got.f == 0.3 {
+		t.Error("folded to Go's exact constant; the recorded divergence no longer holds, update the docs")
+	}
+}
+
 // TestFoldExprNotConstant proves a tree with a name in it does not
 // fold: the compiler types it instead.
 func TestFoldExprNotConstant(t *testing.T) {
