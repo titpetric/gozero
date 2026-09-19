@@ -87,16 +87,32 @@ func (c *Compiler) buildStructType(td *typeDecl) (reflect.Type, bool, error) {
 		seen[fd.name] = true
 		// The lexer's identifiers are ASCII, so one byte decides.
 		if fd.name[0] < 'A' || fd.name[0] > 'Z' {
+			if fd.embedded {
+				return nil, false, fmt.Errorf("compile: type %s: embedding %s makes an unexported field name; reflect.StructOf cannot build unexported fields", td.name, fd.typ)
+			}
 			return nil, false, fmt.Errorf("compile: type %s: field %s must be exported; reflect.StructOf cannot build unexported fields", td.name, fd.name)
 		}
 		t, ok := c.lookupType(fd.typ)
 		if !ok {
 			return nil, false, nil
 		}
+		if fd.embedded {
+			// Records only. A method-carrying embed cannot keep Go's
+			// promotion promise: reflect.StructOf drops pointer methods
+			// silently instead of promoting them, so the whole method
+			// set is refused rather than half-kept.
+			if t.Kind() != reflect.Struct {
+				return nil, false, fmt.Errorf("compile: type %s: embedded field %s is not a struct; a declared struct embeds records only", td.name, fd.typ)
+			}
+			if reflect.PointerTo(t).NumMethod() > 0 {
+				return nil, false, fmt.Errorf("compile: type %s: embedded type %s carries methods, and a declared struct is a record; reflect.StructOf drops pointer methods instead of promoting them", td.name, fd.typ)
+			}
+		}
 		// The tag passes through as written; it is part of the type's
 		// identity, so two declarations differing only in tags mint two
-		// runtime types.
-		fields = append(fields, reflect.StructField{Name: fd.name, Type: t, Tag: reflect.StructTag(fd.tag)})
+		// runtime types. So is the embedded flag: the same fields named
+		// and embedded are two distinct types.
+		fields = append(fields, reflect.StructField{Name: fd.name, Type: t, Tag: reflect.StructTag(fd.tag), Anonymous: fd.embedded})
 	}
 	return reflect.StructOf(fields), true, nil
 }
