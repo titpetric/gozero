@@ -158,6 +158,35 @@ func (f *testFixtures) testStructs(tb testing.TB) {
 	assertEqual(tb, "https://h/m", m.String(), "")
 }
 
+func (f *testFixtures) testIncDec(tb testing.TB) {
+	var n int64
+	n = 7
+	n++
+	n++
+	n--
+	assertEqual(tb, "8", fmt.Sprintf("%d", n), "")
+
+	var c int32
+	c = 41
+	c++
+	assertEqual(tb, "42", fmt.Sprintf("%d", c), "")
+	assertEqual(tb, "int32", fmt.Sprintf("%T", c), "")
+
+	var b uint8
+	b = 255
+	b++
+	assertEqual(tb, "0", fmt.Sprintf("%d", b), "")
+	b--
+	assertEqual(tb, "255", fmt.Sprintf("%d", b), "")
+
+	x := 2.5
+	x++
+	assertEqual(tb, "3.5", fmt.Sprintf("%v", x), "")
+	x--
+	x--
+	assertEqual(tb, "1.5", fmt.Sprintf("%v", x), "")
+}
+
 func (f *testFixtures) testVariadic(tb testing.TB) {
 	parts := strings.Fields("a b c")
 	joined := path.Join(parts...)
@@ -194,6 +223,7 @@ func BenchmarkFixtures(b *testing.B) {
 		"fmt":      (*testFixtures).testFmt,
 		"structs":  (*testFixtures).testStructs,
 		"types":    (*testFixtures).testTypes,
+		"incdec":   (*testFixtures).testIncDec,
 		"variadic": (*testFixtures).testVariadic,
 		"channels": (*testFixtures).testChannels,
 	}
