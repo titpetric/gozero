@@ -41,6 +41,7 @@ const (
 	vaField                  // a struct field read off another value
 	vaCtx                    // the execution context, auto-filled
 	vaStruct                 // a composite literal, built fresh per evaluation
+	vaArith                  // an arithmetic operation in an if header, vm_cond.go
 )
 
 var ctxType = reflect.TypeFor[context.Context]()
@@ -97,6 +98,13 @@ type vmArg struct {
 	styp  reflect.Type
 	addr  bool
 	elems []vmElem
+
+	// vaArith: op combines x and y, two operands sharing one static
+	// type, and acls picks the machine family the operation runs in.
+	// The kind exists only under an if header.
+	op   string
+	x, y *vmArg
+	acls cmpClass
 }
 
 // vmElem is one element of a compiled composite literal: the field it
@@ -171,29 +179,26 @@ type vmStmt struct {
 	ifs *vmIf
 }
 
-// vmIf is a compiled if chain: the condition and the two arms. The
-// condition is one bool argument or one comparison, never both. An
+// vmIf is a compiled if chain: the predicate and the two arms. An
 // else-if nests as an els list holding a single if statement. The
 // arms hold no declarations and no returns, both rejected at compile
 // time, so the slot namespace is the program's own and running an
 // arm ends only by finishing it or by an error.
 type vmIf struct {
-	cond *vmArg
-	cmp  *vmCmp
+	pred *vmPred
 	then []vmStmt
 	els  []vmStmt
 }
 
-// condArgs is every argument the header evaluates: the single bool
-// condition, or a comparison's two operands. The frame post-pass,
-// the stack-read counter and the pool planner walk headers through
-// it, so an operand call gets its frame window and its pools like a
-// call anywhere else.
+// condArgs is every argument the header evaluates, collected from
+// the predicate tree's leaves. The frame post-pass, the stack-read
+// counter and the pool planner walk headers through it, so an
+// operand call gets its frame window and its pools like a call
+// anywhere else, wherever composition or arithmetic buried it.
 func (n *vmIf) condArgs() []*vmArg {
-	if n.cmp != nil {
-		return []*vmArg{n.cmp.lhs, n.cmp.rhs}
-	}
-	return []*vmArg{n.cond}
+	var out []*vmArg
+	n.pred.leaves(&out)
+	return out
 }
 
 // fieldStep is one selector of a field-assignment target.
@@ -380,26 +385,12 @@ func (p *vmProgram) runStmts(ctx context.Context, slots, frame []reflect.Value, 
 	return nil, false, nil
 }
 
-// runIf evaluates the condition and runs the arm it picks. A missing
+// runIf evaluates the predicate and runs the arm it picks. A missing
 // else is an empty list, which runs as nothing.
 func (p *vmProgram) runIf(ctx context.Context, slots, frame []reflect.Value, ifaces []ifacePair, stack map[string]any, dest any, n *vmIf) (any, bool, error) {
-	take := false
-	if n.cmp != nil {
-		lv, err := n.cmp.lhs.get(ctx, slots, frame, ifaces, stack, dest)
-		if err != nil {
-			return nil, false, err
-		}
-		rv, err := n.cmp.rhs.get(ctx, slots, frame, ifaces, stack, dest)
-		if err != nil {
-			return nil, false, err
-		}
-		take = n.cmp.eval(lv, rv)
-	} else {
-		cv, err := n.cond.get(ctx, slots, frame, ifaces, stack, dest)
-		if err != nil {
-			return nil, false, err
-		}
-		take = cv.IsValid() && cv.Bool()
+	take, err := n.pred.eval(ctx, slots, frame, ifaces, stack, dest)
+	if err != nil {
+		return nil, false, err
 	}
 	arm := n.els
 	if take {
@@ -517,6 +508,16 @@ func (a *vmArg) get(ctx context.Context, slots, frame []reflect.Value, ifaces []
 			return pv, nil
 		}
 		return sv, nil
+	case vaArith:
+		xv, err := a.x.get(ctx, slots, frame, ifaces, stack, dest)
+		if err != nil {
+			return reflect.Value{}, err
+		}
+		yv, err := a.y.get(ctx, slots, frame, ifaces, stack, dest)
+		if err != nil {
+			return reflect.Value{}, err
+		}
+		return a.arith(xv, yv), nil
 	case vaDest:
 		if dest == nil {
 			return reflect.Zero(a.typ), fmt.Errorf("exec: dest is only set by Scan")

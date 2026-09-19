@@ -157,10 +157,15 @@ func ifCounters(p *vmProgram, stmts []vmStmt, inArm bool, plan *jitPlan) {
 func (c *jitCompiler) ifNode(n *vmIf, jp *jitProgram) (nodeE, error) {
 	var cond nodeN
 	var err error
-	if n.cmp != nil {
-		cond, err = c.cmpNode(n.cmp)
-	} else {
-		cond, err = c.condNode(n.cond)
+	switch {
+	case n.pred.op != "":
+		// Temporary, removed when the L3 nodes land: a composed
+		// header stays on the reflect evaluator.
+		return nil, fmt.Errorf("a composed if header is not yet in the table")
+	case n.pred.cmp != nil:
+		cond, err = c.cmpNode(n.pred.cmp)
+	default:
+		cond, err = c.condNode(n.pred.cond)
 	}
 	if err != nil {
 		return nil, err

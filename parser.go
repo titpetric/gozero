@@ -14,7 +14,14 @@ import (
 //	         | path "<-" arg term
 //	         | [ name { "," name } ( ":=" | "=" ) ] rhs term
 //	ifstmt  := "if" cond block [ "else" ( ifstmt | block ) ] term
-//	cond    := operand [ cmpop operand ]
+//	cond    := orexpr
+//	orexpr  := andexpr { "||" andexpr }
+//	andexpr := cmpexpr { "&&" cmpexpr }
+//	cmpexpr := add [ cmpop add ]
+//	add     := mul { ( "+" | "-" ) mul }
+//	mul     := unary { ( "*" | "/" | "%" ) unary }
+//	unary   := "!" unary | primary
+//	primary := "(" cond ")" | operand
 //	operand := path | expr | string | number
 //	cmpop   := "==" | "!=" | "<" | "<=" | ">" | ">="
 //	block   := "{" { stmt } "}"

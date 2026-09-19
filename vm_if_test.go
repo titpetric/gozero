@@ -71,6 +71,112 @@ func TestIfCompileRules(t *testing.T) {
 	}
 }
 
+// TestHeaderCompileRules pins the named rules of the L3 rung: what a
+// composed or arithmetic header rejects at compile time, with the
+// rule in the error text.
+func TestHeaderCompileRules(t *testing.T) {
+	rt := NewRuntime()
+	for name, fn := range map[string]any{
+		"yes":    func(s string) bool { return true },
+		"record": func(s string) string { return s },
+		"n64":    func(v int64) int64 { return v },
+		"f32":    func(v float64) float32 { return float32(v) },
+	} {
+		if err := rt.Bind(name, fn); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := rt.BindValue("lim.Zero", int64(0)); err != nil {
+		t.Fatal(err)
+	}
+	for name, tc := range map[string]struct {
+		src  string
+		want string
+	}{
+		"arith cond": {
+			`n := n64(1); if n + 1 { record("x"); }`,
+			"condition form",
+		},
+		"constant arith cond": {
+			`if 1 + 1 { record("x"); }`,
+			"condition form",
+		},
+		"and on number": {
+			`ok := yes(""); n := n64(1); if ok && n { record("x"); }`,
+			"must be bool",
+		},
+		"and on literal": {
+			`ok := yes(""); if ok && 5 { record("x"); }`,
+			"condition form",
+		},
+		"not on number": {
+			`n := n64(1); if !n { record("x"); }`,
+			"must be bool",
+		},
+		"bool arithmetic": {
+			`ok := yes(""); if ok + 1 > 0 { record("x"); }`,
+			"numeric arithmetic",
+		},
+		"string plus": {
+			`s := record("x"); if s + "y" == "xy" { record("z"); }`,
+			"numeric arithmetic",
+		},
+		"constant string plus": {
+			`s := record("x"); if s == "x" + "y" { record("z"); }`,
+			"numeric arithmetic",
+		},
+		"float modulo": {
+			`f := f32(1.5); if f % 1 > 0 { record("x"); }`,
+			"numeric arithmetic",
+		},
+		"division by literal zero": {
+			`n := n64(1); if n / 0 == 0 { record("x"); }`,
+			"constant division by zero",
+		},
+		"modulo by literal zero": {
+			`n := n64(1); if n % 0 == 0 { record("x"); }`,
+			"constant division by zero",
+		},
+		"division by folded zero": {
+			`n := n64(1); if 1 / (2 - 2) < n { record("x"); }`,
+			"constant division by zero",
+		},
+		"float division by zero": {
+			`f := f32(1.0); if f / 0.0 > 1.0 { record("x"); }`,
+			"constant division by zero",
+		},
+		"division by zero value binding": {
+			`n := n64(1); if n / lim.Zero == 0 { record("x"); }`,
+			"constant division by zero",
+		},
+		"constant comparison folds": {
+			`if 1 + 1 == 2 { record("x"); }`,
+			"constant comparison",
+		},
+		"comparison as operand": {
+			`a := n64(1); b := n64(2); if (a > b) == true { record("x"); }`,
+			"comparison operand",
+		},
+		"arithmetic on comparison": {
+			`a := n64(1); if (a > 1) + 1 > 0 { record("x"); }`,
+			"comparison operand",
+		},
+		"mixed arith types": {
+			`n := n64(1); f := f32(1.0); if n + f > 0 { record("x"); }`,
+			"identical types",
+		},
+		"float literal into int arith": {
+			`n := n64(1); if n + 1.5 > 0 { record("x"); }`,
+			"identical types",
+		},
+	} {
+		_, err := rt.Compile(tc.src)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: err = %v, want it to name %q", name, err, tc.want)
+		}
+	}
+}
+
 // TestCmpCompileRules pins the named rules of the comparison rung:
 // what the header rejects at compile time, with the rule in the
 // error text.

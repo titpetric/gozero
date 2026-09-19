@@ -11,20 +11,11 @@ import (
 // arm, so every name an arm writes exists before the if.
 func (pc *progCompiler) compileIf(is *ifStmt, dst *[]vmStmt) error {
 	node := &vmIf{}
-	if is.cmp != nil {
-		cmp, err := pc.compileCmp(is.cmp)
-		if err != nil {
-			return err
-		}
-		node.cmp = cmp
-	} else {
-		cond, err := pc.compileCond(is.cond)
-		if err != nil {
-			return err
-		}
-		node.cond = cond
+	pred, err := pc.compilePred(is.cond)
+	if err != nil {
+		return err
 	}
-	var err error
+	node.pred = pred
 	pc.branch++
 	err = pc.compileStmts(is.then, &node.then)
 	if err == nil {
@@ -192,26 +183,29 @@ func cmpClassOf(k reflect.Kind, op string) (cmpClass, bool) {
 	return 0, false
 }
 
-// compileCmp compiles one header comparison.
-func (pc *progCompiler) compileCmp(ce *cmpExpr) (*vmCmp, error) {
-	la, lt, err := pc.cmpOperand(ce.lhs)
+// compileCmp compiles one header comparison. Each side goes through
+// cmpSide, so an arithmetic subtree compiles to a vaArith operand
+// and an all-constant one folds to a literal that adopts the other
+// side's type.
+func (pc *progCompiler) compileCmp(ce *condExpr) (*vmCmp, error) {
+	la, lt, llit, lIsLit, err := pc.cmpSide(ce.x)
 	if err != nil {
 		return nil, err
 	}
-	ra, rt, err := pc.cmpOperand(ce.rhs)
+	ra, rt, rlit, rIsLit, err := pc.cmpSide(ce.y)
 	if err != nil {
 		return nil, err
 	}
 	switch {
-	case lt == nil && rt == nil:
-		return nil, fmt.Errorf("compile: both sides of %s are literals (constant comparison)", ce.op)
-	case lt == nil:
-		if la, err = cmpLiteral(rt, ce.lhs); err != nil {
+	case lIsLit && rIsLit:
+		return nil, fmt.Errorf("compile: both sides of %s are constants (constant comparison)", ce.op)
+	case lIsLit:
+		if la, err = cmpLiteral(rt, llit); err != nil {
 			return nil, err
 		}
 		lt = rt
-	case rt == nil:
-		if ra, err = cmpLiteral(lt, ce.rhs); err != nil {
+	case rIsLit:
+		if ra, err = cmpLiteral(lt, rlit); err != nil {
 			return nil, err
 		}
 	default:
