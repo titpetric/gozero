@@ -102,26 +102,25 @@ func (c *jitCompiler) fieldNode(a *vmArg, pt reflect.Type, cl layout) (node, err
 
 // fieldAddr compiles the address of the value a field read denotes.
 //
-// A single field per step is in the table: a deeper index reaches
-// through embedded types whose offsets do not simply add when one of
-// them is itself a pointer, so those go to the reflect evaluator. The
-// source is a pointer that is loaded and nil-checked, a struct slot in
-// the frame, or another field holding a struct by value, whose offset
-// adds onto its source's address; the recursion bottoms out at a slot
-// or a pointer load, so offsets only ever add within one allocation.
+// The source is a pointer that is loaded and nil-checked, a struct
+// slot in the frame, or another field holding a struct by value, whose
+// offset adds onto its source's address; the recursion bottoms out at
+// a slot or a pointer load, so offsets only ever add within one
+// allocation. A multi-step index is a promoted field; flatField sums
+// it when every hop is a struct held by value.
 func (c *jitCompiler) fieldAddr(a *vmArg) (func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (unsafe.Pointer, error), reflect.StructField, error) {
-	if len(a.index) != 1 {
-		return nil, reflect.StructField{}, fmt.Errorf("only a single field is in the table")
-	}
 	srcType := a.src.typ
 	switch {
 	case a.deref && srcType != nil && srcType.Kind() == reflect.Pointer && srcType.Elem().Kind() == reflect.Struct:
-		sf := srcType.Elem().Field(a.index[0])
+		off, sf, err := flatField(srcType.Elem(), a.index)
+		if err != nil {
+			return nil, reflect.StructField{}, err
+		}
 		src, err := c.argNode(a.src, srcType, lPtr)
 		if err != nil {
 			return nil, reflect.StructField{}, err
 		}
-		sp, off, name := src.P, sf.Offset, sf.Name
+		sp, name := src.P, sf.Name
 		return func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (unsafe.Pointer, error) {
 			p, err := sp(fr, ctx, st, d)
 			if err != nil {
@@ -139,8 +138,11 @@ func (c *jitCompiler) fieldAddr(a *vmArg) (func(fr unsafe.Pointer, ctx context.C
 		if !ok {
 			return nil, reflect.StructField{}, fmt.Errorf("a field source has no slot")
 		}
-		sf := srcType.Field(a.index[0])
-		at := c.offs[field] + sf.Offset
+		off, sf, err := flatField(srcType, a.index)
+		if err != nil {
+			return nil, reflect.StructField{}, err
+		}
+		at := c.offs[field] + off
 		return func(fr unsafe.Pointer, _ context.Context, _ map[string]any, _ any) (unsafe.Pointer, error) {
 			return unsafe.Add(fr, at), nil
 		}, sf, nil
@@ -149,8 +151,10 @@ func (c *jitCompiler) fieldAddr(a *vmArg) (func(fr unsafe.Pointer, ctx context.C
 		if err != nil {
 			return nil, reflect.StructField{}, err
 		}
-		sf := srcType.Field(a.index[0])
-		off := sf.Offset
+		off, sf, err := flatField(srcType, a.index)
+		if err != nil {
+			return nil, reflect.StructField{}, err
+		}
 		return func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (unsafe.Pointer, error) {
 			at, err := base(fr, ctx, st, d)
 			if err != nil {
@@ -160,4 +164,22 @@ func (c *jitCompiler) fieldAddr(a *vmArg) (func(fr unsafe.Pointer, ctx context.C
 		}, sf, nil
 	}
 	return nil, reflect.StructField{}, fmt.Errorf("this field source is not in the table")
+}
+
+// flatField sums the offsets of a field index path and returns the
+// field it lands on. Only value structs compose: a field promoted
+// through an embedded pointer needs a load and a nil check per hop,
+// so it stays on the reflect evaluator, where reflect walks the chain.
+func flatField(st reflect.Type, index []int) (uintptr, reflect.StructField, error) {
+	var off uintptr
+	var sf reflect.StructField
+	for _, idx := range index {
+		if st.Kind() != reflect.Struct {
+			return 0, sf, fmt.Errorf("a field promoted through an embedded %s is not in the table", st)
+		}
+		sf = st.Field(idx)
+		off += sf.Offset
+		st = sf.Type
+	}
+	return off, sf, nil
 }
