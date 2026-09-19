@@ -1,0 +1,43 @@
+// since: comparison operators in the if header. Both sides carry one
+// static type: a literal adopts the other side's type, and a named
+// scalar type compares by its kind, which is how the time.Duration
+// from time.Since orders against time.Hour.
+t := time.Now();
+req := http.NewRequest("GET", "https://example.com/api/users");
+
+status := 200;
+class := "";
+if status == 200 {
+	class = "ok";
+} else {
+	class = "error";
+}
+assert.Equal(tb, "ok", class);
+
+grade := "";
+if status >= 500 {
+	grade = "5xx";
+} else if status >= 400 {
+	grade = "4xx";
+} else {
+	grade = "routine";
+}
+assert.Equal(tb, "routine", grade);
+
+method := "";
+if req.Method == "GET" {
+	method = "read";
+}
+assert.Equal(tb, "read", method);
+
+kind := "load";
+if req.Method != "GET" {
+	kind = "store";
+}
+assert.Equal(tb, "load", kind);
+
+age := "stale";
+if time.Since(t) < time.Hour {
+	age = "fresh";
+}
+assert.Equal(tb, "fresh", age);
