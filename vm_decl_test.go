@@ -217,6 +217,12 @@ func TestTypeDeclSupports(t *testing.T) {
 // misbuild.
 func TestTypeDeclErrors(t *testing.T) {
 	for name, tc := range map[string]struct{ src, want string }{
+		"embed methods":    {"type P struct {\n\turl.URL\n}\nreturn 1;", "embedded type url.URL carries methods"},
+		"embed non-struct": {"type P struct {\n\tPort\n}\nreturn 1;", "embedded field Port is not a struct"},
+		"embed lowercase":  {"type P struct {\n\tint64\n}\nreturn 1;", "embedding int64 makes an unexported field name"},
+		"embed duplicate":  {"type A struct { X int64 }\ntype P struct {\n\tA\n\tA string\n}\nreturn 1;", "duplicate field A"},
+		"embed unknown":    {"type P struct {\n\tBogus\n}\nreturn 1;", `unknown field type "Bogus"`},
+		"embed self":       {"type P struct {\n\tP\n}\nreturn 1;", "type P is recursive"},
 		"redeclared":        {"type P struct { X int64 }\ntype P struct { Y int64 }\nreturn 1;", "type P redeclared"},
 		"shadows registry":  {"type string struct { X int64 }\nreturn 1;", "shadows a registered type"},
 		"shadows binding":   {"type json struct { X int64 }\nreturn 1;", "shadows a binding"},
@@ -234,6 +240,11 @@ func TestTypeDeclErrors(t *testing.T) {
 		"struct as keyword": {"struct := 5; return 1;", "shadows a binding or keyword"},
 	} {
 		rt, _ := typeRuntime(t)
+		// Port gives the non-struct embed case an exported name that
+		// resolves to a scalar; every other case ignores it.
+		if err := rt.BindType("Port", int64(0)); err != nil {
+			t.Fatal(err)
+		}
 		_, err := rt.Compile(tc.src)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: err = %v, want %q", name, err, tc.want)

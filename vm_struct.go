@@ -35,11 +35,14 @@ func (c *Compiler) compileStructLit(slots map[string]int, env map[string]reflect
 		var f reflect.StructField
 		if keyed {
 			f, ok = t.FieldByName(e.name)
+			if !ok || f.PkgPath != "" {
+				return nil, nil, fmt.Errorf("%s has no field %s", name, e.name)
+			}
 			// A promoted field is not a field of the literal's type,
 			// matching Go, which also keeps a nil embedded pointer from
 			// being written through.
-			if !ok || f.PkgPath != "" || len(f.Index) > 1 {
-				return nil, nil, fmt.Errorf("%s has no field %s", name, e.name)
+			if len(f.Index) > 1 {
+				return nil, nil, fmt.Errorf("%s: cannot use promoted field %s in a struct literal, set it through the embedded field", name, e.name)
 			}
 			if seen[e.name] {
 				return nil, nil, fmt.Errorf("%s: duplicate field %s", name, e.name)

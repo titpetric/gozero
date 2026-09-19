@@ -10,13 +10,14 @@ import (
 //
 //	typedecl := "type" name "struct" "{" { field } "}" term
 //	field    := name typeref [ tag ] fterm
+//	         | path [ tag ] fterm
 //	tag      := rawstring | string
 //	fterm    := ";" | EOL | "}"
 //
 // The parser records name, field and tag spellings; the compiler
 // builds the reflect types and owns every semantic check. What Go's
 // struct grammar has beyond this is named when it is seen - a field
-// name list, an embedded type - rather than misparsed.
+// name list, an embedded pointer - rather than misparsed.
 
 // typeDecl is one "type Name struct { ... }" declaration.
 type typeDecl struct {
@@ -26,10 +27,13 @@ type typeDecl struct {
 
 // fieldDecl is one struct field: a name, a type in the registry
 // spelling, and the tag as written, empty when the field has none.
+// An embedded field is a type standing alone on its line; its name is
+// the type's base segment, as in Go, and typ is the full spelling.
 type fieldDecl struct {
-	name string
-	typ  string
-	tag  string
+	name     string
+	typ      string
+	tag      string
+	embedded bool
 }
 
 // typeDecl claims "type Name struct" and rewinds on anything else, so
@@ -74,9 +78,13 @@ func (p *Parser) structType(name string) (typeDecl, error) {
 	return td, nil
 }
 
-// fieldDecl reads one field line. The forms Go allows here that this
-// grammar does not are each rejected by name.
+// fieldDecl reads one field line: a named field, or a type standing
+// alone, which is an embedded field. The forms Go allows here that
+// this grammar does not are each rejected by name.
 func (p *Parser) fieldDecl(typeName string) (fieldDecl, error) {
+	if p.peek() == '*' {
+		return fieldDecl{}, fmt.Errorf("parse: type %s: an embedded pointer field is not supported, embed the struct by value", typeName)
+	}
 	name := p.ident()
 	if name == "" {
 		return fieldDecl{}, fmt.Errorf("parse: type %s: expected a field name at offset %d", typeName, p.pos)
@@ -85,7 +93,7 @@ func (p *Parser) fieldDecl(typeName string) (fieldDecl, error) {
 		return fieldDecl{}, fmt.Errorf("parse: type %s: a field name list is not supported, declare one field per line", typeName)
 	}
 	if p.peek() == '.' || p.atFieldEnd() {
-		return fieldDecl{}, fmt.Errorf("parse: type %s: an embedded field is not supported, name the field", typeName)
+		return p.embeddedField(typeName, name)
 	}
 	typ, err := p.typeRef()
 	if err != nil {
@@ -99,6 +107,31 @@ func (p *Parser) fieldDecl(typeName string) (fieldDecl, error) {
 		return fieldDecl{}, fmt.Errorf("parse: type %s: expected ';' or end of line after field at offset %d", typeName, p.pos)
 	}
 	return fieldDecl{name: name, typ: typ, tag: tag}, nil
+}
+
+// embeddedField reads the rest of an embedded field line: the dotted
+// remainder of the type path and an optional tag, both legal Go. The
+// field's name is the type's base segment, which is Go's rule too.
+func (p *Parser) embeddedField(typeName, first string) (fieldDecl, error) {
+	typ := first
+	name := first
+	for p.peek() == '.' {
+		p.consume('.')
+		seg := p.ident()
+		if seg == "" {
+			return fieldDecl{}, fmt.Errorf("parse: type %s: expected a name after '.' at offset %d", typeName, p.pos)
+		}
+		typ += "." + seg
+		name = seg
+	}
+	tag, err := p.fieldTag(typeName)
+	if err != nil {
+		return fieldDecl{}, err
+	}
+	if !p.fieldTerm() {
+		return fieldDecl{}, fmt.Errorf("parse: type %s: expected ';' or end of line after field at offset %d", typeName, p.pos)
+	}
+	return fieldDecl{name: name, typ: typ, tag: tag, embedded: true}, nil
 }
 
 // fieldTag reads an optional tag on the field's own line: a raw
@@ -136,7 +169,7 @@ func (p *Parser) fieldTag(typeName string) (string, error) {
 // atFieldEnd reports whether the next token ends a field line,
 // consuming nothing: a lone identifier on a line is an embedded type,
 // not a field. A tag ends the line too, so an embedded type carrying
-// one is rejected as embedded rather than misread as a typeref.
+// one parses as embedded rather than misread as a typeref.
 func (p *Parser) atFieldEnd() bool {
 	save, saveNL := p.pos, p.nl
 	p.skipSpace()

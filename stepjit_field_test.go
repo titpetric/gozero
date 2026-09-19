@@ -64,3 +64,45 @@ func TestFieldChainNilPointer(t *testing.T) {
 		}
 	}
 }
+
+// embBase and embHolder are host types with an embedded pointer, the
+// one promotion shape whose offsets do not add: reaching N crosses an
+// allocation boundary, so the direct tier declines it by name.
+type embBase struct {
+	N int64
+}
+
+type embHolder struct {
+	*embBase
+	M int64
+}
+
+// TestFieldPromotedPointerDeclines pins the flatField boundary: a
+// field promoted through an embedded pointer stays on the reflect
+// evaluator with the named reason, and still reads the right value.
+func TestFieldPromotedPointerDeclines(t *testing.T) {
+	rt := pairRuntime(t)
+	if err := rt.Bind("mkHolder", func() *embHolder {
+		return &embHolder{embBase: &embBase{N: 7}, M: 2}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	const src = `
+		h := mkHolder();
+		json.NewEncoder(dest).Encode(h.N);
+	`
+	if err := rt.Supports(src); err == nil || !strings.Contains(err.Error(), "promoted through an embedded *gozero.embBase") {
+		t.Fatalf("Supports = %v, want the embedded-pointer reason", err)
+	}
+	fn, err := rt.Compile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dest bytes.Buffer
+	if err := fn.Scan(&dest, nil); err != nil {
+		t.Fatal(err)
+	}
+	if dest.String() != "7\n" {
+		t.Errorf("dest = %q, want %q", dest.String(), "7\n")
+	}
+}

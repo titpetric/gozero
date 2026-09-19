@@ -1,0 +1,38 @@
+// record: an embedded record's fields promote through the outer type
+// and flatten in the json output, and a flat declared struct passes by
+// value into a host binding whose parameter is a named type no bound
+// constructor builds: reflect's structural assignability.
+type Endpoint struct {
+	Host string `json:"host"`
+	Port int64  `json:"port"`
+}
+type Server struct {
+	Endpoint
+	Name string `json:"name"`
+}
+s := Server{Endpoint: Endpoint{Host: "example.com", Port: 8080}, Name: "edge"};
+assert.Equal(tb, "example.com", s.Host);
+assert.Equal(tb, 8080, s.Port);
+
+// A promoted name writes through to the embedded field it names.
+var w Server;
+w.Host = "db.local";
+w.Port = 5432;
+assert.Equal(tb, "db.local", w.Host);
+assert.Equal(tb, "db.local", w.Endpoint.Host);
+
+// The embedded fields flatten into the enclosing object.
+buf := bytes.NewBufferString("");
+json.NewEncoder(buf).Encode(s);
+assert.Equal(tb, "{\"host\":\"example.com\",\"port\":8080,\"name\":\"edge\"}\n", buf.String());
+
+// Session matches session.Format's parameter field for field; the host
+// never bound a constructor for that type, and the value still arrives.
+type Session struct {
+	User string
+	Host string
+	Port int64
+}
+c := Session{User: "ana", Host: "db.local", Port: 5432};
+line := session.Format(c);
+assert.Equal(tb, "ana@db.local:5432", line);

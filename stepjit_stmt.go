@@ -127,28 +127,34 @@ func (c *jitCompiler) stmtNode(s plannedStmt, jp *jitProgram) (nodeE, error) {
 }
 
 // fieldSetNode compiles req.Method = value to a typed store at a
-// compile-time offset. Only the single field of a pointer to a struct
-// is in the table; a value-struct base or a deeper chain stays on the
-// reflect evaluator.
+// compile-time offset. Only a single selector is in the table; the
+// selector's index may be a promoted path, which flatField sums when
+// every hop is a struct held by value. A deeper selector chain stays
+// on the reflect evaluator.
 func (c *jitCompiler) fieldSetNode(fs *vmFieldSet) (nodeE, error) {
 	field, ok := c.slotOf[fs.base]
 	if !ok {
 		return nil, fmt.Errorf("a field target has no slot")
 	}
 	bt := c.types[field]
-	if len(fs.steps) != 1 || len(fs.steps[0].index) != 1 {
+	if len(fs.steps) != 1 {
 		return nil, fmt.Errorf("only a single field is in the table")
 	}
+	var off uintptr
 	var sf reflect.StructField
 	var direct bool // the struct lives in the frame itself
+	var err error
 	switch {
 	case fs.steps[0].deref && bt.Kind() == reflect.Pointer && bt.Elem().Kind() == reflect.Struct:
-		sf = bt.Elem().Field(fs.steps[0].index[0])
+		off, sf, err = flatField(bt.Elem(), fs.steps[0].index)
 	case !fs.steps[0].deref && bt.Kind() == reflect.Struct:
-		sf = bt.Field(fs.steps[0].index[0])
+		off, sf, err = flatField(bt, fs.steps[0].index)
 		direct = true
 	default:
 		return nil, fmt.Errorf("a field of a %s is not in the table", bt)
+	}
+	if err != nil {
+		return nil, err
 	}
 	cl := layoutOf(sf.Type)
 	if cl == lBad {
@@ -182,7 +188,7 @@ func (c *jitCompiler) fieldSetNode(fs *vmFieldSet) (nodeE, error) {
 		return nil, fmt.Errorf("this field value is not in the table")
 	}
 
-	baseOff, fieldOff, name, srcType := c.offs[field], sf.Offset, fs.field, bt
+	baseOff, fieldOff, name, srcType := c.offs[field], off, fs.field, bt
 	var target func(fr unsafe.Pointer) (unsafe.Pointer, error)
 	if direct {
 		at := baseOff + fieldOff
