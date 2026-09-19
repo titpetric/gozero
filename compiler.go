@@ -26,6 +26,12 @@ type Compiler struct {
 	// types is the Runtime's registry, shared by reference so a Bind
 	// after a Compile is visible.
 	types map[string]reflect.Type
+	// declared is the program-local type registry: the struct types
+	// the program being compiled declares, layered over types by
+	// lookupType. compileProgram sets it on a per-compilation copy of
+	// the Compiler, never on the shared instance concurrent
+	// compilations read.
+	declared map[string]reflect.Type
 }
 
 // Compile validates a program and builds the constructed func.
