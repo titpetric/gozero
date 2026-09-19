@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -178,6 +179,69 @@ func (f *testFixtures) testRange(tb testing.TB) {
 	assertEqual(tb, int64(9), c.Sum(), "")
 }
 
+func (f *testFixtures) testLoops(tb testing.TB) {
+	buf := bytesNewBufferString("")
+	for i, r := range "ab£" {
+		buf.WriteString(fmt.Sprintf("%d:%c ", i, r))
+	}
+	assertEqual(tb, "0:a 1:b 2:£ ", buf.String(), "")
+
+	m := sizesMap()
+	kc := counterNew()
+	for k, v := range m {
+		kc.Add(strLen(k))
+		kc.Add(v)
+	}
+	assertEqual(tb, int64(20), kc.Sum(), "")
+
+	lines := bytesNewBufferString("")
+	skips := counterNew()
+	for line := range strings.Lines("one\ntwo\n") {
+		lines.WriteString(line)
+		// The fixture's continue skips a trailing skips.Add(100) on
+		// every iteration, so the mirror never runs it either.
+	}
+	assertEqual(tb, "one\ntwo\n", lines.String(), "")
+	assertEqual(tb, int64(0), skips.Sum(), "")
+
+	parts := strings.Fields("a b c")
+	pos := bytesNewBufferString("")
+	for i, s := range slices.All(parts) {
+		pos.WriteString(fmt.Sprintf("%d%s", i, s))
+	}
+	assertEqual(tb, "0a1b2c", pos.String(), "")
+
+	ch := closedChanOf("x", "y", "z")
+	got := bytesNewBufferString("")
+	for s2 := range ch {
+		got.WriteString(s2)
+	}
+	assertEqual(tb, "xyz", got.String(), "")
+
+	bc := counterNew()
+	for range m {
+		bc.Add(1)
+		break
+	}
+	assertEqual(tb, int64(1), bc.Sum(), "")
+
+	oc := counterNew()
+	for range 3 {
+		for range 5 {
+			oc.Add(1)
+			break
+		}
+	}
+	assertEqual(tb, int64(3), oc.Sum(), "")
+
+	ch2 := closedChanOf("p", "q")
+	for range ch2 {
+		break
+	}
+	rest := <-ch2
+	assertEqual(tb, "q", rest, "")
+}
+
 func (f *testFixtures) testVariadic(tb testing.TB) {
 	parts := strings.Fields("a b c")
 	joined := path.Join(parts...)
@@ -217,6 +281,7 @@ func BenchmarkFixtures(b *testing.B) {
 		"variadic": (*testFixtures).testVariadic,
 		"channels": (*testFixtures).testChannels,
 		"range":    (*testFixtures).testRange,
+		"loops":    (*testFixtures).testLoops,
 	}
 
 	files, err := filepath.Glob(filepath.Join("testdata", "*.txt"))
@@ -277,7 +342,8 @@ func newBenchFixtureRuntime(b *testing.B) *Runtime {
 		"json":    {"NewEncoder": json.NewEncoder},
 		"bytes":   {"NewBufferString": bytesNewBufferString},
 		"fmt":     {"Sprintf": fmt.Sprintf, "Sprint": fmt.Sprint},
-		"strings": {"Fields": strings.Fields},
+		"strings": {"Fields": strings.Fields, "Lines": strings.Lines},
+		"slices":  {"All": slices.All[[]string]},
 		"path":    {"Join": path.Join},
 		// Equal has no variadic tail, (tb, want, got, message): every
 		// parameter has a shape, so an assertion is a direct call. The
@@ -303,6 +369,15 @@ func newBenchFixtureRuntime(b *testing.B) *Runtime {
 	}
 	if err := rt.Bind("counter", counterNew); err != nil {
 		b.Fatal(err)
+	}
+	for name, fn := range map[string]any{
+		"sizes":        sizesMap,
+		"strlen":       strLen,
+		"closedChanOf": closedChanOf,
+	} {
+		if err := rt.Bind(name, fn); err != nil {
+			b.Fatal(err)
+		}
 	}
 	return rt
 }
