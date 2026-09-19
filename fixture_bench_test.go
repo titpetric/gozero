@@ -247,6 +247,46 @@ func (f *testFixtures) testSince(tb testing.TB) {
 	assertEqual(tb, "fresh", age, "")
 }
 
+func (f *testFixtures) testGate(tb testing.TB) {
+	req, err := http.NewRequest("GET", "https://example.com/api/users", nil)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	api := strings.HasPrefix(req.URL.Path, "/api")
+	admin := strings.HasPrefix(req.URL.Path, "/admin")
+
+	zone := ""
+	if api && !admin {
+		zone = "public"
+	} else {
+		zone = "denied"
+	}
+	assertEqual(tb, "public", zone, "")
+
+	status := 429
+	retries := 2
+	action := "give-up"
+	if status == 500 || status == 429 && retries > 0 {
+		action = "retry"
+	}
+	assertEqual(tb, "retry", action, "")
+
+	limit := 120
+	used := 50
+	band := "over"
+	if used*2+10 < limit || admin {
+		band = "under"
+	}
+	assertEqual(tb, "under", band, "")
+
+	window := 60
+	rate := "high"
+	if (limit-used)/window == 1 && !(admin || status < 400) {
+		rate = "low"
+	}
+	assertEqual(tb, "low", rate, "")
+}
+
 func (f *testFixtures) testChannels(tb testing.TB) {
 	c := chanOf("a", "b")
 	v := <-c
@@ -281,6 +321,7 @@ func BenchmarkFixtures(b *testing.B) {
 		"channels": (*testFixtures).testChannels,
 		"if":       (*testFixtures).testIf,
 		"since":    (*testFixtures).testSince,
+		"gate":     (*testFixtures).testGate,
 	}
 
 	files, err := filepath.Glob(filepath.Join("testdata", "*.txt"))
