@@ -178,6 +178,25 @@ func (f *testFixtures) testFuncLit(tb testing.TB) {
 	assertEqual(tb, "ok", rec.Body.String(), "")
 }
 
+func (f *testFixtures) testClosure(tb testing.TB) {
+	mux := http.NewServeMux()
+	greeting := fmt.Sprint("hello")
+	last := fmt.Sprint("none")
+	mux.HandleFunc("/greet", func(w http.ResponseWriter, r *http.Request) {
+		last = fmt.Sprint(r.URL.Path)
+		fmt.Fprint(w, greeting)
+	})
+	req := httptest.NewRequest("GET", "/greet", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	assertEqual(tb, "hello", rec.Body.String(), "")
+	assertEqual(tb, "/greet", last, "")
+	greeting = "changed"
+	rec2 := httptest.NewRecorder()
+	mux.ServeHTTP(rec2, req)
+	assertEqual(tb, "changed", rec2.Body.String(), "")
+}
+
 func (f *testFixtures) testChannels(tb testing.TB) {
 	c := chanOf("a", "b")
 	v := <-c
@@ -211,6 +230,7 @@ func BenchmarkFixtures(b *testing.B) {
 		"variadic": (*testFixtures).testVariadic,
 		"channels": (*testFixtures).testChannels,
 		"funclit":  (*testFixtures).testFuncLit,
+		"closure":  (*testFixtures).testClosure,
 	}
 
 	files, err := filepath.Glob(filepath.Join("testdata", "*.txt"))

@@ -1,0 +1,20 @@
+// closure: a func literal capturing enclosing names by cell. The
+// handler reads greeting, observing the program's later write, and
+// writes last, which the program reads back: write-through in both
+// directions, with the mux serving during the defining run.
+mux := http.NewServeMux();
+greeting := fmt.Sprint("hello");
+last := fmt.Sprint("none");
+mux.HandleFunc("/greet", func(w, r) {
+	last = fmt.Sprint(r.URL.Path);
+	fmt.Fprint(w, greeting);
+});
+req := httptest.NewRequest("GET", "/greet");
+rec := httptest.NewRecorder();
+mux.ServeHTTP(rec, req);
+assert.Equal(tb, "hello", rec.Body.String());
+assert.Equal(tb, "/greet", last);
+greeting = "changed";
+rec2 := httptest.NewRecorder();
+mux.ServeHTTP(rec2, req);
+assert.Equal(tb, "changed", rec2.Body.String());
