@@ -166,6 +166,10 @@ type vmStmt struct {
 	// is a channel send. Both in vm_chan.go.
 	recv *vmRecv
 	send *vmSend
+
+	// rng is a range loop over a slice, an array or an integer, its
+	// body a nested statement list. In vm_range.go.
+	rng *vmRange
 }
 
 // fieldStep is one selector of a field-assignment target.
@@ -295,6 +299,12 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 		}
 		if s.send != nil {
 			if err := s.send.exec(ctx, slots, frame, ifaces, stack, dest); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if s.rng != nil {
+			if err := p.runRange(ctx, s.rng, slots, frame, ifaces, stack, dest); err != nil {
 				return nil, err
 			}
 			continue

@@ -133,24 +133,36 @@ func (c *jitCompiler) planPools(plan *jitPlan) {
 			walkArg(a, pt)
 		}
 	}
-	for _, s := range plan.stmts {
-		if s.call != nil {
-			walkCall(s.call)
-		}
-		if s.assign != nil {
-			walkArg(s.assign, s.assign.typ)
-		}
-		if s.fieldSet != nil {
-			walkArg(s.fieldSet.val, s.fieldSet.val.typ)
-		}
-		if s.recv != nil {
-			walkArg(s.recv.ch, s.recv.ch.typ)
-		}
-		if s.send != nil {
-			walkArg(s.send.ch, s.send.ch.typ)
-			walkArg(s.send.val, s.send.val.typ)
+	var walkStmts func(stmts []plannedStmt)
+	walkStmts = func(stmts []plannedStmt) {
+		for _, s := range stmts {
+			if s.call != nil {
+				walkCall(s.call)
+			}
+			if s.assign != nil {
+				walkArg(s.assign, s.assign.typ)
+			}
+			if s.fieldSet != nil {
+				walkArg(s.fieldSet.val, s.fieldSet.val.typ)
+			}
+			if s.recv != nil {
+				walkArg(s.recv.ch, s.recv.ch.typ)
+			}
+			if s.send != nil {
+				walkArg(s.send.ch, s.send.ch.typ)
+				walkArg(s.send.val, s.send.val.typ)
+			}
+			// A pooled site inside a range body lends one block per
+			// run and the later iterations allocate fresh: the scratch
+			// field holds the last block only, so release repools one.
+			// Unpooled, never unsound.
+			if s.rng != nil {
+				walkArg(s.rng.src.over, s.rng.src.over.typ)
+				walkStmts(s.rng.body)
+			}
 		}
 	}
+	walkStmts(plan.stmts)
 }
 
 // argBoxesString reports whether an argument certainly produces a

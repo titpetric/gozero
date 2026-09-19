@@ -9,6 +9,9 @@ import (
 
 // stmtNode compiles one statement into the closure the program runs.
 func (c *jitCompiler) stmtNode(s plannedStmt, jp *jitProgram) (nodeE, error) {
+	if s.rng != nil {
+		return c.rangeNode(s.rng, jp)
+	}
 	if s.recv != nil {
 		return c.recvNode(s)
 	}

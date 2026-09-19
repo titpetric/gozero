@@ -10,8 +10,10 @@ import (
 //	program := { stmt }
 //	stmt    := "var" name typeref term
 //	         | "return" [ arg ] term
+//	         | "for" [ name [ "," name ] ":=" ] "range" arg block term
 //	         | path "<-" arg term
 //	         | [ name { "," name } ( ":=" | "=" ) ] rhs term
+//	block   := "{" { stmt } "}"
 //	term    := ";" | EOL | EOF
 //	rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv
 //	typeref := { "*" | "[]" | "chan" | "chan<-" | "<-chan" } path
@@ -37,17 +39,27 @@ type Parser struct {
 	// last token byte was consumed, which is what lets the end of a
 	// line close a statement the way a semicolon does.
 	nl bool
+	// hdr marks a range header, where a brace opens the body rather
+	// than a composite literal; parentheses lift the restriction.
+	hdr bool
+	// depth counts enclosing range bodies, so a statement kind that a
+	// body cannot hold is rejected where it is written.
+	depth int
 }
 
 // terminated consumes a statement end. The semicolon is a delimiter
 // between statements sharing a line, not something every line has to
 // carry: the end of the line and the end of the source both close a
-// statement.
+// statement, and so does a closing brace, which is Go's rule that a
+// semicolon may be omitted before "}".
 func (p *Parser) terminated() bool {
 	if p.consume(';') {
 		return true
 	}
 	p.skipSpace()
+	if p.pos < len(p.src) && p.src[p.pos] == '}' {
+		return true
+	}
 	return p.pos >= len(p.src) || p.nl
 }
 
@@ -150,6 +162,20 @@ type stmt struct {
 	// names the channel the way fieldLhs names a field target.
 	sendCh  []string
 	sendVal *arg
+
+	// rng is a range loop, "for x := range xs { ... }".
+	rng *rangeStmt
+}
+
+// rangeStmt is a parsed range loop. key and val are the iteration
+// names, "" when the form binds fewer than two and "_" when written
+// blank; over is the ranged expression and body the braced statement
+// list.
+type rangeStmt struct {
+	key  string
+	val  string
+	over arg
+	body []stmt
 }
 
 // program is a parsed source unit.
@@ -201,6 +227,9 @@ func (p *Parser) Parse(src string) (*program, error) {
 
 func (p *Parser) stmt() (stmt, error) {
 	if p.keyword("var") {
+		if p.depth > 0 {
+			return stmt{}, fmt.Errorf("parse: a var declaration cannot stand inside a range body, declare the name before the loop (offset %d)", p.pos)
+		}
 		name := p.ident()
 		if name == "" {
 			return stmt{}, fmt.Errorf("parse: expected a name after var at offset %d", p.pos)
@@ -215,6 +244,9 @@ func (p *Parser) stmt() (stmt, error) {
 		return stmt{varName: name, varType: typ}, nil
 	}
 	if p.keyword("return") {
+		if p.depth > 0 {
+			return stmt{}, fmt.Errorf("parse: return cannot stand inside a range body, a body runs every statement of every iteration (offset %d)", p.pos)
+		}
 		s := stmt{ret: true}
 		p.skipSpace()
 		if p.terminated() {
@@ -241,6 +273,19 @@ func (p *Parser) stmt() (stmt, error) {
 			return s, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
 		}
 		return s, nil
+	}
+	if p.keyword("for") {
+		return p.forRange()
+	}
+	// break and continue are reserved with a named rule rather than
+	// left to fail as unknown calls: a range body runs every statement
+	// of every iteration, and the only exits are an error and the
+	// execution context.
+	if p.keyword("break") {
+		return stmt{}, fmt.Errorf("parse: break is not in the language, a range body runs every statement of every iteration (offset %d)", p.pos)
+	}
+	if p.keyword("continue") {
+		return stmt{}, fmt.Errorf("parse: continue is not in the language, a range body runs every statement of every iteration (offset %d)", p.pos)
 	}
 
 	// A dotted path followed by a single "=" is a field assignment.
@@ -412,6 +457,72 @@ func (p *Parser) expr() (*callExpr, error) {
 		}
 		call.chain = append(call.chain, link{name: name, args: largs})
 	}
+}
+
+// forRange reads a range loop after the for keyword. Only the range
+// form exists: the three-clause and condition loops need operator
+// expressions, which the grammar does not have.
+func (p *Parser) forRange() (stmt, error) {
+	r := &rangeStmt{}
+	if !p.keyword("range") {
+		lhs, define, ok := p.assignList()
+		if !ok {
+			return stmt{}, fmt.Errorf("parse: for supports only the range form at offset %d", p.pos)
+		}
+		if !define {
+			return stmt{}, fmt.Errorf("parse: a range loop declares its names with := at offset %d", p.pos)
+		}
+		if len(lhs) > 2 {
+			return stmt{}, fmt.Errorf("parse: a range loop binds at most two names at offset %d", p.pos)
+		}
+		if !p.keyword("range") {
+			return stmt{}, fmt.Errorf("parse: for supports only the range form at offset %d", p.pos)
+		}
+		r.key = lhs[0]
+		if len(lhs) == 2 {
+			r.val = lhs[1]
+		}
+	}
+
+	// The header holds composite literals back, so the brace after the
+	// ranged expression opens the body.
+	saved := p.hdr
+	p.hdr = true
+	over, err := p.arg()
+	p.hdr = saved
+	if err != nil {
+		return stmt{}, err
+	}
+	switch over.kind {
+	case argVar, argPath, argCall, argInt:
+	default:
+		return stmt{}, fmt.Errorf("parse: cannot range over this expression at offset %d", p.pos)
+	}
+	r.over = over
+
+	if !p.consume('{') {
+		return stmt{}, fmt.Errorf("parse: expected '{' after the range header at offset %d", p.pos)
+	}
+	p.depth++
+	defer func() { p.depth-- }()
+	for {
+		p.skipSpace()
+		if p.consume('}') {
+			break
+		}
+		if p.pos >= len(p.src) {
+			return stmt{}, fmt.Errorf("parse: unterminated range body at offset %d", p.pos)
+		}
+		s, err := p.stmt()
+		if err != nil {
+			return stmt{}, err
+		}
+		r.body = append(r.body, s)
+	}
+	if !p.terminated() {
+		return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
+	}
+	return stmt{rng: r}, nil
 }
 
 func (p *Parser) path() ([]string, error) {

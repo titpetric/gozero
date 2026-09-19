@@ -53,7 +53,12 @@ func (p *Parser) typeRef() (string, error) {
 }
 
 // args reads the argument list up to and including the closing paren.
+// Parentheses lift the range header's composite restriction: inside a
+// call the brace cannot be the body's.
 func (p *Parser) args() ([]arg, error) {
+	saved := p.hdr
+	p.hdr = false
+	defer func() { p.hdr = saved }()
 	var out []arg
 	for {
 		p.skipSpace()
@@ -124,7 +129,7 @@ func (p *Parser) arg() (arg, error) {
 			}
 			return arg{kind: argCall, sub: sub}, nil
 		}
-		if p.peek() == '{' {
+		if p.peek() == '{' && !p.hdr {
 			p.consume('{')
 			return p.composite(path, false)
 		}
