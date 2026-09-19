@@ -21,8 +21,12 @@ friends, with the test's `testing.TB` on the stack as `tb`.
 program := { stmt }
 stmt    := "var" name typeref term
          | "return" [ arg ] term
+         | "for" [ name [ "," name ] ":=" ] "range" arg block term
+         | "break" term
+         | "continue" term
          | path "<-" arg term
          | [ name { "," name } ( ":=" | "=" ) ] rhs term
+block   := "{" { stmt } "}"
 term    := ";" | EOL | EOF
 rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv
 typeref := { "*" | "[]" | "chan" | "chan<-" | "<-chan" } path
@@ -37,11 +41,17 @@ elem    := [ ident ":" ] arg
 
 The channel arrow is the only operator. A value is a literal, a
 name, a field read, a composite literal, a receive, or the result of
-a call; a condition, a loop or an arithmetic expression is a Go
-function the host binds ([design/](design/) records why). The end of
-a line closes a statement; the semicolon is a delimiter between
-statements sharing one, so both spellings below are the same
-program:
+a call; a condition or an arithmetic expression is a Go function the
+host binds ([design/](design/) records why). The only loop is
+`range`, over a slice, an array, an integer, a string, a map, a
+channel or an iterator func, and `break` and `continue` stand only
+inside its body. The for statement is the one production this front
+end does not read itself: `go/scanner` finds the loop's extent,
+`go/parser` parses it as Go inside a synthetic function body, and
+the ast lowers onto the grammar above, so a loop must also be valid
+Go. The end of a line closes a statement; the semicolon
+is a delimiter between statements sharing one, so both spellings
+below are the same program:
 
 ```
 u := url.Parse("https://example.com"); assert.Equal(tb, "https", u.Scheme)
@@ -462,9 +472,10 @@ done <- u.Host
 </tr>
 </table>
 
-`select`, `range` over a channel and `go` remain outside the
-language; [design/channels.md](design/channels.md) records why they
-decompose onto conditions, loops and closures.
+`select` and `go` remain outside the language;
+[design/channels.md](design/channels.md) records why they decompose
+onto conditions, loops and closures. `range` over a channel receives
+until close, with the same armed receive a receive statement runs.
 
 ## The stack and dest
 
