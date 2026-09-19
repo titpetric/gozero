@@ -7,7 +7,41 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
-## 2026-09-10 16:58 +02:00: argument pooling under the binding contract
+## 2026-09-19 22:38 +02:00: range loops with the for statement delegated to go/parser
+
+The language gains the full range surface in one step: `for` over
+slices, arrays, integers, strings, maps, channels and iterator
+funcs, with break and continue inside a body, on both tiers. The
+tier code matches the loops rung branches; what this branch changes
+is the front end. Parser.stmt no longer reads the loop itself:
+go/scanner finds the loop's extent, go/parser parses that extent as
+Go inside a synthetic function body, and an ast lowering maps the
+range header onto the existing arg forms. A body statement that is
+not a loop, a branch, a return or a declaration re-enters the hand
+parser at its own source offset, so statement grammar and error
+offsets stay identical inside and outside a loop.
+
+The delegation is a compile-time cost, paid once per Compile.
+BenchmarkParseLoop parses a six-statement program with one loop at
+13880n, 103 allocs and 6008 B per parse; the hand-rolled front end
+on feat/loops-l2 parses the same source at 4433n, 38 allocs and
+3144 B (medians of 3, pinned). Run-time numbers do not move: the
+range fixture runs 2161n and 5 allocs against its mirror's 1217n
+and 6, the loops fixture 15903n and 57 against 7732n and 45, and
+every existing fixture keeps identical allocation counts.
+
+The surface shifts where the two grammars disagree, because a loop
+must now also be valid Go. A single-quoted multi-rune string stops
+parsing inside a loop (Go reads a rune literal); a rule Go itself
+enforces reports go/parser's message with the offset mapped back
+into the program, so three names in a range header is "expected at
+most 2 expressions" rather than a house message; hex and underscore
+integer literals parse in a range bound. House rules keep their
+messages: the := requirement, labels, and return, var, break and
+continue placement all reject with the same text as the rung
+branches.
+
+
 
 Arguments are borrowed. A binding receives values that are valid for
 the duration of the call, and a binding that keeps a received `any`,
