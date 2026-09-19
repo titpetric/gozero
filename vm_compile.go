@@ -134,6 +134,46 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			p.stmts = append(p.stmts, vmStmt{send: sn})
 			continue
 		}
+		if s.incName != "" {
+			in, err := c.compileInc(slots, env, s)
+			if err != nil {
+				return nil, err
+			}
+			p.stmts = append(p.stmts, vmStmt{inc: in})
+			continue
+		}
+		if s.binOp != "" {
+			if len(s.lhs) != 1 {
+				return nil, fmt.Errorf("compile: an operator assigns to exactly one name")
+			}
+			name := s.lhs[0]
+			if err := checkName(name); err != nil {
+				return nil, err
+			}
+			if err := checkDecl(name, s.define); err != nil {
+				return nil, err
+			}
+			if s.define {
+				if err := checkNew(s.lhs); err != nil {
+					return nil, err
+				}
+			}
+			bn, err := c.compileBinop(slots, env, s)
+			if err != nil {
+				return nil, err
+			}
+			// The result assigns at its own type, so both tiers store
+			// into a slot whose layout is the operator's: a comparison
+			// into an interface slot would need a conversion neither
+			// tier compiles here.
+			rt := bn.resultType()
+			if prev, ok := env[name]; ok && prev != rt {
+				return nil, fmt.Errorf("compile: %s: cannot use %s as %s", name, rt, prev)
+			}
+			slot := newSlot(name, rt)
+			p.stmts = append(p.stmts, vmStmt{binop: bn, out: []int{slot}})
+			continue
+		}
 		if s.lit != nil && s.lit.kind == argRecv {
 			// The ok of Go's two-value receive is implicit, like the
 			// trailing error of a call: a closed channel ends the
@@ -320,6 +360,10 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			p.assignArg(s.send.ch)
 			p.assignArg(s.send.val)
 		}
+		if s.binop != nil {
+			p.assignArg(s.binop.x)
+			p.assignArg(s.binop.y)
+		}
 	}
 	return p, nil
 }
@@ -374,56 +418,6 @@ func (p *vmProgram) assignArg(a *vmArg) {
 			}
 		}
 	}
-}
-
-// compileFieldSet compiles req.Method = value. The base is a
-// program-bound name, every selector is an exported field, and the
-// value is a literal or a call whose result is assignable to the field.
-func (c *Compiler) compileFieldSet(slots map[string]int, env map[string]reflect.Type, s stmt) (*vmFieldSet, error) {
-	base := s.fieldLhs[0]
-	slot, ok := slots[base]
-	if !ok {
-		return nil, fmt.Errorf("compile: %s is not a name bound by the program, so its fields cannot be assigned", base)
-	}
-	t := env[base]
-	fs := &vmFieldSet{base: slot, field: joinPath(s.fieldLhs)}
-	for _, seg := range s.fieldLhs[1:] {
-		f, deref, ok := fieldOf(t, seg)
-		if !ok {
-			return nil, fmt.Errorf("compile: %s has no field %s", t, seg)
-		}
-		fs.steps = append(fs.steps, fieldStep{index: f.Index, deref: deref})
-		t = f.Type
-	}
-
-	if s.lit != nil {
-		if s.lit.kind == argStruct {
-			sa, st, err := c.compileStructLit(slots, env, *s.lit)
-			if err != nil {
-				return nil, fmt.Errorf("compile: %s: %w", fs.field, err)
-			}
-			if !st.AssignableTo(t) {
-				return nil, fmt.Errorf("compile: %s: cannot assign %s to %s", fs.field, st, t)
-			}
-			fs.val = sa
-			return fs, nil
-		}
-		v, err := literalValue(t, *s.lit)
-		if err != nil {
-			return nil, fmt.Errorf("compile: %s: %w", fs.field, err)
-		}
-		fs.val = &vmArg{kind: vaConst, val: v, typ: t, iface: -1}
-		return fs, nil
-	}
-	call, rt, err := c.compileExpr(slots, env, s.call)
-	if err != nil {
-		return nil, err
-	}
-	if rt == nil || !rt.AssignableTo(t) {
-		return nil, fmt.Errorf("compile: %s: cannot assign %s to %s", fs.field, rt, t)
-	}
-	fs.val = &vmArg{kind: vaCall, sub: call, typ: t, iface: -1}
-	return fs, nil
 }
 
 // compileRetVal compiles the value of a "return x;" form. The

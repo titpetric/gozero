@@ -9,6 +9,9 @@ import (
 
 // stmtNode compiles one statement into the closure the program runs.
 func (c *jitCompiler) stmtNode(s plannedStmt, jp *jitProgram) (nodeE, error) {
+	if s.inc != nil {
+		return c.incNode(s.inc)
+	}
 	if s.recv != nil {
 		return c.recvNode(s)
 	}
@@ -22,7 +25,13 @@ func (c *jitCompiler) stmtNode(s plannedStmt, jp *jitProgram) (nodeE, error) {
 		return c.structAssignNode(s)
 	}
 	var n node
-	if s.lit.IsValid() {
+	if s.binop != nil {
+		bn, err := c.binopNode(s.binop)
+		if err != nil {
+			return nil, err
+		}
+		n = bn
+	} else if s.lit.IsValid() {
 		field, ok := c.slotOf[s.out]
 		if !ok {
 			return nil, fmt.Errorf("a literal is assigned to a name with no slot")
