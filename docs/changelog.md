@@ -7,6 +7,33 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-19 20:59 +02:00: composed if headers, conditions L3
+
+The if header becomes a boolean expression under Go precedence: `||`
+over `&&` over one comparison over `+ -` over `* / %`, with unary
+`!` and parentheses, the L3 rung of
+[design/conditions.md](design/conditions.md). `&&` and `||`
+short-circuit, so a skipped operand's call never runs and its error
+never surfaces. Arithmetic operands follow the comparison's typing -
+identical static types, a literal side adopting the other - and run
+on the underlying kind, wrapping at the type's width; an
+all-constant subtree folds at compile time, and a constant zero
+divisor is a compile error (constant division by zero). The
+operators stay header-only; every other position rejects them at
+parse time (operator placement). Arithmetic admits numeric kinds
+only (numeric arithmetic), so string `+` stays out.
+
+On the direct tier composition is short-circuit control flow over
+bool bits and arithmetic is class-closed nodes normalizing to the
+operand width per operation; an oracle test pins both tiers against
+the same expressions compiled in Go. Nothing in a header allocates.
+Measured on the new `gate` fixture against its handwritten mirror:
+3179 ns/op, 576 B/op and 7 allocs/op against 2005 ns/op, 576 B/op
+and 7 allocs/op, allocation parity. `a && b` in one header prices at
+two nested ifs (202.5 against 204.5 ns/op, 1 alloc both), and
+`n * 3 + 1 > 20` in the header prices near the same guard as a bound
+i64 predicate (203.1 against 178.4 ns/op, 1 alloc both).
+
 ## 2026-09-19 17:50 +02:00: comparisons in the if header, conditions L2
 
 The if header gains one comparison: `==`, `!=`, `<`, `<=`, `>` or

@@ -1,0 +1,38 @@
+// gate: boolean composition and arithmetic operands in the if
+// header. && and || short-circuit, ! inverts, parentheses group,
+// and + - * / % combine numeric operands under Go precedence; the
+// operators exist only in the header.
+req := http.NewRequest("GET", "https://example.com/api/users");
+api := strings.HasPrefix(req.URL.Path, "/api");
+admin := strings.HasPrefix(req.URL.Path, "/admin");
+
+zone := "";
+if api && !admin {
+	zone = "public";
+} else {
+	zone = "denied";
+}
+assert.Equal(tb, "public", zone);
+
+status := 429;
+retries := 2;
+action := "give-up";
+if status == 500 || status == 429 && retries > 0 {
+	action = "retry";
+}
+assert.Equal(tb, "retry", action);
+
+limit := 120;
+used := 50;
+band := "over";
+if used * 2 + 10 < limit || admin {
+	band = "under";
+}
+assert.Equal(tb, "under", band);
+
+window := 60;
+rate := "high";
+if (limit - used) / window == 1 && !(admin || status < 400) {
+	rate = "low";
+}
+assert.Equal(tb, "low", rate);
