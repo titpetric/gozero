@@ -7,6 +7,37 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-19 19:41 +02:00: func literals in argument position
+
+`mux.HandleFunc("/health", func(w, r) { ... })` compiles: a func
+literal stands where an argument does, its parameter types inferred
+from the func signature of the parameter it fills, the capture-free
+form of [closures.md](design/closures.md). The body is the same
+straight-line statement list a program is, with the parameters as
+typed names, so `w.WriteHeader(201)` resolves against
+`http.ResponseWriter` at compile time. Reading any enclosing name,
+an outer literal's parameter included, is a compile error naming the
+rule, as is a literal in a position whose expected type is not a
+func signature. Nothing captured means nothing per-run to close
+over: the value is a compile-time constant on both tiers, built once
+per compilation.
+
+Materialization is per tier. The reflect evaluator wraps the body in
+`reflect.MakeFunc`; the step JIT replaces that value with an
+ordinary Go closure of the signature's layout shape over the body's
+compiled nodes when the signature is in the closure table (no
+results, no context parameter), leaving no MakeFunc in the call
+path. The materialized `fmt.Fprint(w, "ok")` handler runs in 186 ns
+with zero allocations per call against 68 ns for the identical
+native closure, and against 847 ns and 2 allocations for the same
+body through FuncOf's MakeFunc bridge, medians of three pinned 1s
+runs. The funclit fixture serves a recorded request through a
+ServeMux in 13.3 us and 34 allocations against 9.0 us and 32 for
+the handwritten mirror; the gap is `w.WriteHeader(201)` inside the
+body, an interface method call, which bridges through reflect at 4
+allocations per request while every other call in the fixture is
+direct.
+
 ## 2026-09-19 16:48 +02:00: FuncOf materializes a program as a Go func
 
 `rt.FuncOf[F](src, params...)` wraps a compiled program in a
