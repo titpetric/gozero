@@ -142,37 +142,49 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			p.stmts = append(p.stmts, vmStmt{inc: in})
 			continue
 		}
-		if s.binOp != "" {
+		if s.expr != nil {
 			if len(s.lhs) != 1 {
 				return nil, fmt.Errorf("compile: an operator assigns to exactly one name")
 			}
-			name := s.lhs[0]
-			if err := checkName(name); err != nil {
-				return nil, err
+			expr := spellExpr(*s.expr)
+			lit, folded, err := foldExpr(*s.expr)
+			if err != nil {
+				return nil, fmt.Errorf("compile: %s: %w", expr, err)
 			}
-			if err := checkDecl(name, s.define); err != nil {
-				return nil, err
-			}
-			if s.define {
-				if err := checkNew(s.lhs); err != nil {
+			if folded {
+				// An all-constant tree becomes an ordinary literal
+				// assignment: the branch below types it from the slot,
+				// a var declaration or the first use, with the same
+				// representability checks every literal gets.
+				s.lit, s.expr = &lit, nil
+			} else {
+				name := s.lhs[0]
+				if err := checkName(name); err != nil {
 					return nil, err
 				}
+				if err := checkDecl(name, s.define); err != nil {
+					return nil, err
+				}
+				if s.define {
+					if err := checkNew(s.lhs); err != nil {
+						return nil, err
+					}
+				}
+				en, err := c.compileValueExpr(slots, env, expr, *s.expr)
+				if err != nil {
+					return nil, err
+				}
+				// The result assigns at its own type, so both tiers
+				// store into a slot whose layout is the expression's: a
+				// comparison into an interface slot would need a
+				// conversion neither tier compiles here.
+				if prev, ok := env[name]; ok && prev != en.t {
+					return nil, fmt.Errorf("compile: %s: cannot use %s as %s", name, en.t, prev)
+				}
+				slot := newSlot(name, en.t)
+				p.stmts = append(p.stmts, vmStmt{expr: en, out: []int{slot}})
+				continue
 			}
-			bn, err := c.compileBinop(slots, env, s)
-			if err != nil {
-				return nil, err
-			}
-			// The result assigns at its own type, so both tiers store
-			// into a slot whose layout is the operator's: a comparison
-			// into an interface slot would need a conversion neither
-			// tier compiles here.
-			rt := bn.resultType()
-			if prev, ok := env[name]; ok && prev != rt {
-				return nil, fmt.Errorf("compile: %s: cannot use %s as %s", name, rt, prev)
-			}
-			slot := newSlot(name, rt)
-			p.stmts = append(p.stmts, vmStmt{binop: bn, out: []int{slot}})
-			continue
 		}
 		if s.lit != nil && s.lit.kind == argRecv {
 			// The ok of Go's two-value receive is implicit, like the
@@ -360,9 +372,8 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			p.assignArg(s.send.ch)
 			p.assignArg(s.send.val)
 		}
-		if s.binop != nil {
-			p.assignArg(s.binop.x)
-			p.assignArg(s.binop.y)
+		if s.expr != nil {
+			s.expr.leaves(p.assignArg)
 		}
 	}
 	return p, nil

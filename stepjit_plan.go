@@ -57,12 +57,11 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 			walkArg(s.send.ch)
 			walkArg(s.send.val)
 		}
-		// An operator's operands are slots or constants, never stack
+		// An expression's operands are slots or constants, never stack
 		// reads; the walk keeps the accounting uniform if that rule
 		// ever loosens.
-		if s.binop != nil {
-			walkArg(s.binop.x)
-			walkArg(s.binop.y)
+		if s.expr != nil {
+			s.expr.leaves(walkArg)
 		}
 	}
 	return counts
@@ -92,9 +91,9 @@ type plannedStmt struct {
 	// inc is a step statement, n++ or n--, from vm_inc.go.
 	inc *vmInc
 
-	// binop is an operator assignment, s := a + b, from vm_binop.go;
+	// expr is an operator assignment, s := a + b*c, from vm_expr.go;
 	// its result slot is out.
-	binop *vmBinop
+	expr *vmExpr
 }
 
 // jitPlan is everything planInline works out for the compiler.
@@ -164,8 +163,8 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 			stmts = append(stmts, plannedStmt{inc: s.inc, out: -1})
 			continue
 		}
-		if s.binop != nil {
-			stmts = append(stmts, plannedStmt{binop: s.binop, out: s.out[0]})
+		if s.expr != nil {
+			stmts = append(stmts, plannedStmt{expr: s.expr, out: s.out[0]})
 			continue
 		}
 		if s.lit.IsValid() {
@@ -216,13 +215,12 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 		if s.inc != nil {
 			reads[s.inc.slot]++
 		}
-		// An operator reads both operands, so their producers keep
-		// their slots; the splice loop below only moves a producer
-		// into the next statement's call, and an operator statement
-		// has none, which also stops any splice across it.
-		if s.binop != nil {
-			countArgReads(reads, s.binop.x)
-			countArgReads(reads, s.binop.y)
+		// An expression reads every operand leaf, so their producers
+		// keep their slots; the splice loop below only moves a
+		// producer into the next statement's call, and an expression
+		// statement has none, which also stops any splice across it.
+		if s.expr != nil {
+			s.expr.leaves(func(a *vmArg) { countArgReads(reads, a) })
 		}
 	}
 

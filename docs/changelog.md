@@ -7,6 +7,46 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-19 21:55 +02:00: the full expression grammar
+
+The right side of an assignment now carries the whole expression
+grammar: Go's five binary precedence levels (* / % << >> & &^, then
++ - | ^, then == != < <= > >=, then &&, then ||), unary + - ! ^, and
+parentheses, climbed left-associative per level as Go parses. && and
+|| short-circuit: the right side only runs when the left does not
+decide, which makes ok := n != 0 && 7/n > 1 safe at n == 0 on both
+tiers. Operands stay a program-bound name or a literal, one operator
+position stays the assignment, and every other value position keeps
+its named rejection.
+
+All-constant subtrees fold at compile time in the int64/float64
+domain, so day := 60 * 60 * 24 compiles to one literal typed like
+any literal. Where a 64-bit fold could silently differ from Go's
+exact constant arithmetic, the fold errors instead: division by a
+constant zero, constant overflow past int64 or float64, and a
+negative constant shift are compile errors. Runtime faults are the
+Go runtime's own: a zero divisor and a negative shift count panic
+inside the chosen closure and arrive as *PanicError, pinned to the
+same message on both tiers.
+
+On the direct tier a node is a class combinator: masked arithmetic
+at the width, sign-extended division and shifts, one float32
+rounding per operation, and a chain of string + flattened into one
+build the way the compiler lowers it, so a + b + c allocates once,
+exactly as compiled Go does (TestConcatChainAllocParity). A scalar
+expression program allocates nothing per run
+(TestExprScalarZeroAlloc). The oracle table computes every expected
+value with the same expression in compiled Go and runs both tiers
+against it: wraparound at every width, the most negative value over
+-1, shifts past the width, NaN ordering, float32 rounding.
+
+Measured with the pinned harness: the expr fixture runs 7769 ns/op
+at 15 allocs on the vm against its handwritten mirror's 6487 ns/op
+at 24, the deltas being the same Sprintf and assert boxing the
+pooled packs cover on the vm side, and every existing benchmark
+keeps its allocation count exactly (benchstat, 3 samples each, all
+equal).
+
 ## 2026-09-19 18:38 +02:00: one operator per assignment
 
 The right side of an assignment may combine exactly two values with

@@ -1,0 +1,54 @@
+// expr: the full expression grammar - precedence, parentheses,
+// unary operators, short-circuit logic and constant folding.
+n := 7;
+total := n*3 + 1;
+assert.Equal(tb, "22", fmt.Sprintf("%d", total));
+
+grouped := (n + 3) * 2;
+assert.Equal(tb, "20", fmt.Sprintf("%d", grouped));
+
+neg := -n + 2;
+assert.Equal(tb, "-5", fmt.Sprintf("%d", neg));
+
+inv := ^n;
+assert.Equal(tb, "-8", fmt.Sprintf("%d", inv));
+
+half := n / 2;
+rem := n % 2;
+assert.Equal(tb, "3 1", fmt.Sprintf("%d %d", half, rem));
+
+bits := n&3 | 8;
+assert.Equal(tb, "11", fmt.Sprintf("%d", bits));
+
+sh := n << 2 >> 1;
+assert.Equal(tb, "14", fmt.Sprintf("%d", sh));
+
+// The right side of && only runs when the left does not decide, so
+// the division by zero never happens.
+zero := 0;
+ok := n > 5 && n+1 <= 8;
+assert.True(tb, ok);
+safe := zero != 0 && 7/zero > 1;
+assert.Equal(tb, false, safe);
+no := !ok || safe;
+assert.Equal(tb, false, no);
+
+// An all-constant tree folds at compile time.
+day := 60 * 60 * 24;
+assert.Equal(tb, "86400", fmt.Sprintf("%d", day));
+
+// Arithmetic wraps at the type's width, as compiled Go does.
+var w uint8;
+w = 200;
+wide := w*2 + 1;
+assert.Equal(tb, "145", fmt.Sprintf("%d", wide));
+
+f := 1.5;
+scaled := (f + 0.5) * 2.0;
+assert.Equal(tb, "4", fmt.Sprintf("%v", scaled));
+
+s := "go";
+msg := s + "-" + s;
+assert.Equal(tb, "go-go", msg);
+within := msg >= "go" && msg < "gp";
+assert.True(tb, within);
