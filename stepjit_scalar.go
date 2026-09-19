@@ -26,7 +26,30 @@ type (
 	stII_E    = func(ifacePair, ifacePair) ifacePair
 	stSS_E    = func(string, string) ifacePair
 	stPP_PE   = func(unsafe.Pointer, unsafe.Pointer) (unsafe.Pointer, ifacePair)
+	stIL_i64E = func(ifacePair, sliceHdr) (int64, ifacePair)
 )
+
+// ifaceSliceCountE is the IL_i64E shape: fmt.Fprint and the io.Writer
+// print family - an interface, a variadic pack, a written count
+// nothing usually binds, and the trailing error.
+func ifaceSliceCountE(fptr unsafe.Pointer, a0 nodeI, a1 nodeL) node {
+	f := castFn[stIL_i64E](fptr)
+	return node{class: lI64, N: func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (uint64, error) {
+		i0, err := a0(fr, ctx, st, d)
+		if err != nil {
+			return 0, err
+		}
+		h1, err := a1(fr, ctx, st, d)
+		if err != nil {
+			return 0, err
+		}
+		n, e := f(i0, h1)
+		if err := asError(e); err != nil {
+			return 0, err
+		}
+		return uint64(n), nil
+	}}
+}
 
 // nPE and the helpers beside it are the scalar call families. They are
 // generic over the parameter's Go type so one body covers every width:
