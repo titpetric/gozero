@@ -25,7 +25,14 @@ stmt    := "var" name typeref term
          | path "<-" arg term
          | [ name { "," name } ( ":=" | "=" ) ] rhs term
 ifstmt  := "if" cond block [ "else" ( ifstmt | block ) ] term
-cond    := operand [ cmpop operand ]
+cond    := orexpr
+orexpr  := andexpr { "||" andexpr }
+andexpr := cmpexpr { "&&" cmpexpr }
+cmpexpr := add [ cmpop add ]
+add     := mul { ( "+" | "-" ) mul }
+mul     := unary { ( "*" | "/" | "%" ) unary }
+unary   := "!" unary | primary
+primary := "(" cond ")" | operand
 operand := path | expr | string | number
 cmpop   := "==" | "!=" | "<" | "<=" | ">" | ">="
 block   := "{" { stmt } "}"
@@ -41,11 +48,13 @@ composite := [ "&" ] path "{" [ elem { "," elem } [ "," ] ] "}"
 elem    := [ ident ":" ] arg
 ```
 
-The channel arrow and the six comparison operators are the only
-operators, and a comparison exists only in an `if` header. A value
-is a literal, a name, a field read, a composite literal, a receive,
-or the result of a call; a loop or an arithmetic expression is a Go
-function the host binds ([design/](design/) records why). The end of
+The channel arrow and the `if` header's operators are the only
+operators, and they exist only there: composition with `&&`, `||`
+and `!`, one comparison, and arithmetic operands under Go
+precedence. Everywhere else a value is a literal, a name, a field
+read, a composite literal, a receive, or the result of a call; a
+loop or an expression statement is a Go function the host binds
+([design/](design/) records why). The end of
 a line closes a statement; the semicolon is a delimiter between
 statements sharing one, so both spellings below are the same
 program:
@@ -475,15 +484,17 @@ decompose onto conditions, loops and closures.
 
 ## Conditions
 
-`if`, `else if` and `else` run braced statement lists. The condition
-is a declared bool name, a bool field path, a call returning bool,
-or exactly one comparison: `==`, `!=`, `<`, `<=`, `>` or `>=`
-between two operands, each a name, a field path, a call, or a
-literal. There is no init clause, no `&&` and no nested comparison
-in the header, and the operators do not exist outside it: any other
-position rejects them at parse time with the rule named (comparison
-placement). [design/conditions.md](design/conditions.md) records
-what the fuller forms cost.
+`if`, `else if` and `else` run braced statement lists. The header
+is a boolean expression under Go precedence: `||` over `&&` over one
+comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`) over `+` and `-` over
+`*`, `/` and `%`, with unary `!` and parentheses binding tightest.
+The leaves are declared names, field paths, calls and literals, and
+a bare condition is still a bool name, a bool field path, or a call
+returning bool. There is no init clause, and the operators do not
+exist outside the header: any other position rejects them at parse
+time with the rule named (comparison placement, operator placement).
+[design/conditions.md](design/conditions.md) records what the fuller
+forms cost.
 
 <table>
 <tr>
@@ -577,8 +588,62 @@ argument the way a Go program reads a package constant. Everything
 outside the scalar kinds stays out of the rung and rejects with the
 rule named (comparable scalar): pointers, interfaces, structs and
 `nil` do not compare, mixed static types do not compare (identical
-types), and two literal sides are a constant condition (constant
+types), and two constant sides are a constant condition (constant
 comparison).
+
+`&&` and `||` short-circuit: the right side runs only when the left
+does not decide, so a skipped operand's call never runs and its
+error never surfaces, exactly as in Go. `!` inverts a predicate, and
+parentheses group. Arithmetic operands follow the comparison's
+typing - identical static types, a literal side adopting the other -
+and run on the underlying kind, wrapping at the type's width the way
+Go's own operators do; division truncates toward zero and a runtime
+zero divisor is Go's own panic. An all-constant subexpression folds
+at compile time, and a constant zero divisor rejects there (constant
+division by zero). Arithmetic admits the numeric kinds only, so
+string `+` and bool operands reject (numeric arithmetic), and `%`
+needs integers, all of it Go inside the subset:
+
+<table>
+<tr>
+<th>go</th>
+</tr>
+<tr>
+<td>
+
+```go
+action := "give-up"
+if status == 500 || status == 429 && retries > 0 {
+	action = "retry"
+}
+band := "over"
+if used*2+10 < limit || admin {
+	band = "under"
+}
+```
+
+</td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
+<td>
+
+```go
+action := "give-up"
+if status == 500 || status == 429 && retries > 0 {
+	action = "retry"
+}
+band := "over"
+if used*2+10 < limit || admin {
+	band = "under"
+}
+```
+
+</td>
+</tr>
+</table>
 
 Two rules keep the arms inside the language's contracts, and both
 reject at compile time with the rule named. Flat scope: `var` and
