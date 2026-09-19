@@ -142,6 +142,38 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			p.stmts = append(p.stmts, vmStmt{inc: in})
 			continue
 		}
+		if s.binOp != "" {
+			if len(s.lhs) != 1 {
+				return nil, fmt.Errorf("compile: an operator assigns to exactly one name")
+			}
+			name := s.lhs[0]
+			if err := checkName(name); err != nil {
+				return nil, err
+			}
+			if err := checkDecl(name, s.define); err != nil {
+				return nil, err
+			}
+			if s.define {
+				if err := checkNew(s.lhs); err != nil {
+					return nil, err
+				}
+			}
+			bn, err := c.compileBinop(slots, env, s)
+			if err != nil {
+				return nil, err
+			}
+			// The result assigns at its own type, so both tiers store
+			// into a slot whose layout is the operator's: a comparison
+			// into an interface slot would need a conversion neither
+			// tier compiles here.
+			rt := bn.resultType()
+			if prev, ok := env[name]; ok && prev != rt {
+				return nil, fmt.Errorf("compile: %s: cannot use %s as %s", name, rt, prev)
+			}
+			slot := newSlot(name, rt)
+			p.stmts = append(p.stmts, vmStmt{binop: bn, out: []int{slot}})
+			continue
+		}
 		if s.lit != nil && s.lit.kind == argRecv {
 			// The ok of Go's two-value receive is implicit, like the
 			// trailing error of a call: a closed channel ends the
@@ -327,6 +359,10 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 		if s.send != nil {
 			p.assignArg(s.send.ch)
 			p.assignArg(s.send.val)
+		}
+		if s.binop != nil {
+			p.assignArg(s.binop.x)
+			p.assignArg(s.binop.y)
 		}
 	}
 	return p, nil
