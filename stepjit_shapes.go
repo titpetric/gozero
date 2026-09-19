@@ -2,36 +2,25 @@ package gozero
 
 import (
 	"context"
-	"strings"
 	"unsafe" // also required by go:linkname
 )
 
 // callNode builds the node for one call from the nodes of its
 // arguments, or reports that the shape is outside the table.
 func callNode(key string, fptr unsafe.Pointer, a []node) (node, bool) {
-	if i := strings.IndexByte(key, '_'); i > 0 && len(a) == 2 {
-		if (a[0].class == lStr || a[0].class == lPtr) && a[1].class.scalar() {
-			if n, ok := mixedScalarCall(fptr, a[0].class, key[i+1:], a[0], a[1]); ok {
-				return n, true
-			}
-		}
-	}
-	if i := strings.IndexByte(key, '_'); i > 0 && len(a) == 1 {
-		if a[0].class.scalar() {
-			if n, ok := scalarCall(fptr, a[0].class, key[i+1:], a[0]); ok {
-				return n, true
-			}
-		}
-		if a[0].class == lPtr {
-			if out, ok := classOf(key[i+1:]); ok && out.scalar() {
-				return ptrScalarCall(fptr, out, a[0])
-			}
-		}
+	if n, ok := scalarFamilyCall(key, fptr, a); ok {
+		return n, true
 	}
 	switch key {
 	case "_P":
 		f := castFn[func() unsafe.Pointer](fptr)
 		return node{class: lPtr, P: func(_ unsafe.Pointer, _ context.Context, _ map[string]any, _ any) (unsafe.Pointer, error) {
+			return f(), nil
+		}}, true
+
+	case "_S":
+		f := castFn[func() string](fptr)
+		return node{class: lStr, S: func(_ unsafe.Pointer, _ context.Context, _ map[string]any, _ any) (string, error) {
 			return f(), nil
 		}}, true
 
@@ -52,6 +41,26 @@ func callNode(key string, fptr unsafe.Pointer, a []node) (node, bool) {
 			}
 			f(p0, s1, int64(n2))
 			return nil
+		}}, true
+
+	case "PS_i64E":
+		// bytes.Buffer.WriteString and the other io writers: the count
+		// result travels as i64 and the trailing error is checked here.
+		f, a0, a1 := castFn[stPS_i64E](fptr), a[0].P, a[1].S
+		return node{class: lI64, N: func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (uint64, error) {
+			p0, err := a0(fr, ctx, st, d)
+			if err != nil {
+				return 0, err
+			}
+			s1, err := a1(fr, ctx, st, d)
+			if err != nil {
+				return 0, err
+			}
+			n, e := f(p0, s1)
+			if err := asError(e); err != nil {
+				return 0, err
+			}
+			return uint64(n), nil
 		}}, true
 
 	case "PS_i64":
@@ -417,14 +426,4 @@ func callNode(key string, fptr unsafe.Pointer, a []node) (node, bool) {
 		}}, true
 	}
 	return node{}, false
-}
-
-// classOf is the inverse of layout.String, for reading a shape key.
-func classOf(s string) (layout, bool) {
-	for l := lBool; l <= lF64; l++ {
-		if l.String() == s {
-			return l, true
-		}
-	}
-	return lBad, false
 }
