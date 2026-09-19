@@ -166,6 +166,20 @@ type vmStmt struct {
 	// is a channel send. Both in vm_chan.go.
 	recv *vmRecv
 	send *vmSend
+
+	// ifs is an if statement: the arm the condition picks runs.
+	ifs *vmIf
+}
+
+// vmIf is a compiled if chain: the bool condition and the two arms.
+// An else-if nests as an els list holding a single if statement. The
+// arms hold no declarations and no returns, both rejected at compile
+// time, so the slot namespace is the program's own and running an
+// arm ends only by finishing it or by an error.
+type vmIf struct {
+	cond *vmArg
+	then []vmStmt
+	els  []vmStmt
 }
 
 // fieldStep is one selector of a field-assignment target.
@@ -263,8 +277,17 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 		// settable in place.
 		slots[in.slot] = reflect.New(in.zero.Type()).Elem()
 	}
-	for i := range p.stmts {
-		s := &p.stmts[i]
+	v, _, err := p.runStmts(ctx, slots, frame, ifaces, stack, dest, p.stmts)
+	return v, err
+}
+
+// runStmts executes one statement list. done reports that a return
+// statement ended the program, which lets an if arm's caller stop its
+// own walk; the compiler rejects a return inside an arm, so today the
+// flag only travels up from the top-level list.
+func (p *vmProgram) runStmts(ctx context.Context, slots, frame []reflect.Value, ifaces []ifacePair, stack map[string]any, dest any, stmts []vmStmt) (any, bool, error) {
+	for i := range stmts {
+		s := &stmts[i]
 		if s.lit.IsValid() {
 			slots[s.out[0]] = p.addrCell(s.lit, s.out[0])
 			continue
@@ -272,21 +295,21 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 		if s.assign != nil {
 			v, err := s.assign.get(ctx, slots, frame, ifaces, stack, dest)
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 			slots[s.out[0]] = v
 			continue
 		}
 		if s.fieldSet != nil {
 			if err := s.fieldSet.apply(ctx, slots, frame, ifaces, stack, dest); err != nil {
-				return nil, err
+				return nil, false, err
 			}
 			continue
 		}
 		if s.recv != nil {
 			v, err := s.recv.exec(ctx, slots, frame, ifaces, stack, dest)
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 			if len(s.out) > 0 {
 				slots[s.out[0]] = p.addrCell(v, s.out[0])
@@ -295,26 +318,33 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 		}
 		if s.send != nil {
 			if err := s.send.exec(ctx, slots, frame, ifaces, stack, dest); err != nil {
-				return nil, err
+				return nil, false, err
+			}
+			continue
+		}
+		if s.ifs != nil {
+			v, done, err := p.runIf(ctx, slots, frame, ifaces, stack, dest, s.ifs)
+			if err != nil || done {
+				return v, done, err
 			}
 			continue
 		}
 		if s.retArg != nil {
 			v, err := s.retArg.get(ctx, slots, frame, ifaces, stack, dest)
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 			if !v.IsValid() {
-				return nil, nil
+				return nil, true, nil
 			}
-			return v.Interface(), nil
+			return v.Interface(), true, nil
 		}
 		if s.call == nil {
-			return nil, nil
+			return nil, true, nil
 		}
 		out, err := s.call.invoke(ctx, slots, frame, ifaces, stack, dest)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		n := 0
 		for j := range out {
@@ -328,12 +358,26 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 		}
 		if s.ret {
 			if s.call.nres == 0 {
-				return nil, nil
+				return nil, true, nil
 			}
-			return firstNonErr(out, s.call.errIdx).Interface(), nil
+			return firstNonErr(out, s.call.errIdx).Interface(), true, nil
 		}
 	}
-	return nil, nil
+	return nil, false, nil
+}
+
+// runIf evaluates the condition and runs the arm it picks. A missing
+// else is an empty list, which runs as nothing.
+func (p *vmProgram) runIf(ctx context.Context, slots, frame []reflect.Value, ifaces []ifacePair, stack map[string]any, dest any, n *vmIf) (any, bool, error) {
+	cv, err := n.cond.get(ctx, slots, frame, ifaces, stack, dest)
+	if err != nil {
+		return nil, false, err
+	}
+	arm := n.els
+	if cv.IsValid() && cv.Bool() {
+		arm = n.then
+	}
+	return p.runStmts(ctx, slots, frame, ifaces, stack, dest, arm)
 }
 
 // addrCell stores v into a fresh addressable cell when the slot's

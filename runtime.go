@@ -45,7 +45,7 @@ func (r *Runtime) SetLogger(l *slog.Logger) {
 func NewRuntime() *Runtime {
 	types := predeclared()
 	return &Runtime{
-		compiler: Compiler{bindings: map[string]binding{}, types: types},
+		compiler: Compiler{bindings: map[string]binding{}, types: types, roots: map[string]bool{}},
 		cache:    map[string]CompiledFunc{},
 		types:    types,
 	}
@@ -66,6 +66,11 @@ func (r *Runtime) Bind(name string, fn any) error {
 	}
 	r.mu.Lock()
 	r.compiler.bindings[name] = binding{rv: v, raw: fn}
+	if i := strings.IndexByte(name, '.'); i > 0 {
+		r.compiler.roots[name[:i]] = true
+	} else {
+		r.compiler.roots[name] = true
+	}
 	if r.log != nil {
 		r.log.Debug("bind", "name", name, "signature", v.Type().String())
 	}
