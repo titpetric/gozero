@@ -1,0 +1,21 @@
+// range: a slice range writes each element through the buffer, an
+// integer range drives a counter, and a bare range counts a slice.
+// The loop variable is one flat slot reused per iteration, and every
+// iteration checks the execution context.
+parts := strings.Fields("a b c");
+buf := bytes.NewBufferString("");
+for _, s := range parts {
+	buf.WriteString(s);
+}
+assert.Equal(tb, "abc", buf.String());
+
+c := counter();
+for i := range 4 {
+	c.Add(i);
+}
+assert.Equal(tb, 6, c.Sum());
+
+for range parts {
+	c.Add(1);
+}
+assert.Equal(tb, 9, c.Sum());

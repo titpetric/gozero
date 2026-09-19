@@ -1,0 +1,66 @@
+// loops: every range form the language iterates: a string by rune, a
+// map by key and value with order-independent assertions, iterator
+// funcs through their yield, and channels drained to their close.
+// break exits the innermost loop and continue skips the rest of an
+// iteration; without conditions both fire on the first pass, which is
+// what the counters observe.
+buf := bytes.NewBufferString("");
+for i, r := range "ab£" {
+	buf.WriteString(fmt.Sprintf("%d:%c ", i, r));
+}
+assert.Equal(tb, "0:a 1:b 2:£ ", buf.String());
+
+m := sizes();
+kc := counter();
+for k, v := range m {
+	kc.Add(strlen(k));
+	kc.Add(v);
+}
+assert.Equal(tb, 20, kc.Sum());
+
+lines := bytes.NewBufferString("");
+skips := counter();
+for line := range strings.Lines("one\ntwo\n") {
+	lines.WriteString(line);
+	continue;
+	skips.Add(100);
+}
+assert.Equal(tb, "one\ntwo\n", lines.String());
+assert.Equal(tb, 0, skips.Sum());
+
+parts := strings.Fields("a b c");
+pos := bytes.NewBufferString("");
+for i, s := range slices.All(parts) {
+	pos.WriteString(fmt.Sprintf("%d%s", i, s));
+}
+assert.Equal(tb, "0a1b2c", pos.String());
+
+ch := closedChanOf("x", "y", "z");
+got := bytes.NewBufferString("");
+for s2 := range ch {
+	got.WriteString(s2);
+}
+assert.Equal(tb, "xyz", got.String());
+
+bc := counter();
+for range m {
+	bc.Add(1);
+	break;
+}
+assert.Equal(tb, 1, bc.Sum());
+
+oc := counter();
+for range 3 {
+	for range 5 {
+		oc.Add(1);
+		break;
+	}
+}
+assert.Equal(tb, 3, oc.Sum());
+
+ch2 := closedChanOf("p", "q");
+for range ch2 {
+	break;
+}
+rest := <-ch2;
+assert.Equal(tb, "q", rest);

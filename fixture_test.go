@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -34,7 +35,8 @@ func fixtureRuntime(t *testing.T) *Runtime {
 		"json":    {"NewEncoder": json.NewEncoder},
 		"bytes":   {"NewBufferString": bytes.NewBufferString},
 		"fmt":     {"Sprintf": fmt.Sprintf, "Sprint": fmt.Sprint},
-		"strings": {"Fields": strings.Fields},
+		"strings": {"Fields": strings.Fields, "Lines": strings.Lines},
+		"slices":  {"All": slices.All[[]string]},
 		"path":    {"Join": path.Join},
 		// Equal has no variadic tail, (tb, want, got, message): every
 		// parameter has a shape, so an assertion is a direct call. The
@@ -62,6 +64,21 @@ func fixtureRuntime(t *testing.T) *Runtime {
 	if err := rt.Bind("chanOf", chanOf); err != nil {
 		t.Fatal(err)
 	}
+	// counter hands the range fixture a fresh accumulator per run.
+	if err := rt.Bind("counter", counterNew); err != nil {
+		t.Fatal(err)
+	}
+	// The loops fixture's sources: a fresh map per run, a closed
+	// channel per range, and a length the language cannot take itself.
+	for name, fn := range map[string]any{
+		"sizes":        sizesMap,
+		"strlen":       strLen,
+		"closedChanOf": closedChanOf,
+	} {
+		if err := rt.Bind(name, fn); err != nil {
+			t.Fatal(err)
+		}
+	}
 	return rt
 }
 
@@ -74,6 +91,42 @@ func chanOf(vs ...string) chan string {
 	}
 	return c
 }
+
+// closedChanOf builds a buffered channel already holding its values
+// and closed: the source a channel range drains to its end.
+func closedChanOf(vs ...string) chan string {
+	c := make(chan string, len(vs))
+	for _, v := range vs {
+		c <- v
+	}
+	close(c)
+	return c
+}
+
+// sizesMap hands the loops fixture a fresh map per run, so iterations
+// of the benchmark do not share one.
+func sizesMap() map[string]int64 {
+	return map[string]int64{"alpha": 1, "beta": 2, "gamma": 3}
+}
+
+// strLen measures a string where the language has no len, so a map
+// key contributes an order-independent fact to an assertion.
+func strLen(s string) int64 { return int64(len(s)) }
+
+// fixtureCounter is the accumulator the range fixture drives. A run
+// creates its own through the counter binding, so benchmark
+// iterations do not share state.
+type fixtureCounter struct{ n int64 }
+
+// Add returns a nil error so the method has a shape the direct tier
+// calls.
+func (c *fixtureCounter) Add(d int64) error { c.n += d; return nil }
+
+// Sum reports the accumulated total.
+func (c *fixtureCounter) Sum() int64 { return c.n }
+
+// counterNew is the counter binding of the range fixture.
+func counterNew() *fixtureCounter { return &fixtureCounter{} }
 
 // TestFixtures runs every testdata/*.txt program as a subtest. A
 // fixture asserts its own results through the tb it is handed; this
