@@ -3,6 +3,7 @@ package gozero
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"unsafe" // also required by go:linkname
 )
 
@@ -16,11 +17,16 @@ import (
 // keeps the MakeFunc value the program compiler built and is recorded
 // as bridged, exactly as an out-of-table call is.
 
-// funcLitNode compiles a func literal constant into the node yielding
-// its funcval pointer. The pointer is constant; the closure it names
-// stays reachable through the node.
+// funcLitNode compiles a func literal into the node yielding its
+// funcval pointer. A capture-free literal's pointer is constant and
+// the closure it names stays reachable through the node; a capturing
+// literal's closure closes over this run's frame and is built per
+// evaluation, in funcLitCapNode.
 func (c *jitCompiler) funcLitNode(a *vmArg) (node, error) {
 	fl := a.funclit
+	if len(fl.capOuter) > 0 {
+		return c.funcLitCapNode(fl)
+	}
 	fn, bridged, why := funcLitClosure(fl)
 	switch {
 	case fn == nil:
@@ -38,6 +44,89 @@ func (c *jitCompiler) funcLitNode(a *vmArg) (node, error) {
 		_ = keep
 		return ptr, nil
 	}}, nil
+}
+
+// funcLitCapNode compiles a capturing literal. The captured cells are
+// this run's frame slots, so the frame escapes into the closure and
+// the program's frame pool turns off for good: that is the rung's
+// stated cost, one frame allocation per run that pooling previously
+// removed. The closure itself is one more allocation per run, the
+// same one the Go compiler emits for an escaping literal.
+//
+// When the body lowers and the signature is in the closure table, the
+// per-run value is an ordinary Go closure over the capBody and the
+// frame pointer: no reflect anywhere. Otherwise the literal keeps the
+// MakeFunc materialization, its cells built with reflect.NewAt over
+// the same frame slots, so capture stays write-through across the
+// bridge.
+func (c *jitCompiler) funcLitCapNode(fl *vmFuncLit) (node, error) {
+	c.frameEscapes = true
+	offs := make([]uintptr, len(fl.capOuter))
+	for i, slot := range fl.capOuter {
+		field, ok := c.slotOf[slot]
+		if !ok {
+			// The captured name has no frame field here: it is itself a
+			// capture of a farther scope, which one capBase hop cannot
+			// address. The program declines and the reflect evaluator
+			// keeps the chain.
+			return node{}, fmt.Errorf("%s: a capture of a captured name stays on the reflect tier", fl.name)
+		}
+		offs[i] = c.offs[field]
+	}
+
+	capOffs := map[int]uintptr{}
+	for i, slot := range fl.capLocal {
+		capOffs[slot] = offs[i]
+	}
+	cb, bridged, why := capLitClosure(capOffs, fl)
+	if cb != nil {
+		for _, b := range bridged {
+			c.bridged = append(c.bridged, fmt.Sprintf("%s: func literal body: %s", fl.name, b))
+		}
+		return node{class: lPtr, P: func(fr unsafe.Pointer, _ context.Context, _ map[string]any, _ any) (unsafe.Pointer, error) {
+			return funcPtr(capClosure(fr, cb)), nil
+		}}, nil
+	}
+
+	c.bridged = append(c.bridged, fmt.Sprintf("%s: func literal (%s)", fl.name, why))
+	types, body, plan := fl.capTypes, fl.body, fl.plan
+	return node{class: lPtr, P: func(fr unsafe.Pointer, _ context.Context, _ map[string]any, _ any) (unsafe.Pointer, error) {
+		env := make([]reflect.Value, len(offs))
+		for i, off := range offs {
+			env[i] = reflect.NewAt(types[i], unsafe.Add(fr, off)).Elem()
+		}
+		fv := plan.bind(func(ctx context.Context, args []reflect.Value) (any, error) {
+			return body.runWithEnv(ctx, args, env, nil, nil)
+		})
+		return funcPtr(fv.Interface()), nil
+	}}, nil
+}
+
+// capLitClosure builds the compile-time half of the direct capturing
+// closure, or reports why the literal stays on the MakeFunc bridge.
+func capLitClosure(capOffs map[int]uintptr, fl *vmFuncLit) (cb *capBody, bridged []string, why string) {
+	ft := fl.ft
+	if ft.NumOut() > 0 {
+		return nil, nil, "a result stays on the MakeFunc bridge"
+	}
+	for i := 0; i < ft.NumIn(); i++ {
+		if ft.In(i) == ctxType {
+			return nil, nil, "a context.Context parameter stays on the MakeFunc bridge"
+		}
+	}
+	key := ""
+	for i := 0; i < ft.NumIn(); i++ {
+		key += layoutOf(ft.In(i)).String()
+	}
+	key += "_"
+	jp, err := jitCompileWith(capOffs, fl.body)
+	if err != nil {
+		return nil, nil, fmt.Sprintf("the body stays on the reflect tier: %v", err)
+	}
+	if capClosure(nil, &capBody{jp: jp, key: key}) == nil {
+		return nil, nil, fmt.Sprintf("signature shape %q is not in the closure table", key)
+	}
+	return &capBody{jp: jp, key: key}, jp.bridged, ""
 }
 
 // funcLitClosure builds the direct closure over the body, or reports

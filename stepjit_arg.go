@@ -25,6 +25,9 @@ func (c *jitCompiler) argNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 		return node{}, fmt.Errorf("a %s result cannot fill a %s parameter", sub.class, cl)
 
 	case vaSlot:
+		if n, handled, err := c.capSlotArg(a, pt, cl); handled {
+			return n, err
+		}
 		if a.addrOf {
 			// The frame is the variable's storage, so the address of a
 			// name is an offset from the frame pointer: no load at all.
@@ -96,7 +99,7 @@ func (c *jitCompiler) argNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 		}
 		return slotNode(cl, off), nil
 
-	case vaConst:
+	case vaConst, vaFuncLit:
 		if a.funclit != nil {
 			return c.funcLitNode(a)
 		}
@@ -161,13 +164,17 @@ func (c *jitCompiler) fieldNode(a *vmArg, pt reflect.Type, cl layout) (node, err
 			return unsafe.Add(p, off), nil
 		}
 	case !a.deref && a.src.kind == vaSlot && srcType != nil && srcType.Kind() == reflect.Struct:
+		sf = srcType.Field(a.index[0])
+		if l, ok := c.capFieldLoad(a.src.slot, sf.Offset); ok {
+			load = l
+			break
+		}
 		// The struct lives in the frame, so the field is at a fixed
 		// offset from the frame pointer: no load, no nil to check.
 		field, ok := c.slotOf[a.src.slot]
 		if !ok {
 			return node{}, fmt.Errorf("a field source has no slot")
 		}
-		sf = srcType.Field(a.index[0])
 		at := c.offs[field] + sf.Offset
 		load = func(fr unsafe.Pointer, _ context.Context, _ map[string]any, _ any) (unsafe.Pointer, error) {
 			return unsafe.Add(fr, at), nil
@@ -444,18 +451,3 @@ var stackScalarConvs = map[reflect.Type]func(any) (uint64, float64, bool){
 	},
 }
 
-// callResultType is the static type of a call's i'th non-error result.
-func callResultType(c *vmCall, i int) reflect.Type {
-	ft := c.fn.Type()
-	n := 0
-	for j := 0; j < ft.NumOut(); j++ {
-		if j == c.errIdx {
-			continue
-		}
-		if n == i {
-			return ft.Out(j)
-		}
-		n++
-	}
-	return nil
-}

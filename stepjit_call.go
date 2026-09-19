@@ -302,6 +302,9 @@ func (c *jitCompiler) bridgeArg(a *vmArg) (func(unsafe.Pointer, context.Context,
 			}
 			return c.nodeToValue(callResultType(producer, 0), sub)
 		}
+		if g, handled, err := c.capBridgeArg(a); handled {
+			return g, err
+		}
 		field, ok := c.slotOf[a.slot]
 		if !ok {
 			return nil, fmt.Errorf("a bridged name has no slot")
@@ -362,6 +365,15 @@ func (c *jitCompiler) bridgeArg(a *vmArg) (func(unsafe.Pointer, context.Context,
 			return nil, err
 		}
 		return c.nodeToValue(a.typ, fieldNode)
+
+	case vaFuncLit:
+		// A capturing literal handed to a bridged call: the funcval
+		// pointer the node yields, rewrapped as a typed func value.
+		n, err := c.funcLitNode(a)
+		if err != nil {
+			return nil, err
+		}
+		return c.nodeToValue(a.typ, n)
 
 	case vaStruct:
 		// The literal builds directly and the bridge reads the block in

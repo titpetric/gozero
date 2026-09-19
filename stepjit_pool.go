@@ -174,6 +174,22 @@ func (c *jitCompiler) argBoxesString(a *vmArg) bool {
 
 var anyType = reflect.TypeFor[any]()
 
+// callResultType is the static type of a call's i'th non-error result.
+func callResultType(c *vmCall, i int) reflect.Type {
+	ft := c.fn.Type()
+	n := 0
+	for j := 0; j < ft.NumOut(); j++ {
+		if j == c.errIdx {
+			continue
+		}
+		if n == i {
+			return ft.Out(j)
+		}
+		n++
+	}
+	return nil
+}
+
 // armStrBox hands the argument's string-box site to the next toIface
 // call, which is made immediately by the caller. See pendingStrBox.
 func (c *jitCompiler) armStrBox(a *vmArg) {

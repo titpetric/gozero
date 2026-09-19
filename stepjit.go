@@ -139,6 +139,15 @@ type jitProgram struct {
 	// parameters, in signature order. The closure built over the body
 	// stores the incoming words here before the first statement.
 	paramOffs []uintptr
+
+	// capBase is the offset of the hidden field holding the enclosing
+	// run's frame pointer, for a body that captures. Every captured
+	// access loads it and adds the captured slot's enclosing offset,
+	// so reads see the enclosing program's later writes and writes go
+	// through the shared cell. hasCaps arms it: a body without
+	// captures never stores the pointer.
+	capBase uintptr
+	hasCaps bool
 }
 
 func (p *jitProgram) run(ctx context.Context, stack map[string]any, dest any) (any, error) {
@@ -252,12 +261,29 @@ type jitCompiler struct {
 	// map lookup, which means the name is read once per execution: a
 	// binding that mutates the stack mid-run is not seen by later uses.
 	stackFields map[string]int
+	// capOffs maps a captured slot of a func literal body to its
+	// offset in the ENCLOSING frame; capType carries its static type
+	// and capBase the body-frame field holding the enclosing frame
+	// pointer. Captured slots own no field of their own: every access
+	// is one indirection through capBase.
+	capOffs map[int]uintptr
+	capType map[int]reflect.Type
+	capBase uintptr
 }
 
 // jitCompileProgram builds the all-JIT form of a compiled program, or
 // returns the reason it cannot. The error is what Runtime.Supports
 // reports, so it names the call and the shape that stopped it.
 func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
+	return jitCompileWith(nil, p)
+}
+
+// jitCompileWith is jitCompileProgram for a func literal body whose
+// captured slots live in the enclosing frame: capOffs maps each one
+// to its enclosing offset, keyed by the body's own slot. The captured
+// slots get no field here; a hidden capBase field holds the enclosing
+// frame pointer and every captured access indirects through it.
+func jitCompileWith(capOffs map[int]uintptr, p *vmProgram) (*jitProgram, error) {
 	if p.polymorphic {
 		return nil, fmt.Errorf("a name is reassigned at a different type")
 	}
@@ -272,9 +298,16 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 		splices: plan.splices, stackFields: map[string]int{},
 		packOf:  map[*vmCall]*sitePool{},
 		blockOf: map[*vmArg]*sitePool{}, strboxOf: map[*vmArg]*sitePool{},
+		capOffs: capOffs, capType: map[int]reflect.Type{},
+	}
+	for slot := range capOffs {
+		c.capType[slot] = p.slotTypes[slot]
 	}
 	for slot := 0; slot < p.nslots; slot++ {
 		if !plan.live[slot] {
+			continue
+		}
+		if _, isCap := capOffs[slot]; isCap {
 			continue
 		}
 		t := p.slotTypes[slot]
@@ -309,6 +342,15 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 	// fields before the frame is laid out.
 	c.planPools(plan)
 
+	// The hidden field the enclosing frame pointer arrives in; an
+	// unsafe.Pointer field, so the collector keeps the enclosing frame
+	// alive as long as any body frame holds it.
+	capField := -1
+	if len(capOffs) > 0 {
+		capField = len(c.types)
+		c.types = append(c.types, reflect.TypeFor[unsafe.Pointer]())
+	}
+
 	jp := &jitProgram{}
 	if len(c.types) > 0 {
 		fields := make([]reflect.StructField, len(c.types))
@@ -321,6 +363,10 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 		for i := range c.types {
 			c.offs[i] = jp.frameType.Field(i).Offset
 		}
+	}
+	if capField >= 0 {
+		c.capBase = c.offs[capField]
+		jp.capBase, jp.hasCaps = c.capBase, true
 	}
 
 	// A parameter slot is always live, so the lookup cannot miss; the

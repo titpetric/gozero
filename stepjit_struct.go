@@ -216,6 +216,11 @@ func (c *jitCompiler) structArgNode(a *vmArg, pt reflect.Type, cl layout) (node,
 // result of their class.
 func (c *jitCompiler) structAssignNode(s plannedStmt) (nodeE, error) {
 	a := s.assign
+	if _, isCap := c.capOffs[s.out]; isCap {
+		// A composite literal assigned to a captured name would need
+		// the cell-aware fill; the body stays on the reflect tier.
+		return nil, fmt.Errorf("a composite literal assigned to a captured name stays on the reflect tier")
+	}
 	field, ok := c.slotOf[s.out]
 	if !ok {
 		// Nothing reads the name, but the element calls still run and
