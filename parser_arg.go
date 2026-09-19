@@ -61,6 +61,9 @@ func (p *Parser) args() ([]arg, error) {
 			return out, nil
 		}
 		if len(out) > 0 && !p.consume(',') {
+			if op := p.peekBinOp(); op != "" {
+				return nil, fmt.Errorf("parse: an operator expression cannot be an argument, assign it to a name first")
+			}
 			return nil, fmt.Errorf("parse: expected ',' or ')' at offset %d", p.pos)
 		}
 		a, err := p.arg()
@@ -128,6 +131,11 @@ func (p *Parser) arg() (arg, error) {
 			p.consume('{')
 			return p.composite(path, false)
 		}
+		// Go's IncDecStmt produces no value, so "x++" cannot stand in
+		// an argument, on the right of an assignment, or after return.
+		if delta := p.consumeIncDec(); delta != 0 {
+			return arg{}, fmt.Errorf("parse: %s%s is a statement, not a value", joinPath(path), incDecOp(delta))
+		}
 		if len(path) != 1 {
 			return arg{kind: argPath, path: path}, nil
 		}
@@ -159,6 +167,9 @@ func (p *Parser) composite(path []string, addr bool) (arg, error) {
 			return a, nil
 		}
 		if len(a.elems) > 0 && !p.consume(',') {
+			if op := p.peekBinOp(); op != "" {
+				return arg{}, fmt.Errorf("parse: an operator expression cannot be an element, assign it to a name first")
+			}
 			return arg{}, fmt.Errorf("parse: expected ',' or '}' at offset %d", p.pos)
 		}
 		if p.consume('}') {

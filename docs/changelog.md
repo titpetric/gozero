@@ -7,6 +7,34 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-19 23:35 +02:00: expressions through go/parser, constants through go/types
+
+The right side of an assignment is now a Go expression. Instead of a
+hand-written operator grammar, the parser routes it to
+go/parser.ParseExpr and folds every constant subtree with types.Eval,
+so untyped-constant arithmetic, precedence, parentheses and the
+constant faults (division by zero, mismatched types, shift rules) are
+the Go compiler's own. `1<<70 / (1 << 65)` folds to 32 with the
+intermediate held exact, and `0.1 + 0.2` folds to float64(0.3), one
+rounding, exactly as compiled Go folds both. A fold lands at int64 or
+float64 width with a named overflow error.
+
+What runs is unchanged from the one-operator surface: `n++` and
+`n--`, and one `+`, `==` or `!=` per assignment between bound names
+and folded literals, on both tiers. Every other operator is rejected
+by name as constant-only, and operand leaves stay names and
+constants: calls, fields, composites, receives and nil are named
+rejections.
+
+Measured pinned to one core with inlining off: the fold fixture runs
+3746ns and 5 allocs against its native mirror at 2861ns and 9, incdec
+3969ns and 7 against 3161ns and 14, concat 2823ns and 4 against
+2276ns and 6. A folded program is literals by compile time and pins
+at 0 allocs per run on the direct tier (TestFoldedProgramZeroAlloc);
+scalar operators and steps stay at 0. benchstat over the locked base
+and final runs shows every pre-existing benchmark's allocs/op all
+equal (p=1.000 n=3).
+
 ## 2026-09-10 16:58 +02:00: argument pooling under the binding contract
 
 Arguments are borrowed. A binding receives values that are valid for

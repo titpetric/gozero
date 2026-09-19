@@ -1,0 +1,29 @@
+// concat: one operator per assignment, building strings Go-style
+// and comparing values.
+first := "Ada";
+last := "Lovelace";
+full := first + " ";
+full = full + last;
+assert.Equal(tb, "Ada Lovelace", full);
+
+ok := full == "Ada Lovelace";
+assert.True(tb, ok);
+
+diff := first != last;
+assert.True(tb, diff);
+
+n := 40;
+m := n + 2;
+assert.Equal(tb, "42", fmt.Sprintf("%d", m));
+
+// The sum wraps at the type's width, as compiled Go does.
+var w uint8;
+w = 255;
+z := w + 1;
+assert.Equal(tb, "0", fmt.Sprintf("%d", z));
+
+hit := m == 42;
+assert.True(tb, hit);
+
+missed := z != 0;
+assert.Equal(tb, false, missed);

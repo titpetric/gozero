@@ -1,0 +1,31 @@
+// fold: constant expressions fold at parse time through go/parser,
+// go/types and go/constant, with the Go compiler's own arithmetic.
+secs := 3*60 + 15;
+assert.Equal(tb, "195", fmt.Sprintf("%d", secs));
+
+// The intermediate exceeds int64; go/constant keeps it exact.
+big := 1<<70 / (1 << 65);
+assert.Equal(tb, "32", fmt.Sprintf("%d", big));
+
+// Constant float arithmetic is exact rationals rounded once, so the
+// fold equals float64(0.3), as it does in compiled Go.
+tenth := 0.1 + 0.2;
+hit := tenth == 0.3;
+assert.True(tb, hit);
+
+msg := "a" + "-" + "b";
+assert.Equal(tb, "a-b", msg);
+
+neg := -(3 - 5);
+assert.Equal(tb, "2", fmt.Sprintf("%d", neg));
+
+mask := (1<<8 - 1) ^ 240;
+assert.Equal(tb, "15", fmt.Sprintf("%d", mask));
+
+in := 10%3 == 1 && 7 > 2;
+assert.True(tb, in);
+
+// A folded subtree feeds the one runtime operator like any literal.
+n := 40;
+m := n + 2*1;
+assert.Equal(tb, "42", fmt.Sprintf("%d", m));

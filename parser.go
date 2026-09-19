@@ -4,16 +4,25 @@ import (
 	"fmt"
 )
 
-// The grammar has no operators: a statement is a call, and every value
-// is a literal, a name, or the result of another call.
+// The grammar has one operator position: the right side of an
+// assignment may be a Go expression, handed to go/parser instead of a
+// hand-written operator grammar. A constant expression folds to its
+// value at parse time through go/types and go/constant, at any depth
+// and with Go's own untyped-constant arithmetic; what remains at run
+// time is exactly one operator, +, == or !=, between a bound name and
+// a value. Every other value position stays operator-free. The
+// routing and folding live in parser_goexpr.go.
 //
 //	program := { stmt }
 //	stmt    := "var" name typeref term
 //	         | "return" [ arg ] term
 //	         | path "<-" arg term
+//	         | name ( "++" | "--" ) term
 //	         | [ name { "," name } ( ":=" | "=" ) ] rhs term
 //	term    := ";" | EOL | EOF
-//	rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv
+//	rhs     := goexpr | expr | string | number | "true" | "false" | "nil" | composite | recv
+//	goexpr  := a Go expression (go/parser); folds when constant,
+//	           otherwise one of +, == or != over names and constants
 //	typeref := { "*" | "[]" | "chan" | "chan<-" | "<-chan" } path
 //	expr    := path "(" [ args ] ")" { "." ident "(" [ args ] ")" }
 //	path    := ident { "." ident }
@@ -150,6 +159,23 @@ type stmt struct {
 	// names the channel the way fieldLhs names a field target.
 	sendCh  []string
 	sendVal *arg
+
+	// incName and incDelta are a step statement, "n++;" or "n--;",
+	// the name and the step. Go's IncDecStmt is a statement rather
+	// than an expression, which is what lets it into a grammar with
+	// no operators: it produces no value, so no expression tree
+	// grows around it.
+	incName  string
+	incDelta int64
+
+	// binOp, binX and binY are an operator assignment,
+	// "s := a + b;". The operands stay flat args rather than a tree:
+	// go/parser reads the whole right side, constant subtrees fold to
+	// literal args at parse time, and what remains is one runtime
+	// operator over two flat operands.
+	binOp string
+	binX  *arg
+	binY  *arg
 }
 
 // program is a parsed source unit.
@@ -237,11 +263,34 @@ func (p *Parser) stmt() (stmt, error) {
 				s.retVal = &a
 			}
 		}
+		if op := p.peekBinOp(); op != "" {
+			return s, fmt.Errorf("parse: an operator expression cannot be returned, assign it to a name first")
+		}
 		if !p.terminated() {
 			return s, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
 		}
 		return s, nil
 	}
+
+	// A name followed by "++" or "--" on the same line is a step
+	// statement. It is sniffed before the field assignment because
+	// both start with a path; a dotted target is rejected by name,
+	// since only a program-bound name has a slot to step.
+	incSave, incNL := p.pos, p.nl
+	if p.ident() != "" {
+		p.pos, p.nl = incSave, incNL
+		path, _ := p.path()
+		if delta := p.consumeIncDec(); delta != 0 {
+			if len(path) != 1 {
+				return stmt{}, fmt.Errorf("parse: %s%s: ++ and -- step a name, not a field", joinPath(path), incDecOp(delta))
+			}
+			if !p.terminated() {
+				return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
+			}
+			return stmt{incName: path[0], incDelta: delta}, nil
+		}
+	}
+	p.pos, p.nl = incSave, incNL
 
 	// A dotted path followed by a single "=" is a field assignment.
 	// It is sniffed before the assignment list, which only reads bare
@@ -257,6 +306,9 @@ func (p *Parser) stmt() (stmt, error) {
 				a, err := p.arg()
 				if err != nil {
 					return stmt{}, err
+				}
+				if op := p.peekBinOp(); op != "" {
+					return stmt{}, fmt.Errorf("parse: an operator expression cannot be assigned to a field, assign it to a name first")
 				}
 				if a.kind == argVar || a.kind == argPath {
 					return stmt{}, fmt.Errorf("parse: cannot assign a name to a field at offset %d", p.pos)
@@ -285,6 +337,9 @@ func (p *Parser) stmt() (stmt, error) {
 			v, err := p.arg()
 			if err != nil {
 				return stmt{}, err
+			}
+			if op := p.peekBinOp(); op != "" {
+				return stmt{}, fmt.Errorf("parse: an operator expression cannot be sent, assign it to a name first")
 			}
 			if !p.terminated() {
 				return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
@@ -317,23 +372,52 @@ func (p *Parser) stmt() (stmt, error) {
 		lhs, define = nil, false
 	}
 
-	// The right-hand side is one arg: a call is the statement, a
-	// literal assigns, and a bare name is rejected here with its own
-	// message rather than surfacing as "expected '('".
+	// The right-hand side is one arg, or a Go expression: a call is
+	// the statement, a literal assigns, and a bare name is rejected
+	// here with its own message rather than surfacing as "expected
+	// '('".
 	if len(lhs) > 0 {
+		rhsPos, rhsNL := p.pos, p.nl
+		first := p.peek()
+		// A right side that opens a group, a unary operator or a raw
+		// string is an expression whole: the arg grammar has no
+		// production for any of them.
+		if first == '(' || first == '!' || first == '^' || first == '`' {
+			return p.goExprStmt(lhs, define)
+		}
 		save := p.pos
 		a, err := p.arg()
 		if err != nil {
+			// A right side the arg grammar cannot read may still be an
+			// expression: -(2 + 3) reads as a number and fails at '(',
+			// and "\x41" carries an escape only Go strings spell.
+			if first == '-' || first == '+' || first == '"' {
+				p.pos, p.nl = rhsPos, rhsNL
+				return p.goExprStmt(lhs, define)
+			}
 			return stmt{}, err
+		}
+		if op := p.peekBinOp(); op != "" {
+			p.pos, p.nl = rhsPos, rhsNL
+			return p.goExprStmt(lhs, define)
 		}
 		switch a.kind {
 		case argCall:
 			p.pos = save
 		case argVar, argPath:
+			if !p.terminated() {
+				// A name followed by more of the line, "xs[0] + 1",
+				// may be an expression the arg grammar cannot read.
+				p.pos, p.nl = rhsPos, rhsNL
+				return p.goExprStmt(lhs, define)
+			}
 			return stmt{}, fmt.Errorf("parse: cannot assign a name to a name at offset %d", save)
 		default:
 			if !p.terminated() {
-				return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
+				// A literal the arg grammar read only half of, "0xF0"
+				// or "1e308 * 10.0", may still be a Go expression.
+				p.pos, p.nl = rhsPos, rhsNL
+				return p.goExprStmt(lhs, define)
 			}
 			return stmt{lhs: lhs, define: define, lit: &a}, nil
 		}

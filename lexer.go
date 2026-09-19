@@ -3,6 +3,7 @@ package gozero
 import (
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 func joinPath(path []string) string {
@@ -156,6 +157,71 @@ func (p *Parser) consumeStr(s string) bool {
 	p.pos = end
 	p.nl = false
 	return true
+}
+
+// consumeIncDec consumes "++" or "--" when it follows on the same
+// line, reporting the step as +1 or -1, and 0 when neither is there.
+// A newline is a statement end, so the scan does not cross one: that
+// would join two statements the source separated.
+func (p *Parser) consumeIncDec() int64 {
+	save, saveNL := p.pos, p.nl
+	p.skipSpace()
+	if !p.nl && p.pos+1 < len(p.src) {
+		if p.src[p.pos] == '+' && p.src[p.pos+1] == '+' {
+			p.pos += 2
+			p.nl = false
+			return 1
+		}
+		if p.src[p.pos] == '-' && p.src[p.pos+1] == '-' {
+			p.pos += 2
+			p.nl = false
+			return -1
+		}
+	}
+	p.pos, p.nl = save, saveNL
+	return 0
+}
+
+// binOps is every spelling that reads as a Go binary operator between
+// two values, longest first so maximal munch keeps the two-byte forms
+// whole. The parser recognizes them all so an unsupported one is
+// rejected by name; the assignment grammar accepts only +, == and !=.
+var binOps = []string{
+	"<<", ">>", "<=", ">=", "==", "!=", "&&", "||", "&^",
+	"+", "-", "*", "/", "%", "&", "|", "^", "<", ">",
+}
+
+// peekBinOp reports the binary operator at the current position
+// without consuming it, or "" when the next bytes are not one. The
+// scan does not cross a newline: a line end closes a statement, so an
+// operator on the next line belongs to nothing. "<-" is a send or a
+// receive, "++" and "--" are steps, and "=" is an assignment; none of
+// them read as operators.
+func (p *Parser) peekBinOp() string {
+	save, saveNL := p.pos, p.nl
+	defer func() { p.pos, p.nl = save, saveNL }()
+	p.skipSpace()
+	if p.nl || p.pos >= len(p.src) {
+		return ""
+	}
+	rest := p.src[p.pos:]
+	if strings.HasPrefix(rest, "<-") || strings.HasPrefix(rest, "++") || strings.HasPrefix(rest, "--") {
+		return ""
+	}
+	for _, op := range binOps {
+		if strings.HasPrefix(rest, op) {
+			return op
+		}
+	}
+	return ""
+}
+
+// incDecOp spells the operator a step statement was written with.
+func incDecOp(delta int64) string {
+	if delta < 0 {
+		return "--"
+	}
+	return "++"
 }
 
 // peek returns the next non-space byte without consuming it, or 0 at

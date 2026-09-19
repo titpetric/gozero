@@ -158,6 +158,94 @@ func (f *testFixtures) testStructs(tb testing.TB) {
 	assertEqual(tb, "https://h/m", m.String(), "")
 }
 
+func (f *testFixtures) testIncDec(tb testing.TB) {
+	var n int64
+	n = 7
+	n++
+	n++
+	n--
+	assertEqual(tb, "8", fmt.Sprintf("%d", n), "")
+
+	var c int32
+	c = 41
+	c++
+	assertEqual(tb, "42", fmt.Sprintf("%d", c), "")
+	assertEqual(tb, "int32", fmt.Sprintf("%T", c), "")
+
+	var b uint8
+	b = 255
+	b++
+	assertEqual(tb, "0", fmt.Sprintf("%d", b), "")
+	b--
+	assertEqual(tb, "255", fmt.Sprintf("%d", b), "")
+
+	x := 2.5
+	x++
+	assertEqual(tb, "3.5", fmt.Sprintf("%v", x), "")
+	x--
+	x--
+	assertEqual(tb, "1.5", fmt.Sprintf("%v", x), "")
+}
+
+func (f *testFixtures) testConcat(tb testing.TB) {
+	first := "Ada"
+	last := "Lovelace"
+	full := first + " "
+	full = full + last
+	assertEqual(tb, "Ada Lovelace", full, "")
+
+	ok := full == "Ada Lovelace"
+	assertTrue(tb, ok, "")
+
+	diff := first != last
+	assertTrue(tb, diff, "")
+
+	var n int64
+	n = 40
+	m := n + 2
+	assertEqual(tb, "42", fmt.Sprintf("%d", m), "")
+
+	var w uint8
+	w = 255
+	z := w + 1
+	assertEqual(tb, "0", fmt.Sprintf("%d", z), "")
+
+	hit := m == 42
+	assertTrue(tb, hit, "")
+
+	missed := z != 0
+	assertEqual(tb, false, missed, "")
+}
+
+func (f *testFixtures) testFold(tb testing.TB) {
+	secs := 3*60 + 15
+	assertEqual(tb, "195", fmt.Sprintf("%d", secs), "")
+
+	big := 1 << 70 / (1 << 65)
+	assertEqual(tb, "32", fmt.Sprintf("%d", big), "")
+
+	tenth := 0.1 + 0.2
+	hit := tenth == 0.3
+	assertTrue(tb, hit, "")
+
+	msg := "a" + "-" + "b"
+	assertEqual(tb, "a-b", msg, "")
+
+	neg := -(3 - 5)
+	assertEqual(tb, "2", fmt.Sprintf("%d", neg), "")
+
+	mask := (1<<8 - 1) ^ 240
+	assertEqual(tb, "15", fmt.Sprintf("%d", mask), "")
+
+	in := 10%3 == 1 && 7 > 2
+	assertTrue(tb, in, "")
+
+	var n int64
+	n = 40
+	m := n + 2*1
+	assertEqual(tb, "42", fmt.Sprintf("%d", m), "")
+}
+
 func (f *testFixtures) testVariadic(tb testing.TB) {
 	parts := strings.Fields("a b c")
 	joined := path.Join(parts...)
@@ -194,6 +282,9 @@ func BenchmarkFixtures(b *testing.B) {
 		"fmt":      (*testFixtures).testFmt,
 		"structs":  (*testFixtures).testStructs,
 		"types":    (*testFixtures).testTypes,
+		"incdec":   (*testFixtures).testIncDec,
+		"concat":   (*testFixtures).testConcat,
+		"fold":     (*testFixtures).testFold,
 		"variadic": (*testFixtures).testVariadic,
 		"channels": (*testFixtures).testChannels,
 	}
