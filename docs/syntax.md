@@ -22,10 +22,14 @@ program := { stmt }
 stmt    := "var" name typeref term
          | "return" [ arg ] term
          | "for" [ name [ "," name ] ":=" ] "range" arg block term
+         | "for" cond block term
+         | "for" name ":=" arg ";" arg relop arg ";" name ( "++" | "--" ) block term
          | "break" term
          | "continue" term
          | path "<-" arg term
          | [ name { "," name } ( ":=" | "=" ) ] rhs term
+cond    := path | expr
+relop   := "==" | "!=" | "<" | "<=" | ">" | ">="
 block   := "{" { stmt } "}"
 term    := ";" | EOL | EOF
 rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv
@@ -39,15 +43,21 @@ composite := [ "&" ] path "{" [ elem { "," elem } [ "," ] ] "}"
 elem    := [ ident ":" ] arg
 ```
 
-The channel arrow is the only operator. A value is a literal, a
-name, a field read, a composite literal, a receive, or the result of
-a call; a condition or an arithmetic expression is a Go function the
-host binds ([design/](design/) records why). The only loop is
-`range`, over a slice, an array, an integer, a string, a map, a
-channel or an iterator func, and `break` and `continue` stand only
-inside its body. The end of a line closes a statement; the semicolon
-is a delimiter between statements sharing one, so both spellings
-below are the same program:
+The channel arrow, the relational operators and `++`/`--` are the
+only operators, and the latter two exist only inside a `for` header.
+A value is a literal, a name, a field read, a composite literal, a
+receive, or the result of a call; an arithmetic expression is a Go
+function the host binds ([design/](design/) records why). `range`
+loops over a slice, an array, an integer, a string, a map, a channel
+or an iterator func; `for cond` loops while a bool name, field or
+call holds; the three-clause `for i := 0; i < n; i++` counts, with
+exactly an init assignment, one comparison over integers of one
+signedness, and the loop variable stepped by one. `break` and
+`continue` stand only inside a loop body. A condition or comparison
+loop has no data bound, so the per-iteration `ctx.Err()` check is
+the bound it keeps. The end of a line closes a statement; the
+semicolon is a delimiter between statements sharing one, so both
+spellings below are the same program:
 
 ```
 u := url.Parse("https://example.com"); assert.Equal(tb, "https", u.Scheme)
