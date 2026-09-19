@@ -18,10 +18,11 @@ import (
 //	expr    := path "(" [ args ] ")" { "." ident "(" [ args ] ")" }
 //	path    := ident { "." ident }
 //	args    := arg { "," arg }
-//	arg     := string | number | path | expr | composite | recv
+//	arg     := string | number | path | expr | composite | recv | funclit
 //	recv    := "<-" ( path | expr )
 //	composite := [ "&" ] path "{" [ elem { "," elem } [ "," ] ] "}"
 //	elem    := [ ident ":" ] arg
+//	funclit := a Go func literal, parsed by go/parser (parser_funclit.go)
 
 // Parser turns a program into a list of statements. A path is resolved
 // by the compiler, not here: http.NewRequest is one bound name,
@@ -74,6 +75,10 @@ const (
 	// argRecv is a channel receive, <-c. The source is a name, a
 	// field, or a call; the compiler types it.
 	argRecv
+	// argFuncLit is a func literal, func(a, b) { body }. Parameters
+	// are names only: their types come from the func signature of the
+	// parameter the literal fills, which only the compiler knows.
+	argFuncLit
 )
 
 // structElem is one element of a composite literal: the field name
@@ -102,6 +107,8 @@ type arg struct {
 	addr  bool
 	// argRecv: the channel the receive reads.
 	recv *arg
+	// argFuncLit: the literal's parameter names and body.
+	fn *funcLit
 }
 
 // link is one ".Method(args)" step chained onto a call.
@@ -170,7 +177,7 @@ func (p *program) flatCall() (*callExpr, bool) {
 		return nil, false
 	}
 	for _, a := range s.call.args {
-		if a.kind == argCall || a.kind == argStruct {
+		if a.kind == argCall || a.kind == argStruct || a.kind == argFuncLit {
 			return nil, false
 		}
 	}
@@ -220,9 +227,24 @@ func (p *Parser) stmt() (stmt, error) {
 		if p.terminated() {
 			return s, nil
 		}
+		// A func literal in return position reads as a value, so the
+		// compiler rejects it with the rule's own message rather than
+		// a parse error about the body's brace.
+		save := p.pos
+		if p.keyword("func") {
+			p.pos = save
+			a, err := p.arg()
+			if err != nil {
+				return s, err
+			}
+			s.retVal = &a
+			if !p.terminated() {
+				return s, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
+			}
+			return s, nil
+		}
 		// The call form is tried first so "return f(x);" parses its
 		// path once; only when that fails is the value form read.
-		save := p.pos
 		if call, err := p.expr(); err == nil {
 			s.call = call
 		} else {

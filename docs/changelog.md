@@ -7,6 +7,40 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-19 23:53 +02:00: the func literal front end moves to go/parser
+
+The antithesis rung for [closures.md](design/closures.md): the same
+surface as FuncOf plus capture-free func literals in argument
+position, with the byte-level constraint lifted for the literal.
+go/scanner finds the literal's extent inside the surrounding
+program, go/parser turns exactly that slice into an ast.FuncLit
+through ParseExpr, and a lowering walks the ast back into the
+parser's own statement structures, so the compiler and both tiers
+cannot tell which front end produced a literal. The reflect-tier
+and step JIT lowerings are the L2 rung's, unchanged.
+
+go/parser owns the literal's syntax. Go spellings the byte-level
+grammar does not know work inside a body for free: raw strings, hex
+and underscored numbers, a rune literal as a one-character string,
+parentheses around a value, a trailing comma in the parameter list.
+The other face of the same coin: gozero's single-quoted strings are
+Go rune literals, so 'ok' fails inside a body with go/parser's own
+message, and Go statements the language declines (if, for, go,
+defer, ++) parse and are rejected by name in the lowering. The
+front end runs to 587 non-test lines against the byte-level rung's
+112, most of it the lowering and its named rejections.
+
+Remeasured on this branch, medians of three pinned 1s runs: the
+materialized fmt.Fprint handler runs in 151 ns with zero
+allocations per call against 60 ns for the identical native
+closure; the funclit fixture serves a recorded request in 13.1 us
+and 34 allocations against 9.2 us and 32 for the handwritten
+mirror; the same handler body through FuncOf's MakeFunc bridge
+costs 839 ns and 2 allocations against 64 ns native. Existing
+benchmarks keep identical allocation counts; the uncached compile
+path grows 48 B per compile from the wider parser and program
+structs, at the same 18 allocations.
+
 ## 2026-09-10 16:58 +02:00: argument pooling under the binding contract
 
 Arguments are borrowed. A binding receives values that are valid for

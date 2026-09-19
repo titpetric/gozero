@@ -134,6 +134,11 @@ type jitProgram struct {
 	// value, which is the common case: the output goes through dest.
 	retType reflect.Type
 	retOff  uintptr
+
+	// paramOffs are the frame offsets of a func literal body's
+	// parameters, in signature order. The closure built over the body
+	// stores the incoming words here before the first statement.
+	paramOffs []uintptr
 }
 
 func (p *jitProgram) run(ctx context.Context, stack map[string]any, dest any) (any, error) {
@@ -316,6 +321,16 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 		for i := range c.types {
 			c.offs[i] = jp.frameType.Field(i).Offset
 		}
+	}
+
+	// A parameter slot is always live, so the lookup cannot miss; the
+	// closure over the body writes through these offsets.
+	for _, slot := range p.params {
+		field, ok := c.slotOf[slot]
+		if !ok {
+			return nil, fmt.Errorf("a parameter has no slot")
+		}
+		jp.paramOffs = append(jp.paramOffs, c.offs[field])
 	}
 
 	for _, name := range hoisted {
