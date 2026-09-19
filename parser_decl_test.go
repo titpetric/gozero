@@ -103,15 +103,48 @@ func TestTypeDeclParseTags(t *testing.T) {
 	}
 }
 
+// TestTypeDeclParseEmbedded checks the embedded form: a type standing
+// alone on its line, bare or dotted, with the field name taken from
+// the base segment and an optional tag kept as written.
+func TestTypeDeclParseEmbedded(t *testing.T) {
+	for name, tc := range map[string]struct {
+		src  string
+		want fieldDecl
+	}{
+		"lone":      {"type P struct {\n\tBase\n}\nreturn f();", fieldDecl{name: "Base", typ: "Base", embedded: true}},
+		"dotted":    {"type P struct {\n\thttp.Header\n}\nreturn f();", fieldDecl{name: "Header", typ: "http.Header", embedded: true}},
+		"tagged":    {"type P struct {\n\tBase `json:\"b\"`\n}\nreturn f();", fieldDecl{name: "Base", typ: "Base", tag: `json:"b"`, embedded: true}},
+		"semicolon": {"type P struct { Base; }\nreturn f();", fieldDecl{name: "Base", typ: "Base", embedded: true}},
+	} {
+		prog, err := (&Parser{}).Parse(tc.src)
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if f := prog.types[0].fields; len(f) != 1 || f[0] != tc.want {
+			t.Errorf("%s: fields = %+v, want %+v", name, f, tc.want)
+		}
+	}
+
+	// An embed shares its line with named fields like any field does.
+	prog, err := (&Parser{}).Parse("type P struct { Base; M int64 }\nreturn f();")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := prog.types[0].fields; len(f) != 2 || !f[0].embedded || f[1].embedded {
+		t.Errorf("fields = %+v", f)
+	}
+}
+
 // TestTypeDeclParseErrors pins the named rejections: every Go struct
 // form the block does not admit errors by name instead of misparsing.
 func TestTypeDeclParseErrors(t *testing.T) {
 	for name, tc := range map[string]struct{ src, want string }{
-		"name list":       {"type P struct {\n\tX, Y int64\n}", "a field name list is not supported"},
-		"embedded dotted": {"type P struct {\n\thttp.Header\n}", "an embedded field is not supported"},
-		"embedded lone":   {"type P struct {\n\tBase\n}", "an embedded field is not supported"},
-		"embedded tagged": {"type P struct {\n\tBase `json:\"b\"`\n}", "an embedded field is not supported"},
-		"single-quote":    {"type P struct {\n\tX int64 'json'\n}", "a struct tag is a raw or double-quoted string"},
+		"name list":        {"type P struct {\n\tX, Y int64\n}", "a field name list is not supported"},
+		"embedded pointer": {"type P struct {\n\t*Base\n}", "an embedded pointer field is not supported"},
+		"embedded half":    {"type P struct {\n\thttp.\n}", "expected a name after '.'"},
+		"junk after embed": {"type P struct {\n\thttp.Header Y\n}", "expected ';' or end of line after field"},
+		"single-quote":     {"type P struct {\n\tX int64 'json'\n}", "a struct tag is a raw or double-quoted string"},
 		"unterminated tag": {"type P struct {\n\tX int64 `json:\"x\"\n}", "unterminated raw string"},
 		"junk after tag":  {"type P struct {\n\tX int64 `t` Y\n}", "expected ';' or end of line after field"},
 		"missing brace":   {"type P struct\nX int64", "expected '{' after struct"},
