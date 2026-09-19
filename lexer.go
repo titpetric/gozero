@@ -3,7 +3,6 @@ package gozero
 import (
 	"fmt"
 	"strconv"
-	"strings"
 )
 
 func joinPath(path []string) string {
@@ -182,21 +181,12 @@ func (p *Parser) consumeIncDec() int64 {
 	return 0
 }
 
-// binOps is every spelling that reads as a Go binary operator between
-// two values, longest first so maximal munch keeps the two-byte forms
-// whole. The parser recognizes them all so an unsupported one is
-// rejected by name; the assignment grammar accepts only +, == and !=.
-var binOps = []string{
-	"<<", ">>", "<=", ">=", "==", "!=", "&&", "||", "&^",
-	"+", "-", "*", "/", "%", "&", "|", "^", "<", ">",
-}
-
 // peekBinOp reports the binary operator at the current position
 // without consuming it, or "" when the next bytes are not one. The
 // scan does not cross a newline: a line end closes a statement, so an
-// operator on the next line belongs to nothing. "<-" is a send or a
-// receive, "++" and "--" are steps, and "=" is an assignment; none of
-// them read as operators.
+// operator on the next line belongs to nothing. The value positions
+// outside an assignment use it to reject an operator expression with
+// its own message rather than a bare "expected ',' or ')'".
 func (p *Parser) peekBinOp() string {
 	save, saveNL := p.pos, p.nl
 	defer func() { p.pos, p.nl = save, saveNL }()
@@ -204,16 +194,8 @@ func (p *Parser) peekBinOp() string {
 	if p.nl || p.pos >= len(p.src) {
 		return ""
 	}
-	rest := p.src[p.pos:]
-	if strings.HasPrefix(rest, "<-") || strings.HasPrefix(rest, "++") || strings.HasPrefix(rest, "--") {
-		return ""
-	}
-	for _, op := range binOps {
-		if strings.HasPrefix(rest, op) {
-			return op
-		}
-	}
-	return ""
+	op, _ := p.binOp()
+	return op
 }
 
 // incDecOp spells the operator a step statement was written with.
