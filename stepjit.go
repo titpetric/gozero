@@ -257,16 +257,15 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 		return nil, fmt.Errorf("a name is reassigned at a different type")
 	}
 
-	// An if statement declines by name until the structured node
-	// lands; without this the straight-line plan would silently drop
-	// the statement.
-	for i := range p.stmts {
-		if p.stmts[i].ifs != nil {
-			return nil, fmt.Errorf("an if statement is not in the table yet")
-		}
+	// A program with an if takes the structural plan: statements keep
+	// their nesting and nothing splices, because a branch boundary
+	// makes a producer's single reader conditional. Everything else
+	// keeps the straight-line plan and its splicing.
+	planOf := planInline
+	if hasIf(p.stmts) {
+		planOf = planIf
 	}
-
-	plan, err := planInline(p)
+	plan, err := planOf(p)
 	if err != nil {
 		return nil, err
 	}

@@ -40,6 +40,36 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 			walkArg(a)
 		}
 	}
+	// walkStmts covers an if's arms, whose statements are still
+	// vmStmt: the same edges as the plannedStmt loop below, plus the
+	// condition and the nested arms.
+	var walkStmts func([]vmStmt)
+	walkStmts = func(stmts []vmStmt) {
+		for i := range stmts {
+			s := &stmts[i]
+			if s.call != nil {
+				walkCall(s.call)
+			}
+			if s.assign != nil {
+				walkArg(s.assign)
+			}
+			if s.fieldSet != nil {
+				walkArg(s.fieldSet.val)
+			}
+			if s.recv != nil {
+				walkArg(s.recv.ch)
+			}
+			if s.send != nil {
+				walkArg(s.send.ch)
+				walkArg(s.send.val)
+			}
+			if s.ifs != nil {
+				walkArg(s.ifs.cond)
+				walkStmts(s.ifs.then)
+				walkStmts(s.ifs.els)
+			}
+		}
+	}
 	for _, s := range plan.stmts {
 		if s.call != nil {
 			walkCall(s.call)
@@ -56,6 +86,11 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 		if s.send != nil {
 			walkArg(s.send.ch)
 			walkArg(s.send.val)
+		}
+		if s.ifs != nil {
+			walkArg(s.ifs.cond)
+			walkStmts(s.ifs.then)
+			walkStmts(s.ifs.els)
 		}
 	}
 	return counts
@@ -81,6 +116,11 @@ type plannedStmt struct {
 	// receive's value slot is out.
 	recv *vmRecv
 	send *vmSend
+
+	// ifs is an if statement, travelling whole for ifNode; its arms
+	// convert when the node builder reaches them. Only the structural
+	// plan in stepjit_if.go produces one.
+	ifs *vmIf
 }
 
 // jitPlan is everything planInline works out for the compiler.
@@ -127,6 +167,12 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 			if s.retArg.kind != vaSlot {
 				return nil, fmt.Errorf("a returned expression is not in the table")
 			}
+			// In any position but the last the return is an early
+			// exit: skipping it here would run the statements after
+			// it, which the reflect evaluator never reaches.
+			if i != len(p.stmts)-1 {
+				return nil, fmt.Errorf("a return before the last statement is not a straight line")
+			}
 			retSlot = s.retArg.slot
 			continue
 		}
@@ -155,7 +201,13 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 			continue
 		}
 		if s.call == nil {
-			continue // a bare "return;" leaves the program without a value
+			// A bare "return;" leaves the program without a value; in
+			// any position but the last it is an early exit, like the
+			// value form above.
+			if s.ret && i != len(p.stmts)-1 {
+				return nil, fmt.Errorf("a return before the last statement is not a straight line")
+			}
+			continue
 		}
 		if s.ret && i != len(p.stmts)-1 {
 			return nil, fmt.Errorf("a return before the last statement is not a straight line")
