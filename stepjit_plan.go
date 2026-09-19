@@ -109,6 +109,11 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 	stmts := make([]plannedStmt, 0, len(p.stmts))
 	for i := range p.stmts {
 		s := &p.stmts[i]
+		if s.ifs != nil {
+			// Declined by name until the structural plan lands in the
+			// next commit; the reflect tier runs the construct.
+			return nil, fmt.Errorf("an if statement is not a straight line")
+		}
 		if s.assign != nil {
 			out := -1
 			if len(s.out) > 0 {

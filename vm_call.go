@@ -329,6 +329,14 @@ func (c *Compiler) compileArg(slots map[string]int, env map[string]reflect.Type,
 	case argPath:
 		slot, ok := slots[a.path[0]]
 		if !ok {
+			// A dotted name with no slot may be a value binding,
+			// "time.Hour": one typed constant.
+			if cv, ok := c.consts[joinPath(a.path)]; ok {
+				if !cv.Type().AssignableTo(pt) {
+					return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, cv.Type(), pt)
+				}
+				return &vmArg{kind: vaConst, val: cv, typ: pt, iface: -1}, nil
+			}
 			return nil, fmt.Errorf("compile: %s argument %d: %s is not a name bound by the program, so its fields are unknown", name, pos+1, a.path[0])
 		}
 		cur := &vmArg{kind: vaSlot, slot: slot, name: a.path[0], typ: env[a.path[0]], iface: -1}

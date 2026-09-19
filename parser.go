@@ -10,8 +10,14 @@ import (
 //	program := { stmt }
 //	stmt    := "var" name typeref term
 //	         | "return" [ arg ] term
+//	         | ifstmt
 //	         | path "<-" arg term
 //	         | [ name { "," name } ( ":=" | "=" ) ] rhs term
+//	ifstmt  := "if" header block [ "else" ( ifstmt | block ) ] term
+//	header  := a Go expression, parsed by go/parser.ParseExpr and
+//	           narrowed by the walk in parser_if.go to one comparison
+//	           or one bool operand
+//	block   := "{" { stmt } "}"
 //	term    := ";" | EOL | EOF
 //	rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv
 //	typeref := { "*" | "[]" | "chan" | "chan<-" | "<-chan" } path
@@ -48,6 +54,11 @@ func (p *Parser) terminated() bool {
 		return true
 	}
 	p.skipSpace()
+	if p.pos < len(p.src) && p.src[p.pos] == '}' {
+		// The closing brace of a block ends the statement before it,
+		// Go's inserted semicolon; the block loop consumes it.
+		return true
+	}
 	return p.pos >= len(p.src) || p.nl
 }
 
@@ -150,6 +161,9 @@ type stmt struct {
 	// names the channel the way fieldLhs names a field target.
 	sendCh  []string
 	sendVal *arg
+
+	// ifs is an if statement with its else chain, parser_if.go.
+	ifs *ifStmt
 }
 
 // program is a parsed source unit.
@@ -237,10 +251,20 @@ func (p *Parser) stmt() (stmt, error) {
 				s.retVal = &a
 			}
 		}
+		if err := p.rejectCmp(); err != nil {
+			return s, err
+		}
 		if !p.terminated() {
 			return s, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
 		}
 		return s, nil
+	}
+
+	if p.keyword("if") {
+		return p.parseIf()
+	}
+	if p.keyword("else") {
+		return stmt{}, fmt.Errorf("parse: else without if at offset %d", p.pos)
 	}
 
 	// A dotted path followed by a single "=" is a field assignment.
@@ -330,14 +354,39 @@ func (p *Parser) stmt() (stmt, error) {
 		case argCall:
 			p.pos = save
 		case argVar, argPath:
+			if err := p.rejectCmp(); err != nil {
+				return stmt{}, err
+			}
 			return stmt{}, fmt.Errorf("parse: cannot assign a name to a name at offset %d", save)
 		default:
+			if err := p.rejectCmp(); err != nil {
+				return stmt{}, err
+			}
 			if !p.terminated() {
 				return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
 			}
 			return stmt{lhs: lhs, define: define, lit: &a}, nil
 		}
 	}
+
+	// A bare comparison, "x == 5;", is rejected by name before the
+	// call parse turns it into "expected '('". The sniff scans the
+	// path with ident and consume so a call statement pays no
+	// allocation for it.
+	cmpSave, cmpNL := p.pos, p.nl
+	if p.ident() != "" {
+		for {
+			dot := p.pos
+			if !p.consume('.') || p.ident() == "" {
+				p.pos = dot
+				break
+			}
+		}
+		if err := p.rejectCmp(); err != nil {
+			return stmt{}, err
+		}
+	}
+	p.pos, p.nl = cmpSave, cmpNL
 
 	call, err := p.expr()
 	if err != nil {
