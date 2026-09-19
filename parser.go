@@ -4,8 +4,11 @@ import (
 	"fmt"
 )
 
-// The grammar has no operators: a statement is a call, and every value
-// is a literal, a name, or the result of another call.
+// The grammar has one operator position: the right side of an
+// assignment may combine exactly two values with +, == or !=. There
+// is no expression tree beyond that pair - a second operator and
+// parentheses are rejected by rule, and every other value position
+// stays operator-free.
 //
 //	program := { stmt }
 //	stmt    := "var" name typeref term
@@ -14,7 +17,8 @@ import (
 //	         | name ( "++" | "--" ) term
 //	         | [ name { "," name } ( ":=" | "=" ) ] rhs term
 //	term    := ";" | EOL | EOF
-//	rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv
+//	rhs     := binop | expr | string | number | "true" | "false" | "nil" | composite | recv
+//	binop   := arg ( "+" | "==" | "!=" ) arg
 //	typeref := { "*" | "[]" | "chan" | "chan<-" | "<-chan" } path
 //	expr    := path "(" [ args ] ")" { "." ident "(" [ args ] ")" }
 //	path    := ident { "." ident }
@@ -159,6 +163,14 @@ type stmt struct {
 	// grows around it.
 	incName  string
 	incDelta int64
+
+	// binOp, binX and binY are an operator assignment,
+	// "s := a + b;". The operands stay flat args rather than a tree:
+	// one operator per assignment is the rule, so there is nothing
+	// to nest.
+	binOp string
+	binX  *arg
+	binY  *arg
 }
 
 // program is a parsed source unit.
@@ -246,6 +258,9 @@ func (p *Parser) stmt() (stmt, error) {
 				s.retVal = &a
 			}
 		}
+		if op := p.peekBinOp(); op != "" {
+			return s, fmt.Errorf("parse: an operator expression cannot be returned, assign it to a name first")
+		}
 		if !p.terminated() {
 			return s, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
 		}
@@ -287,6 +302,9 @@ func (p *Parser) stmt() (stmt, error) {
 				if err != nil {
 					return stmt{}, err
 				}
+				if op := p.peekBinOp(); op != "" {
+					return stmt{}, fmt.Errorf("parse: an operator expression cannot be assigned to a field, assign it to a name first")
+				}
 				if a.kind == argVar || a.kind == argPath {
 					return stmt{}, fmt.Errorf("parse: cannot assign a name to a field at offset %d", p.pos)
 				}
@@ -314,6 +332,9 @@ func (p *Parser) stmt() (stmt, error) {
 			v, err := p.arg()
 			if err != nil {
 				return stmt{}, err
+			}
+			if op := p.peekBinOp(); op != "" {
+				return stmt{}, fmt.Errorf("parse: an operator expression cannot be sent, assign it to a name first")
 			}
 			if !p.terminated() {
 				return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
@@ -346,14 +367,21 @@ func (p *Parser) stmt() (stmt, error) {
 		lhs, define = nil, false
 	}
 
-	// The right-hand side is one arg: a call is the statement, a
-	// literal assigns, and a bare name is rejected here with its own
-	// message rather than surfacing as "expected '('".
+	// The right-hand side is one arg, or two joined by an operator: a
+	// call is the statement, a literal assigns, and a bare name is
+	// rejected here with its own message rather than surfacing as
+	// "expected '('".
 	if len(lhs) > 0 {
+		if p.peek() == '(' {
+			return stmt{}, fmt.Errorf("parse: parentheses do not group a value, one operator per assignment")
+		}
 		save := p.pos
 		a, err := p.arg()
 		if err != nil {
 			return stmt{}, err
+		}
+		if op := p.peekBinOp(); op != "" {
+			return p.binopStmt(lhs, define, a, op)
 		}
 		switch a.kind {
 		case argCall:
@@ -376,6 +404,37 @@ func (p *Parser) stmt() (stmt, error) {
 		return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
 	}
 	return stmt{lhs: lhs, define: define, call: call}, nil
+}
+
+// binopStmt finishes an assignment whose right side combines two
+// values with a binary operator, "s := a + b;". Exactly one operator
+// and no parentheses: a second operator is rejected by rule, so no
+// expression tree exists for later features to inherit. The operands
+// parse as any arg; the compiler narrows them to a bound name or a
+// literal.
+func (p *Parser) binopStmt(lhs []string, define bool, x arg, op string) (stmt, error) {
+	switch op {
+	case "+", "==", "!=":
+	default:
+		return stmt{}, fmt.Errorf("parse: operator %s is not in the grammar, an assignment combines two values with +, == or !=", op)
+	}
+	p.skipSpace()
+	p.pos += len(op)
+	p.nl = false
+	if p.peek() == '(' {
+		return stmt{}, fmt.Errorf("parse: parentheses do not group a value, one operator per assignment")
+	}
+	y, err := p.arg()
+	if err != nil {
+		return stmt{}, err
+	}
+	if next := p.peekBinOp(); next != "" {
+		return stmt{}, fmt.Errorf("parse: one operator per assignment, bind the %s result to a name before %s", op, next)
+	}
+	if !p.terminated() {
+		return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
+	}
+	return stmt{lhs: lhs, define: define, binOp: op, binX: &x, binY: &y}, nil
 }
 
 // assignList scans "a, b :=" or "a =" and reports whether one was

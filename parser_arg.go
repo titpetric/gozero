@@ -61,6 +61,9 @@ func (p *Parser) args() ([]arg, error) {
 			return out, nil
 		}
 		if len(out) > 0 && !p.consume(',') {
+			if op := p.peekBinOp(); op != "" {
+				return nil, fmt.Errorf("parse: an operator expression cannot be an argument, assign it to a name first")
+			}
 			return nil, fmt.Errorf("parse: expected ',' or ')' at offset %d", p.pos)
 		}
 		a, err := p.arg()
@@ -164,6 +167,9 @@ func (p *Parser) composite(path []string, addr bool) (arg, error) {
 			return a, nil
 		}
 		if len(a.elems) > 0 && !p.consume(',') {
+			if op := p.peekBinOp(); op != "" {
+				return arg{}, fmt.Errorf("parse: an operator expression cannot be an element, assign it to a name first")
+			}
 			return arg{}, fmt.Errorf("parse: expected ',' or '}' at offset %d", p.pos)
 		}
 		if p.consume('}') {

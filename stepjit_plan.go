@@ -57,6 +57,13 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 			walkArg(s.send.ch)
 			walkArg(s.send.val)
 		}
+		// An operator's operands are slots or constants, never stack
+		// reads; the walk keeps the accounting uniform if that rule
+		// ever loosens.
+		if s.binop != nil {
+			walkArg(s.binop.x)
+			walkArg(s.binop.y)
+		}
 	}
 	return counts
 }
@@ -84,6 +91,10 @@ type plannedStmt struct {
 
 	// inc is a step statement, n++ or n--, from vm_inc.go.
 	inc *vmInc
+
+	// binop is an operator assignment, s := a + b, from vm_binop.go;
+	// its result slot is out.
+	binop *vmBinop
 }
 
 // jitPlan is everything planInline works out for the compiler.
@@ -153,6 +164,10 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 			stmts = append(stmts, plannedStmt{inc: s.inc, out: -1})
 			continue
 		}
+		if s.binop != nil {
+			stmts = append(stmts, plannedStmt{binop: s.binop, out: s.out[0]})
+			continue
+		}
 		if s.lit.IsValid() {
 			out := -1
 			if len(s.out) > 0 {
@@ -200,6 +215,14 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 		// the value it starts from is never spliced away.
 		if s.inc != nil {
 			reads[s.inc.slot]++
+		}
+		// An operator reads both operands, so their producers keep
+		// their slots; the splice loop below only moves a producer
+		// into the next statement's call, and an operator statement
+		// has none, which also stops any splice across it.
+		if s.binop != nil {
+			countArgReads(reads, s.binop.x)
+			countArgReads(reads, s.binop.y)
 		}
 	}
 
