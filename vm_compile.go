@@ -32,6 +32,16 @@ import (
 // it is used and a method must exist on the type of the name it is
 // called on.
 func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
+	// Declared types are built first, on a copy: the copy scopes the
+	// program-local names to this compilation, and the shared Compiler,
+	// which concurrent compilations read, stays as it was.
+	if len(prog.types) > 0 {
+		cc := *c
+		if err := cc.declareTypes(prog); err != nil {
+			return nil, err
+		}
+		c = &cc
+	}
 	p := &vmProgram{addrTaken: map[int]bool{}}
 	slots := map[string]int{}
 	env := map[string]reflect.Type{}
@@ -48,8 +58,16 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			reserved[name] = true
 		}
 	}
+	// A declared type's name is reserved the same way: Point{} and
+	// var p Point must keep meaning the type.
+	for name := range c.declared {
+		reserved[name] = true
+	}
+	// type and struct are compared inline rather than stored: two more
+	// entries tipped the reserved map over a bucket boundary and cost
+	// every compile two allocations.
 	checkName := func(name string) error {
-		if reserved[name] {
+		if reserved[name] || name == "type" || name == "struct" {
 			return fmt.Errorf("compile: %s shadows a binding or keyword and cannot be assigned", name)
 		}
 		return nil

@@ -131,9 +131,13 @@ func (r *Runtime) Types() []string {
 	return out
 }
 
-// lookupType resolves a type name written in a var statement. The
+// lookupType resolves a type name written in a var statement: the
+// program's own declarations first, then the shared registry. The
 // caller holds the lock.
 func (c *Compiler) lookupType(name string) (reflect.Type, bool) {
+	if t, ok := c.declared[name]; ok {
+		return t, true
+	}
 	t, ok := c.types[name]
 	return t, ok
 }
