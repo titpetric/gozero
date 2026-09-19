@@ -1,0 +1,27 @@
+// incdec: n++ and n-- step counters across the scalar classes.
+n := 7;
+n++;
+n++;
+n--;
+assert.Equal(tb, "8", fmt.Sprintf("%d", n));
+
+var c int32;
+c = 41;
+c++;
+assert.Equal(tb, "42", fmt.Sprintf("%d", c));
+assert.Equal(tb, "int32", fmt.Sprintf("%T", c));
+
+// The step wraps at the type's width, as compiled Go does.
+var b uint8;
+b = 255;
+b++;
+assert.Equal(tb, "0", fmt.Sprintf("%d", b));
+b--;
+assert.Equal(tb, "255", fmt.Sprintf("%d", b));
+
+x := 2.5;
+x++;
+assert.Equal(tb, "3.5", fmt.Sprintf("%v", x));
+x--;
+x--;
+assert.Equal(tb, "1.5", fmt.Sprintf("%v", x));

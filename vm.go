@@ -166,6 +166,9 @@ type vmStmt struct {
 	// is a channel send. Both in vm_chan.go.
 	recv *vmRecv
 	send *vmSend
+
+	// inc is a step statement, n++ or n--, in vm_inc.go.
+	inc *vmInc
 }
 
 // fieldStep is one selector of a field-assignment target.
@@ -295,6 +298,12 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 		}
 		if s.send != nil {
 			if err := s.send.exec(ctx, slots, frame, ifaces, stack, dest); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if s.inc != nil {
+			if err := s.inc.exec(slots, p.addrTaken[s.inc.slot]); err != nil {
 				return nil, err
 			}
 			continue

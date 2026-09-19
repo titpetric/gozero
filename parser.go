@@ -11,6 +11,7 @@ import (
 //	stmt    := "var" name typeref term
 //	         | "return" [ arg ] term
 //	         | path "<-" arg term
+//	         | name ( "++" | "--" ) term
 //	         | [ name { "," name } ( ":=" | "=" ) ] rhs term
 //	term    := ";" | EOL | EOF
 //	rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv
@@ -150,6 +151,14 @@ type stmt struct {
 	// names the channel the way fieldLhs names a field target.
 	sendCh  []string
 	sendVal *arg
+
+	// incName and incDelta are a step statement, "n++;" or "n--;",
+	// the name and the step. Go's IncDecStmt is a statement rather
+	// than an expression, which is what lets it into a grammar with
+	// no operators: it produces no value, so no expression tree
+	// grows around it.
+	incName  string
+	incDelta int64
 }
 
 // program is a parsed source unit.
@@ -242,6 +251,26 @@ func (p *Parser) stmt() (stmt, error) {
 		}
 		return s, nil
 	}
+
+	// A name followed by "++" or "--" on the same line is a step
+	// statement. It is sniffed before the field assignment because
+	// both start with a path; a dotted target is rejected by name,
+	// since only a program-bound name has a slot to step.
+	incSave, incNL := p.pos, p.nl
+	if p.ident() != "" {
+		p.pos, p.nl = incSave, incNL
+		path, _ := p.path()
+		if delta := p.consumeIncDec(); delta != 0 {
+			if len(path) != 1 {
+				return stmt{}, fmt.Errorf("parse: %s%s: ++ and -- step a name, not a field", joinPath(path), incDecOp(delta))
+			}
+			if !p.terminated() {
+				return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
+			}
+			return stmt{incName: path[0], incDelta: delta}, nil
+		}
+	}
+	p.pos, p.nl = incSave, incNL
 
 	// A dotted path followed by a single "=" is a field assignment.
 	// It is sniffed before the assignment list, which only reads bare
