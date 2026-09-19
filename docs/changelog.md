@@ -7,6 +7,31 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-19 18:17 +02:00: struct field tags
+
+A declared struct's fields can carry Go tags: a raw backquoted
+string, the lexer's first raw-string token, or a double-quoted
+string, on the field's own line. The parser records the spelling
+unchanged and the compiler hands it to reflect.StructField.Tag, so
+the json output is fully shaped: keys renamed by tag, a field
+omitted when empty, a "-" field never emitted. The tag is part of
+the type's identity: identical declarations still canonicalize to
+one runtime type, and two differing only in a tag mint two. A
+single-quoted tag is a parse error naming the two legal spellings,
+and a tag on an embedded field falls under the embedding rejection.
+
+The reply fixture encodes a Reply with a tagged Status nested
+inside, byte for byte, on the JIT tier: 976 B and 13 allocations
+per run against the mirror's 768 B and 14 (6760ns against 5311ns).
+The vm aliases each write-once struct slot into the encoder's
+interface argument where Go boxes a copy, and pays the escaped
+frame instead. A struct slot written more than once cannot alias
+and has no transport class, so encoding it whole bridges through
+reflect: patched into the fixture, that one call costs 6
+allocations and 176 B over the same encode of a write-once slot.
+benchstat over the paired sweeps shows every existing benchmark
+keeping its allocation counts.
+
 ## 2026-09-19 16:28 +02:00: struct type declarations
 
 A program can declare its own struct types with the grammar's first
