@@ -242,6 +242,47 @@ func (f *testFixtures) testLoops(tb testing.TB) {
 	assertEqual(tb, "q", rest, "")
 }
 
+func (f *testFixtures) testFor(tb testing.TB) {
+	q := queueOf("a", "b", "c")
+	buf := bytesNewBufferString("")
+	for q.More() {
+		buf.WriteString(q.Next())
+	}
+	assertEqual(tb, "abc", buf.String(), "")
+
+	c := counterNew()
+	var i int64
+	for i = 0; i < 4; i++ {
+		c.Add(i)
+	}
+	assertEqual(tb, int64(6), c.Sum(), "")
+	assertEqual(tb, int64(4), i, "")
+
+	d := counterNew()
+	for j := int64(3); j > 0; j-- {
+		d.Add(j)
+	}
+	assertEqual(tb, int64(6), d.Sum(), "")
+
+	n := strLen("gozero")
+	e := counterNew()
+	for k := int64(0); k != n; k++ {
+		e.Add(1)
+		// The fixture's continue still runs the post clause and skips
+		// a trailing e.Add(100), so the mirror never runs it either.
+	}
+	assertEqual(tb, int64(6), e.Sum(), "")
+
+	fc := counterNew()
+	var m int64
+	for m = 5; m <= 9; m++ {
+		fc.Add(m)
+		break
+	}
+	assertEqual(tb, int64(5), fc.Sum(), "")
+	assertEqual(tb, int64(5), m, "")
+}
+
 func (f *testFixtures) testVariadic(tb testing.TB) {
 	parts := strings.Fields("a b c")
 	joined := path.Join(parts...)
@@ -282,6 +323,7 @@ func BenchmarkFixtures(b *testing.B) {
 		"channels": (*testFixtures).testChannels,
 		"range":    (*testFixtures).testRange,
 		"loops":    (*testFixtures).testLoops,
+		"for":      (*testFixtures).testFor,
 	}
 
 	files, err := filepath.Glob(filepath.Join("testdata", "*.txt"))
@@ -374,6 +416,7 @@ func newBenchFixtureRuntime(b *testing.B) *Runtime {
 		"sizes":        sizesMap,
 		"strlen":       strLen,
 		"closedChanOf": closedChanOf,
+		"queue":        queueOf,
 	} {
 		if err := rt.Bind(name, fn); err != nil {
 			b.Fatal(err)

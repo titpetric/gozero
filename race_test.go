@@ -212,3 +212,58 @@ func TestLoopsAreConcurrent(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// TestForIsConcurrent runs a compiled three-clause and condition-loop
+// program from many goroutines. The loop variable is a frame slot,
+// so this pins the pooled frame's reuse under both new headers.
+func TestForIsConcurrent(t *testing.T) {
+	rt := NewRuntime()
+	if err := rt.Bind("mk", counterNew); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.Bind("q2", func() *fixtureQueue {
+		return &fixtureQueue{items: []string{"x", "y"}}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	const src = `
+		c := mk()
+		for i := 0; i < 4; i++ {
+			c.Add(i)
+		}
+		q := q2()
+		for q.More() {
+			c.Add(1)
+			q.Next()
+		}
+		sum := c.Sum()
+		return sum
+	`
+	if err := rt.Supports(src); err != nil {
+		t.Fatalf("this test needs the JIT tier: %v", err)
+	}
+	fn, err := rt.Compile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 400; j++ {
+				got, err := fn.Exec[int64](nil)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if got != 8 {
+					t.Errorf("got %d, want 8", got)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+}
