@@ -33,7 +33,7 @@ func fixtureRuntime(t *testing.T) *Runtime {
 		},
 		"json":    {"NewEncoder": json.NewEncoder},
 		"bytes":   {"NewBufferString": bytes.NewBufferString},
-		"fmt":     {"Sprintf": fmt.Sprintf, "Sprint": fmt.Sprint},
+		"fmt":     {"Sprintf": fmt.Sprintf, "Sprint": fmt.Sprint, "Fprint": fmt.Fprint},
 		"strings": {"Fields": strings.Fields},
 		"path":    {"Join": path.Join},
 		// Equal has no variadic tail, (tb, want, got, message): every
