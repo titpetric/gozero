@@ -381,3 +381,19 @@ func (c *Compiler) compileArg(slots map[string]int, env map[string]reflect.Type,
 	}
 	return &vmArg{kind: vaConst, val: v, typ: pt, iface: -1}, nil
 }
+
+// resultType is the static type of the i'th non-error result.
+func (c *Compiler) resultType(call *vmCall, i int) reflect.Type {
+	ft := call.fn.Type()
+	n := 0
+	for j := 0; j < ft.NumOut(); j++ {
+		if j == call.errIdx {
+			continue
+		}
+		if n == i {
+			return ft.Out(j)
+		}
+		n++
+	}
+	return nil
+}

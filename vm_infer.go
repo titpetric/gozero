@@ -49,12 +49,26 @@ func conversionArg(e *callExpr) (arg, error) {
 // value has to satisfy. Failing that the literal keeps the width the
 // parser gave it.
 func (c *Compiler) inferLiteralType(prog *program, name string, lit arg) reflect.Type {
-	for si := range prog.stmts {
-		if call := prog.stmts[si].call; call != nil {
-			if t := c.useType(call, name); t != nil {
-				return t
+	// A use inside a range body types the name like a use outside one:
+	// the walk descends into loop bodies.
+	var walk func(stmts []stmt) reflect.Type
+	walk = func(stmts []stmt) reflect.Type {
+		for si := range stmts {
+			if call := stmts[si].call; call != nil {
+				if t := c.useType(call, name); t != nil {
+					return t
+				}
+			}
+			if rng := stmts[si].rng; rng != nil {
+				if t := walk(rng.body); t != nil {
+					return t
+				}
 			}
 		}
+		return nil
+	}
+	if t := walk(prog.stmts); t != nil {
+		return t
 	}
 	switch lit.kind {
 	case argFloat:

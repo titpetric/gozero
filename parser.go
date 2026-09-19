@@ -10,8 +10,12 @@ import (
 //	program := { stmt }
 //	stmt    := "var" name typeref term
 //	         | "return" [ arg ] term
+//	         | "for" [ name [ "," name ] ":=" ] "range" arg block term
+//	         | "break" term
+//	         | "continue" term
 //	         | path "<-" arg term
 //	         | [ name { "," name } ( ":=" | "=" ) ] rhs term
+//	block   := "{" { stmt } "}"
 //	term    := ";" | EOL | EOF
 //	rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv
 //	typeref := { "*" | "[]" | "chan" | "chan<-" | "<-chan" } path
@@ -42,12 +46,16 @@ type Parser struct {
 // terminated consumes a statement end. The semicolon is a delimiter
 // between statements sharing a line, not something every line has to
 // carry: the end of the line and the end of the source both close a
-// statement.
+// statement, and so does a closing brace, which is Go's rule that a
+// semicolon may be omitted before "}".
 func (p *Parser) terminated() bool {
 	if p.consume(';') {
 		return true
 	}
 	p.skipSpace()
+	if p.pos < len(p.src) && p.src[p.pos] == '}' {
+		return true
+	}
 	return p.pos >= len(p.src) || p.nl
 }
 
@@ -150,6 +158,15 @@ type stmt struct {
 	// names the channel the way fieldLhs names a field target.
 	sendCh  []string
 	sendVal *arg
+
+	// rng is a range loop, "for x := range xs { ... }".
+	rng *rangeStmt
+
+	// brk and cont are break and continue, which only stand inside a
+	// range body: the parser rejects them anywhere else, which is what
+	// keeps their control signals from escaping a loop.
+	brk  bool
+	cont bool
 }
 
 // program is a parsed source unit.
@@ -241,6 +258,23 @@ func (p *Parser) stmt() (stmt, error) {
 			return s, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
 		}
 		return s, nil
+	}
+	// A for statement is handed to go/parser whole: the loop's extent
+	// is found with go/scanner, parsed as Go inside a synthetic
+	// function body, and lowered from the ast (parser_goast.go).
+	p.skipSpace()
+	if forStart := p.pos; p.keyword("for") {
+		return p.forGo(forStart)
+	}
+	// break and continue only stand inside a range body, where the
+	// ast lowering accepts them; a loop always encloses them, so a
+	// control signal never reaches a caller. Reaching this sniff means
+	// the keyword stands outside any loop.
+	if p.keyword("break") {
+		return stmt{}, fmt.Errorf("parse: break is only allowed inside a range body (offset %d)", p.pos)
+	}
+	if p.keyword("continue") {
+		return stmt{}, fmt.Errorf("parse: continue is only allowed inside a range body (offset %d)", p.pos)
 	}
 
 	// A dotted path followed by a single "=" is a field assignment.

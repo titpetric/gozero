@@ -108,77 +108,92 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 		return slot
 	}
 
-	for si := range prog.stmts {
-		s := prog.stmts[si]
-
+	// compileStmt compiles one statement into dst, which is the program
+	// for a top-level statement and a loop's body for one inside a
+	// range. The recursion is what a range body is: the same statement
+	// kinds, compiled against the same flat slot table.
+	var compileStmt func(s stmt, dst *[]vmStmt) error
+	compileStmt = func(s stmt, dst *[]vmStmt) error {
 		if s.varType != "" {
 			t := declared[s.varName]
 			slot := newSlot(s.varName, t)
 			p.inits = append(p.inits, slotInit{slot: slot, zero: reflect.Zero(t)})
-			continue
+			return nil
 		}
 
+		if s.rng != nil {
+			rng, err := c.compileRange(slots, env, s.rng, newSlot, checkName, compileStmt)
+			if err != nil {
+				return err
+			}
+			*dst = append(*dst, vmStmt{rng: rng})
+			return nil
+		}
+		if s.brk || s.cont {
+			*dst = append(*dst, vmStmt{brk: s.brk, cont: s.cont})
+			return nil
+		}
 		if s.fieldLhs != nil {
 			fs, err := c.compileFieldSet(slots, env, s)
 			if err != nil {
-				return nil, err
+				return err
 			}
-			p.stmts = append(p.stmts, vmStmt{fieldSet: fs})
-			continue
+			*dst = append(*dst, vmStmt{fieldSet: fs})
+			return nil
 		}
 		if s.sendCh != nil {
 			sn, err := c.compileSend(slots, env, s)
 			if err != nil {
-				return nil, err
+				return err
 			}
-			p.stmts = append(p.stmts, vmStmt{send: sn})
-			continue
+			*dst = append(*dst, vmStmt{send: sn})
+			return nil
 		}
 		if s.lit != nil && s.lit.kind == argRecv {
 			// The ok of Go's two-value receive is implicit, like the
 			// trailing error of a call: a closed channel ends the
 			// program with io.EOF, so there is no second name to bind.
 			if len(s.lhs) > 1 {
-				return nil, fmt.Errorf("compile: a receive binds one name; ok is implicit, a closed channel ends the program with io.EOF")
+				return fmt.Errorf("compile: a receive binds one name; ok is implicit, a closed channel ends the program with io.EOF")
 			}
 			for _, name := range s.lhs {
 				if err := checkName(name); err != nil {
-					return nil, err
+					return err
 				}
 				if err := checkDecl(name, s.define); err != nil {
-					return nil, err
+					return err
 				}
 			}
 			if s.define {
 				if err := checkNew(s.lhs); err != nil {
-					return nil, err
+					return err
 				}
 			}
 			rv, err := c.compileRecv(slots, env, *s.lit)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			var out []int
 			if len(s.lhs) == 1 {
 				out = []int{newSlot(s.lhs[0], rv.elem)}
 			}
-			p.stmts = append(p.stmts, vmStmt{recv: rv, out: out})
-			continue
+			*dst = append(*dst, vmStmt{recv: rv, out: out})
+			return nil
 		}
 		if s.lit != nil {
 			if len(s.lhs) != 1 {
-				return nil, fmt.Errorf("compile: a literal assigns to exactly one name")
+				return fmt.Errorf("compile: a literal assigns to exactly one name")
 			}
 			name := s.lhs[0]
 			if err := checkName(name); err != nil {
-				return nil, err
+				return err
 			}
 			if err := checkDecl(name, s.define); err != nil {
-				return nil, err
+				return err
 			}
 			if s.define {
 				if err := checkNew(s.lhs); err != nil {
-					return nil, err
+					return err
 				}
 			}
 			// u = url.URL{...} binds the name to the literal's own type,
@@ -186,32 +201,32 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			if s.lit.kind == argStruct {
 				sa, st, err := c.compileStructLit(slots, env, *s.lit)
 				if err != nil {
-					return nil, fmt.Errorf("compile: %s: %w", name, err)
+					return fmt.Errorf("compile: %s: %w", name, err)
 				}
 				if prev, ok := env[name]; ok && prev != st {
 					if !st.AssignableTo(prev) {
-						return nil, fmt.Errorf("compile: %s: cannot use %s as %s", name, st, prev)
+						return fmt.Errorf("compile: %s: cannot use %s as %s", name, st, prev)
 					}
 					st = prev
 				}
 				slot := newSlot(name, st)
-				p.stmts = append(p.stmts, vmStmt{assign: sa, out: []int{slot}})
-				continue
+				*dst = append(*dst, vmStmt{assign: sa, out: []int{slot}})
+				return nil
 			}
 			t, ok := env[name]
 			if !ok {
 				t = c.inferLiteralType(prog, name, *s.lit)
 				if t == nil {
-					return nil, fmt.Errorf("compile: %s = nil needs a var declaration or a use to take a type from", name)
+					return fmt.Errorf("compile: %s = nil needs a var declaration or a use to take a type from", name)
 				}
 			}
 			v, err := literalValue(t, *s.lit)
 			if err != nil {
-				return nil, fmt.Errorf("compile: %s: %w", name, err)
+				return fmt.Errorf("compile: %s: %w", name, err)
 			}
 			slot := newSlot(name, t)
-			p.stmts = append(p.stmts, vmStmt{lit: v, out: []int{slot}})
-			continue
+			*dst = append(*dst, vmStmt{lit: v, out: []int{slot}})
+			return nil
 		}
 
 		// x = int32(0) is a conversion hint. The right-hand side parses
@@ -222,27 +237,27 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 		if s.call != nil && !s.ret && len(s.lhs) > 0 {
 			if t, ok := c.conversionType(s.call); ok {
 				if len(s.lhs) != 1 {
-					return nil, fmt.Errorf("compile: a conversion assigns to exactly one name")
+					return fmt.Errorf("compile: a conversion assigns to exactly one name")
 				}
 				name := s.lhs[0]
 				if err := checkName(name); err != nil {
-					return nil, err
+					return err
 				}
 				if err := checkDecl(name, s.define); err != nil {
-					return nil, err
+					return err
 				}
 				if s.define {
 					if err := checkNew(s.lhs); err != nil {
-						return nil, err
+						return err
 					}
 				}
 				a, err := conversionArg(s.call)
 				if err != nil {
-					return nil, fmt.Errorf("compile: %s = %s(...): %w", name, joinPath(s.call.path), err)
+					return fmt.Errorf("compile: %s = %s(...): %w", name, joinPath(s.call.path), err)
 				}
 				v, err := literalValue(t, a)
 				if err != nil {
-					return nil, fmt.Errorf("compile: %s: %w", name, err)
+					return fmt.Errorf("compile: %s: %w", name, err)
 				}
 				// A declared type is not overridden by a hint. A hint
 				// converting into an interface slot keeps the slot's
@@ -250,57 +265,72 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 				st := t
 				if prev, ok := env[name]; ok && prev != t {
 					if !t.AssignableTo(prev) {
-						return nil, fmt.Errorf("compile: %s: cannot use %s as %s", name, t, prev)
+						return fmt.Errorf("compile: %s: cannot use %s as %s", name, t, prev)
 					}
 					st = prev
 				}
 				slot := newSlot(name, st)
-				p.stmts = append(p.stmts, vmStmt{lit: v, out: []int{slot}})
-				continue
+				*dst = append(*dst, vmStmt{lit: v, out: []int{slot}})
+				return nil
 			}
 		}
 
 		if s.retVal != nil {
 			ra, err := c.compileRetVal(slots, env, *s.retVal)
 			if err != nil {
-				return nil, err
+				return err
 			}
-			p.stmts = append(p.stmts, vmStmt{ret: true, retArg: ra})
-			continue
+			*dst = append(*dst, vmStmt{ret: true, retArg: ra})
+			return nil
 		}
 		if s.call == nil {
 			// A bare "return;".
-			p.stmts = append(p.stmts, vmStmt{ret: true})
-			continue
+			*dst = append(*dst, vmStmt{ret: true})
+			return nil
 		}
 		call, _, err := c.compileExpr(slots, env, s.call)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if len(s.lhs) > call.nres {
-			return nil, fmt.Errorf("compile: %s returns %d values, cannot assign %d", call.name, call.nres, len(s.lhs))
+			return fmt.Errorf("compile: %s returns %d values, cannot assign %d", call.name, call.nres, len(s.lhs))
 		}
 
 		if s.define && len(s.lhs) > 0 {
 			if err := checkNew(s.lhs); err != nil {
-				return nil, err
+				return err
 			}
 		}
 		out := make([]int, 0, len(s.lhs))
 		for i, name := range s.lhs {
 			if err := checkName(name); err != nil {
-				return nil, err
+				return err
 			}
 			if err := checkDecl(name, s.define); err != nil {
-				return nil, err
+				return err
 			}
 			out = append(out, newSlot(name, c.resultType(call, i)))
 		}
-		p.stmts = append(p.stmts, vmStmt{call: call, out: out, ret: s.ret})
+		*dst = append(*dst, vmStmt{call: call, out: out, ret: s.ret})
+		return nil
 	}
 
-	for i := range p.stmts {
-		s := &p.stmts[i]
+	for si := range prog.stmts {
+		if err := compileStmt(prog.stmts[si], &p.stmts); err != nil {
+			return nil, err
+		}
+	}
+
+	p.assignStmts(p.stmts)
+	return p, nil
+}
+
+// assignStmts runs the frame post-pass over one statement list,
+// descending into range bodies: a call inside a loop needs its
+// argument window like any other.
+func (p *vmProgram) assignStmts(stmts []vmStmt) {
+	for i := range stmts {
+		s := &stmts[i]
 		if s.call != nil {
 			p.assignFrame(s.call)
 		}
@@ -320,8 +350,11 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			p.assignArg(s.send.ch)
 			p.assignArg(s.send.val)
 		}
+		if s.rng != nil {
+			p.assignArg(s.rng.over)
+			p.assignStmts(s.rng.body)
+		}
 	}
-	return p, nil
 }
 
 // assignFrame gives every call in the program a disjoint window into
@@ -454,18 +487,3 @@ func (c *Compiler) compileRetVal(slots map[string]int, env map[string]reflect.Ty
 	return c.compileArg(slots, env, "return", 0, pt, a)
 }
 
-// resultType is the static type of the i'th non-error result.
-func (c *Compiler) resultType(call *vmCall, i int) reflect.Type {
-	ft := call.fn.Type()
-	n := 0
-	for j := 0; j < ft.NumOut(); j++ {
-		if j == call.errIdx {
-			continue
-		}
-		if n == i {
-			return ft.Out(j)
-		}
-		n++
-	}
-	return nil
-}

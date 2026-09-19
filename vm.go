@@ -166,6 +166,16 @@ type vmStmt struct {
 	// is a channel send. Both in vm_chan.go.
 	recv *vmRecv
 	send *vmSend
+
+	// rng is a range loop, its body a nested statement list. In
+	// vm_range.go.
+	rng *vmRange
+
+	// brk and cont raise the loop signals of break and continue. The
+	// parser only admits them inside a range body, so a loop always
+	// consumes them.
+	brk  bool
+	cont bool
 }
 
 // fieldStep is one selector of a field-assignment target.
@@ -298,6 +308,18 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 				return nil, err
 			}
 			continue
+		}
+		if s.rng != nil {
+			if err := p.runRange(ctx, s.rng, slots, frame, ifaces, stack, dest); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if s.brk || s.cont {
+			// Unreachable through the parser, which rejects both outside
+			// a range body; a defect here must not fall through to the
+			// bare-return case below.
+			return nil, fmt.Errorf("exec: break or continue outside a loop")
 		}
 		if s.retArg != nil {
 			v, err := s.retArg.get(ctx, slots, frame, ifaces, stack, dest)
