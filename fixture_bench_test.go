@@ -228,6 +228,44 @@ func (f *testFixtures) testReply(tb testing.TB) {
 	assertEqual(tb, "later", d.Note, "")
 }
 
+func (f *testFixtures) testRecord(tb testing.TB) {
+	type Endpoint struct {
+		Host string `json:"host"`
+		Port int64  `json:"port"`
+	}
+	type Server struct {
+		Endpoint
+		Name string `json:"name"`
+	}
+	s := Server{Endpoint: Endpoint{Host: "example.com", Port: 8080}, Name: "edge"}
+	assertEqual(tb, "example.com", s.Host, "")
+	assertEqual(tb, int64(8080), s.Port, "")
+
+	var w Server
+	w.Host = "db.local"
+	w.Port = 5432
+	assertEqual(tb, "db.local", w.Host, "")
+	assertEqual(tb, "db.local", w.Endpoint.Host, "")
+
+	buf := bytesNewBufferString("")
+	if err := json.NewEncoder(buf).Encode(s); err != nil {
+		tb.Fatal(err)
+	}
+	assertEqual(tb, "{\"host\":\"example.com\",\"port\":8080,\"name\":\"edge\"}\n", buf.String(), "")
+
+	// The fixture's Session converts field for field into the host's
+	// named type; the program side rides reflect's structural
+	// assignability instead of the spelled conversion.
+	type Session struct {
+		User string
+		Host string
+		Port int64
+	}
+	c := Session{User: "ana", Host: "db.local", Port: 5432}
+	line := formatSession(session(c))
+	assertEqual(tb, "ana@db.local:5432", line, "")
+}
+
 func (f *testFixtures) testVariadic(tb testing.TB) {
 	parts := strings.Fields("a b c")
 	joined := path.Join(parts...)
@@ -262,6 +300,7 @@ func BenchmarkFixtures(b *testing.B) {
 		"url":      (*testFixtures).testURL,
 		"json":     (*testFixtures).testJSON,
 		"fmt":      (*testFixtures).testFmt,
+		"record":   (*testFixtures).testRecord,
 		"reply":    (*testFixtures).testReply,
 		"structs":  (*testFixtures).testStructs,
 		"typedecl": (*testFixtures).testTypedecl,
@@ -352,52 +391,8 @@ func newBenchFixtureRuntime(b *testing.B) *Runtime {
 	if err := rt.Bind("chanOf", chanOf); err != nil {
 		b.Fatal(err)
 	}
-	return rt
-}
-
-// BenchmarkFixtureWork isolates the bridge from the assertions: the
-// http fixture's work with no assert calls, against the same lines in
-// Go. This is the shape the engine is for, and unlike the fixtures it
-// reaches the direct-call tier.
-func BenchmarkFixtureWork(b *testing.B) {
-	const src = `
-		req := http.NewRequestWithContext("GET", "https://example.com/a/b");
-		req.Method = "POST";
-		req.Host = "override.example.com";
-		return req;
-	`
-	rt := newBenchFixtureRuntime(b)
-	if err := rt.Supports(src); err != nil {
-		b.Fatalf("the work program should JIT: %v", err)
-	}
-	compiled, err := rt.Compile(src)
-	if err != nil {
+	if err := rt.BindScope("session", map[string]any{"Format": formatSession}); err != nil {
 		b.Fatal(err)
 	}
-	ctx := context.WithValue(b.Context(), fixtureCtxKey{}, "fixture")
-
-	var sink *http.Request
-	b.Run("vm", func(b *testing.B) {
-		b.ReportAllocs()
-		for b.Loop() {
-			req, err := compiled.ExecContext[*http.Request](ctx, nil)
-			if err != nil {
-				b.Fatal(err)
-			}
-			sink = req
-		}
-	})
-	b.Run("native", func(b *testing.B) {
-		b.ReportAllocs()
-		for b.Loop() {
-			req, err := http.NewRequestWithContext(ctx, "GET", "https://example.com/a/b", nil)
-			if err != nil {
-				b.Fatal(err)
-			}
-			req.Method = "POST"
-			req.Host = "override.example.com"
-			sink = req
-		}
-	})
-	_ = sink
+	return rt
 }

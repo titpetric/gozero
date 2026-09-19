@@ -62,7 +62,28 @@ func fixtureRuntime(t *testing.T) *Runtime {
 	if err := rt.Bind("chanOf", chanOf); err != nil {
 		t.Fatal(err)
 	}
+	// session.Format takes the named type by value; the record fixture
+	// reaches it by declaring a struct of the same shape.
+	if err := rt.BindScope("session", map[string]any{"Format": formatSession}); err != nil {
+		t.Fatal(err)
+	}
 	return rt
+}
+
+// session is the named host parameter type for the record fixture. No
+// binding constructs one, so a program can only call Format by
+// declaring a struct of the same shape and passing it by value: the
+// structural assignability the design doc flags as a capability
+// widening.
+type session struct {
+	User string
+	Host string
+	Port int64
+}
+
+// formatSession is the record fixture's host binding.
+func formatSession(s session) string {
+	return fmt.Sprintf("%s@%s:%d", s.User, s.Host, s.Port)
 }
 
 // chanOf builds the buffered channel the channels fixture receives
