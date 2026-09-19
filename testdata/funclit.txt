@@ -1,0 +1,14 @@
+// funclit: a func literal in argument position. The parameter types
+// of func(w, r) come from mux.HandleFunc's handler signature; the
+// body is capture-free, sees only its parameters and the bindings,
+// and runs when the mux serves the recorded request.
+mux := http.NewServeMux();
+mux.HandleFunc("/health", func(w, r) {
+	w.WriteHeader(201);
+	fmt.Fprint(w, "ok");
+});
+req := httptest.NewRequest("GET", "/health");
+rec := httptest.NewRecorder();
+mux.ServeHTTP(rec, req);
+assert.Equal(tb, "201", fmt.Sprintf("%d", rec.Code));
+assert.Equal(tb, "ok", rec.Body.String());

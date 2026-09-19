@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path"
@@ -26,6 +27,11 @@ func fixtureRuntime(t *testing.T) *Runtime {
 		"http": {
 			"NewRequest":            http.NewRequest,
 			"NewRequestWithContext": http.NewRequestWithContext,
+			"NewServeMux":           http.NewServeMux,
+		},
+		"httptest": {
+			"NewRequest":  httptest.NewRequest,
+			"NewRecorder": httptest.NewRecorder,
 		},
 		"url": {
 			"Parse":      url.Parse,
@@ -33,7 +39,7 @@ func fixtureRuntime(t *testing.T) *Runtime {
 		},
 		"json":    {"NewEncoder": json.NewEncoder},
 		"bytes":   {"NewBufferString": bytes.NewBufferString},
-		"fmt":     {"Sprintf": fmt.Sprintf, "Sprint": fmt.Sprint},
+		"fmt":     {"Sprintf": fmt.Sprintf, "Sprint": fmt.Sprint, "Fprint": fmt.Fprint},
 		"strings": {"Fields": strings.Fields},
 		"path":    {"Join": path.Join},
 		// Equal has no variadic tail, (tb, want, got, message): every
