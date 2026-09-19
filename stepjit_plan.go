@@ -152,6 +152,9 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 			stmts = append(stmts, plannedStmt{send: s.send, out: -1})
 			continue
 		}
+		if s.inc != nil {
+			return nil, fmt.Errorf("a step statement is not on the direct tier yet")
+		}
 		if s.lit.IsValid() {
 			out := -1
 			if len(s.out) > 0 {
