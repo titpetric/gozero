@@ -133,17 +133,41 @@ func materialize(ft reflect.Type, fn CompiledFunc, names []string) (reflect.Valu
 // besides a trailing error, and without an error result a failing run
 // panics with its error.
 func materializeVia(ft reflect.Type, invoke func(context.Context, []reflect.Value) (any, error)) (reflect.Value, error) {
+	plan, err := newMatPlan(ft)
+	if err != nil {
+		return reflect.Value{}, err
+	}
+	return plan.bind(invoke), nil
+}
+
+// matPlan is the compile-time half of materializeVia: the signature
+// checks and the precomputed zeros, split out so a capturing func
+// literal can validate once and bind a fresh invoke on every run
+// without repaying them.
+type matPlan struct {
+	ft             reflect.Type
+	errIdx, resIdx int
+	ctxIdx         int
+	nout           int
+	zeros          []reflect.Value
+	resT           reflect.Type
+	rcache         atomic.Pointer[assignCache]
+}
+
+// newMatPlan validates ft's result side and precomputes what every
+// bind shares.
+func newMatPlan(ft reflect.Type) (*matPlan, error) {
 	errIdx, resIdx := -1, -1
 	for i := 0; i < ft.NumOut(); i++ {
 		if ft.Out(i) == errType {
 			if i != ft.NumOut()-1 {
-				return reflect.Value{}, fmt.Errorf("funcof: the error result of %s must be last", ft)
+				return nil, fmt.Errorf("funcof: the error result of %s must be last", ft)
 			}
 			errIdx = i
 			continue
 		}
 		if resIdx >= 0 {
-			return reflect.Value{}, fmt.Errorf("funcof: %s has %d results besides error; a program returns one value", ft, ft.NumOut()-boolToInt(errIdx >= 0))
+			return nil, fmt.Errorf("funcof: %s has %d results besides error; a program returns one value", ft, ft.NumOut()-boolToInt(errIdx >= 0))
 		}
 		resIdx = i
 	}
@@ -165,7 +189,12 @@ func materializeVia(ft reflect.Type, invoke func(context.Context, []reflect.Valu
 	if resIdx >= 0 {
 		resT = ft.Out(resIdx)
 	}
-	var rcache atomic.Pointer[assignCache]
+	return &matPlan{ft: ft, errIdx: errIdx, resIdx: resIdx, ctxIdx: ctxIdx, nout: nout, zeros: zeros, resT: resT}, nil
+}
+
+// bind wraps invoke as a func value of the planned type.
+func (m *matPlan) bind(invoke func(context.Context, []reflect.Value) (any, error)) reflect.Value {
+	ft, errIdx, resIdx, ctxIdx, nout, zeros, resT, rcache := m.ft, m.errIdx, m.resIdx, m.ctxIdx, m.nout, m.zeros, m.resT, &m.rcache
 
 	return reflect.MakeFunc(ft, func(args []reflect.Value) []reflect.Value {
 		ctx := context.Background()
@@ -205,5 +234,5 @@ func materializeVia(ft reflect.Type, invoke func(context.Context, []reflect.Valu
 			out[resIdx] = rv
 		}
 		return out
-	}), nil
+	})
 }
