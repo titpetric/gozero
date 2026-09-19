@@ -101,6 +101,11 @@ type plannedStmt struct {
 	// statement keeps its slot and a producer before the loop keeps
 	// its statement.
 	rng *plannedRange
+
+	// brk and cont raise the loop signals; both only stand inside a
+	// range body.
+	brk  bool
+	cont bool
 }
 
 // plannedRange pairs the compiled loop with its planned body.
@@ -179,6 +184,11 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 			}
 			stmts = append(stmts, plannedStmt{rng: pr, out: -1})
 			continue
+		}
+		if s.brk || s.cont {
+			// Unreachable through the parser; mirrored here so a defect
+			// cannot compile a stray signal into a straight line.
+			return nil, fmt.Errorf("break or continue outside a loop")
 		}
 		if s.lit.IsValid() {
 			out := -1
@@ -370,6 +380,8 @@ func planRange(r *vmRange) (*plannedRange, error) {
 			out = s.out[0]
 		}
 		switch {
+		case s.brk || s.cont:
+			pr.body = append(pr.body, plannedStmt{brk: s.brk, cont: s.cont, out: -1})
 		case s.rng != nil:
 			sub, err := planRange(s.rng)
 			if err != nil {

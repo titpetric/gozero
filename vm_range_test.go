@@ -53,27 +53,42 @@ func rangeRuntime(t testing.TB) (*Runtime, *[]string) {
 }
 
 // TestRangeCompileErrors pins the named rules: what a range cannot
-// hold and what it cannot iterate. break, continue, return and var
-// are rejected where they are written, the ranged expression needs a
-// static type, and only slices, arrays and integers iterate.
+// hold and what it cannot iterate. return and var are rejected where
+// they are written, break and continue outside a body and labels on
+// either are rejected by name, the ranged expression needs a static
+// type, and the channel and iterator forms bound their variable
+// counts.
 func TestRangeCompileErrors(t *testing.T) {
 	rt, _ := rangeRuntime(t)
-	if err := rt.Bind("hdr", func() map[string][]string { return nil }); err != nil {
-		t.Fatal(err)
+	for name, fn := range map[string]any{
+		"sendonly": func() chan<- string { return nil },
+		"mkch":     func() chan string { return nil },
+		"notseq":   func() func(int) int { return nil },
+		"lines":    func() func(func(string) bool) { return nil },
+		"parse":    url.Parse,
+	} {
+		if err := rt.Bind(name, fn); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for name, tc := range map[string]struct{ src, want string }{
-		"break":          {`for i := range 3 { break }`, "break is not in the language"},
-		"continue":       {`for i := range 3 { continue }`, "continue is not in the language"},
-		"return in body": {`for i := range 3 { return i }`, "return cannot stand inside a range body"},
-		"var in body":    {`for i := range 3 { var u url.URL }`, "var declaration cannot stand inside a range body"},
-		"assign form":    {`i := 0; for i = range 3 { poke() }`, "declares its names with :="},
-		"three names":    {`for a, b, c := range 3 { poke() }`, "at most two names"},
-		"no range":       {`for poke() { }`, "only the range form"},
-		"map":            {`m := hdr(); for k := range m { rec(k) }`, "cannot range over map[string][]string"},
-		"string":         {`s := "abc"; for i := range s { touch(i) }`, "cannot range over string"},
-		"two int vars":   {`for i, v := range 3 { touch(i) }`, "permits one iteration variable"},
-		"stack name":     {`for _, s := range xs { rec(s) }`, "not a name bound by the program"},
-		"unterminated":   {`for i := range 3 { poke();`, "unterminated range body"},
+		"break outside":     {`break`, "break is only allowed inside a range body"},
+		"continue outside":  {`continue`, "continue is only allowed inside a range body"},
+		"break label":       {`for i := range 3 { break out }`, "a label after break is not in the language"},
+		"continue label":    {`for i := range 3 { continue out }`, "a label after continue is not in the language"},
+		"return in body":    {`for i := range 3 { return i }`, "return cannot stand inside a range body"},
+		"var in body":       {`for i := range 3 { var u url.URL }`, "var declaration cannot stand inside a range body"},
+		"assign form":       {`i := 0; for i = range 3 { poke() }`, "declares its names with :="},
+		"three names":       {`for a, b, c := range 3 { poke() }`, "at most two names"},
+		"no range":          {`for poke() { }`, "only the range form"},
+		"two int vars":      {`for i, v := range 3 { touch(i) }`, "permits one iteration variable"},
+		"two chan vars":     {`c := mkch(); for v, ok := range c { rec(v) }`, "permits one iteration variable"},
+		"two seq vars":      {`for a, b := range lines() { rec(a) }`, "permits one iteration variable"},
+		"send-only channel": {`c := sendonly(); for v := range c { rec(v) }`, "cannot range over the send-only"},
+		"not an iterator":   {`for v := range notseq() { idx(v) }`, "a range func is func(func(V) bool) or func(func(K, V) bool)"},
+		"struct bound":      {`u := parse("https://h/p"); for v := range u { poke() }`, "cannot range over *url.URL"},
+		"stack name":        {`for _, s := range xs { rec(s) }`, "not a name bound by the program"},
+		"unterminated":      {`for i := range 3 { poke();`, "unterminated range body"},
 	} {
 		_, err := rt.Compile(tc.src)
 		if err == nil {

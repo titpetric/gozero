@@ -11,6 +11,8 @@ import (
 //	stmt    := "var" name typeref term
 //	         | "return" [ arg ] term
 //	         | "for" [ name [ "," name ] ":=" ] "range" arg block term
+//	         | "break" term
+//	         | "continue" term
 //	         | path "<-" arg term
 //	         | [ name { "," name } ( ":=" | "=" ) ] rhs term
 //	block   := "{" { stmt } "}"
@@ -165,17 +167,12 @@ type stmt struct {
 
 	// rng is a range loop, "for x := range xs { ... }".
 	rng *rangeStmt
-}
 
-// rangeStmt is a parsed range loop. key and val are the iteration
-// names, "" when the form binds fewer than two and "_" when written
-// blank; over is the ranged expression and body the braced statement
-// list.
-type rangeStmt struct {
-	key  string
-	val  string
-	over arg
-	body []stmt
+	// brk and cont are break and continue, which only stand inside a
+	// range body: the parser rejects them anywhere else, which is what
+	// keeps their control signals from escaping a loop.
+	brk  bool
+	cont bool
 }
 
 // program is a parsed source unit.
@@ -277,15 +274,14 @@ func (p *Parser) stmt() (stmt, error) {
 	if p.keyword("for") {
 		return p.forRange()
 	}
-	// break and continue are reserved with a named rule rather than
-	// left to fail as unknown calls: a range body runs every statement
-	// of every iteration, and the only exits are an error and the
-	// execution context.
+	// break and continue only stand inside a range body, which is the
+	// guarantee that lets their signals travel the error return: a
+	// loop always encloses them, so a signal never reaches a caller.
 	if p.keyword("break") {
-		return stmt{}, fmt.Errorf("parse: break is not in the language, a range body runs every statement of every iteration (offset %d)", p.pos)
+		return p.loopExit("break", func() stmt { return stmt{brk: true} })
 	}
 	if p.keyword("continue") {
-		return stmt{}, fmt.Errorf("parse: continue is not in the language, a range body runs every statement of every iteration (offset %d)", p.pos)
+		return p.loopExit("continue", func() stmt { return stmt{cont: true} })
 	}
 
 	// A dotted path followed by a single "=" is a field assignment.
@@ -457,72 +453,6 @@ func (p *Parser) expr() (*callExpr, error) {
 		}
 		call.chain = append(call.chain, link{name: name, args: largs})
 	}
-}
-
-// forRange reads a range loop after the for keyword. Only the range
-// form exists: the three-clause and condition loops need operator
-// expressions, which the grammar does not have.
-func (p *Parser) forRange() (stmt, error) {
-	r := &rangeStmt{}
-	if !p.keyword("range") {
-		lhs, define, ok := p.assignList()
-		if !ok {
-			return stmt{}, fmt.Errorf("parse: for supports only the range form at offset %d", p.pos)
-		}
-		if !define {
-			return stmt{}, fmt.Errorf("parse: a range loop declares its names with := at offset %d", p.pos)
-		}
-		if len(lhs) > 2 {
-			return stmt{}, fmt.Errorf("parse: a range loop binds at most two names at offset %d", p.pos)
-		}
-		if !p.keyword("range") {
-			return stmt{}, fmt.Errorf("parse: for supports only the range form at offset %d", p.pos)
-		}
-		r.key = lhs[0]
-		if len(lhs) == 2 {
-			r.val = lhs[1]
-		}
-	}
-
-	// The header holds composite literals back, so the brace after the
-	// ranged expression opens the body.
-	saved := p.hdr
-	p.hdr = true
-	over, err := p.arg()
-	p.hdr = saved
-	if err != nil {
-		return stmt{}, err
-	}
-	switch over.kind {
-	case argVar, argPath, argCall, argInt:
-	default:
-		return stmt{}, fmt.Errorf("parse: cannot range over this expression at offset %d", p.pos)
-	}
-	r.over = over
-
-	if !p.consume('{') {
-		return stmt{}, fmt.Errorf("parse: expected '{' after the range header at offset %d", p.pos)
-	}
-	p.depth++
-	defer func() { p.depth-- }()
-	for {
-		p.skipSpace()
-		if p.consume('}') {
-			break
-		}
-		if p.pos >= len(p.src) {
-			return stmt{}, fmt.Errorf("parse: unterminated range body at offset %d", p.pos)
-		}
-		s, err := p.stmt()
-		if err != nil {
-			return stmt{}, err
-		}
-		r.body = append(r.body, s)
-	}
-	if !p.terminated() {
-		return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
-	}
-	return stmt{rng: r}, nil
 }
 
 func (p *Parser) path() ([]string, error) {
