@@ -62,6 +62,10 @@ func fixtureRuntime(t *testing.T) *Runtime {
 	if err := rt.Bind("chanOf", chanOf); err != nil {
 		t.Fatal(err)
 	}
+	// counter hands the range fixture a fresh accumulator per run.
+	if err := rt.Bind("counter", counterNew); err != nil {
+		t.Fatal(err)
+	}
 	return rt
 }
 
@@ -74,6 +78,21 @@ func chanOf(vs ...string) chan string {
 	}
 	return c
 }
+
+// fixtureCounter is the accumulator the range fixture drives. A run
+// creates its own through the counter binding, so benchmark
+// iterations do not share state.
+type fixtureCounter struct{ n int64 }
+
+// Add returns a nil error so the method has a shape the direct tier
+// calls.
+func (c *fixtureCounter) Add(d int64) error { c.n += d; return nil }
+
+// Sum reports the accumulated total.
+func (c *fixtureCounter) Sum() int64 { return c.n }
+
+// counterNew is the counter binding of the range fixture.
+func counterNew() *fixtureCounter { return &fixtureCounter{} }
 
 // TestFixtures runs every testdata/*.txt program as a subtest. A
 // fixture asserts its own results through the tb it is handed; this
