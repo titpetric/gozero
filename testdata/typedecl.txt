@@ -27,8 +27,8 @@ b := Wrap{Inner: Base{N: 3}, M: 4};
 assert.Equal(tb, 3, b.Inner.N);
 assert.Equal(tb, 4, b.M);
 
-// The declared field order shapes the encoder's output; there are no
-// tags yet, so the keys are the field names.
+// The declared field order shapes the encoder's output; Point carries
+// no tags, so the keys are the field names.
 buf := bytes.NewBufferString("");
 json.NewEncoder(buf).Encode(Point{X: 1, Y: 2});
 assert.Equal(tb, "{\"X\":1,\"Y\":2}\n", buf.String());

@@ -72,6 +72,105 @@ func TestTypeDeclBothTiers(t *testing.T) {
 	}
 }
 
+// TestTypeDeclTags checks a tag reaches reflect.StructField.Tag as
+// written and shapes the encoder's output: keys renamed, an empty
+// field omitted, a "-" field never emitted.
+func TestTypeDeclTags(t *testing.T) {
+	decl := "type Reply struct {\n" +
+		"\tStatus string `json:\"status\"`\n" +
+		"\tCount int64 `json:\"count,omitempty\"`\n" +
+		"\tSkip string `json:\"-\"`\n" +
+		"}\n"
+	rt, _ := typeRuntime(t)
+	fn, err := rt.Compile(decl + `return Reply{Status: "ok", Skip: "never"};`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := fn.Exec[any](nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	typ := reflect.TypeOf(res)
+	for i, want := range []string{`json:"status"`, `json:"count,omitempty"`, `json:"-"`} {
+		if got := string(typ.Field(i).Tag); got != want {
+			t.Errorf("field %d tag = %q, want %q", i, got, want)
+		}
+	}
+
+	rt2, _ := typeRuntime(t)
+	got, err := runProgram(t, rt2, decl+`json.NewEncoder(dest).Encode(Reply{Status: "ok", Skip: "never"});`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "{\"status\":\"ok\"}\n"; got != want {
+		t.Errorf("dest = %q, want %q", got, want)
+	}
+}
+
+// TestTypeDeclTagIdentity pins the StructOf fact tags add: the tag is
+// part of the type's identity. The same fields with the same tags stay
+// one canonical type; changing only a tag mints a second.
+func TestTypeDeclTagIdentity(t *testing.T) {
+	build := func(tag string) reflect.Type {
+		rt, _ := typeRuntime(t)
+		fn, err := rt.Compile("type P struct {\n\tX int64 `" + tag + "`\n}\nreturn P{X: 1};")
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := fn.Exec[any](nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return reflect.TypeOf(res)
+	}
+	a, b, c := build(`json:"x"`), build(`json:"x"`), build(`json:"y"`)
+	if a != b {
+		t.Errorf("the same tagged shape built two types: %v and %v", a, b)
+	}
+	if a == c {
+		t.Error("shapes differing only in tags share one type; the tag should be part of identity")
+	}
+}
+
+// TestTypeDeclTagsBothTiers runs a tagged program through the step JIT
+// and the reflect evaluator and requires byte-identical output, with a
+// tagged declared struct nested in another and a var of a declared
+// name written after the fact.
+func TestTypeDeclTagsBothTiers(t *testing.T) {
+	src := "type Reply struct {\n" +
+		"\tStatus Status `json:\"status\"`\n" +
+		"\tCount int64 `json:\"count\"`\n" +
+		"\tNote string `json:\"note,omitempty\"`\n" +
+		"}\n" +
+		"type Status struct {\n" +
+		"\tCode int64 `json:\"code\"`\n" +
+		"}\n" +
+		"r := Reply{Status: Status{Code: 7}, Count: 2};\n" +
+		"var d Reply;\n" +
+		"d.Note = \"retry\";\n" +
+		"json.NewEncoder(dest).Encode(r);\n" +
+		"json.NewEncoder(dest).Encode(d);\n" +
+		"json.NewEncoder(dest).Encode(r.Status.Code);\n"
+	rt := pairRuntime(t)
+	jit, slow := compilePair(t, rt, src)
+	want := "{\"status\":{\"code\":7},\"count\":2}\n" +
+		"{\"status\":{\"code\":0},\"count\":0,\"note\":\"retry\"}\n" +
+		"7\n"
+	for name, fn := range map[string]CompiledFunc{"jit": jit, "reflect": slow} {
+		var dest bytes.Buffer
+		res, err := fn(context.Background(), nil, &dest)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if res != nil {
+			t.Errorf("%s: result = %v, want nil", name, res)
+		}
+		if dest.String() != want {
+			t.Errorf("%s: dest = %q, want %q", name, dest.String(), want)
+		}
+	}
+}
+
 // TestTypeDeclSupports pins the tier: the rung's constructs reach the
 // direct tier, and the one that does not names why.
 func TestTypeDeclSupports(t *testing.T) {
@@ -96,6 +195,11 @@ func TestTypeDeclSupports(t *testing.T) {
 	for name, tc := range map[string]struct{ src, reason, want string }{
 		"deep write":         {decl + nested + `var b Wrap; b.Inner.X = 9; json.NewEncoder(dest).Encode(b.Inner.X);`, "only a single field is in the table", "9\n"},
 		"struct field write": {decl + nested + `var b Wrap; b.Inner = Point{X: 8}; json.NewEncoder(dest).Encode(b.Inner.X);`, "has no layout class", "8\n"},
+		// A struct slot written more than once cannot alias the frame,
+		// and a struct has no transport class to copy through, so
+		// encoding it whole bridges; the write-once slot one case up
+		// stays direct.
+		"whole value rewritten": {decl + `var p Point; p.X = 1; json.NewEncoder(dest).Encode(p);`, "cannot become an interface", "{\"X\":1,\"Y\":0}\n"},
 	} {
 		rt, _ := typeRuntime(t)
 		if err := rt.Supports(tc.src); err == nil || !strings.Contains(err.Error(), tc.reason) {

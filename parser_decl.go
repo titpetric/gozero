@@ -9,13 +9,14 @@ import (
 // nesting beyond the braces:
 //
 //	typedecl := "type" name "struct" "{" { field } "}" term
-//	field    := name typeref fterm
+//	field    := name typeref [ tag ] fterm
+//	tag      := rawstring | string
 //	fterm    := ";" | EOL | "}"
 //
-// The parser records name and field spellings; the compiler builds the
-// reflect types and owns every semantic check. What Go's struct
-// grammar has beyond this is named when it is seen - a field name
-// list, an embedded type, a tag - rather than misparsed.
+// The parser records name, field and tag spellings; the compiler
+// builds the reflect types and owns every semantic check. What Go's
+// struct grammar has beyond this is named when it is seen - a field
+// name list, an embedded type - rather than misparsed.
 
 // typeDecl is one "type Name struct { ... }" declaration.
 type typeDecl struct {
@@ -23,11 +24,12 @@ type typeDecl struct {
 	fields []fieldDecl
 }
 
-// fieldDecl is one struct field: a name and a type in the registry
-// spelling.
+// fieldDecl is one struct field: a name, a type in the registry
+// spelling, and the tag as written, empty when the field has none.
 type fieldDecl struct {
 	name string
 	typ  string
+	tag  string
 }
 
 // typeDecl claims "type Name struct" and rewinds on anything else, so
@@ -89,28 +91,58 @@ func (p *Parser) fieldDecl(typeName string) (fieldDecl, error) {
 	if err != nil {
 		return fieldDecl{}, err
 	}
-	// A tag would silently vanish if the line simply had to end here;
-	// the raw-string token does not exist in the lexer yet, so a tag
-	// is named instead.
-	save, saveNL := p.pos, p.nl
-	p.skipSpace()
-	if !p.nl && p.pos < len(p.src) && (p.src[p.pos] == '`' || p.src[p.pos] == '"') {
-		return fieldDecl{}, fmt.Errorf("parse: type %s: field tags are not supported", typeName)
+	tag, err := p.fieldTag(typeName)
+	if err != nil {
+		return fieldDecl{}, err
 	}
-	p.pos, p.nl = save, saveNL
 	if !p.fieldTerm() {
 		return fieldDecl{}, fmt.Errorf("parse: type %s: expected ';' or end of line after field at offset %d", typeName, p.pos)
 	}
-	return fieldDecl{name: name, typ: typ}, nil
+	return fieldDecl{name: name, typ: typ, tag: tag}, nil
+}
+
+// fieldTag reads an optional tag on the field's own line: a raw
+// string in the usual spelling or a double-quoted string, both legal
+// Go. The value reaches reflect.StructField.Tag exactly as written.
+func (p *Parser) fieldTag(typeName string) (string, error) {
+	save, saveNL := p.pos, p.nl
+	p.skipSpace()
+	if p.nl || p.pos >= len(p.src) {
+		p.pos, p.nl = save, saveNL
+		return "", nil
+	}
+	var a arg
+	var err error
+	switch p.src[p.pos] {
+	case '`':
+		a, err = p.rawString()
+	case '"':
+		a, err = p.stringLit('"')
+	case '\'':
+		// A single-quoted string is a literal elsewhere in the grammar,
+		// but Go spells a tag raw or double-quoted; naming that beats
+		// the terminator error the line would otherwise get.
+		return "", fmt.Errorf("parse: type %s: a struct tag is a raw or double-quoted string, not single-quoted", typeName)
+	default:
+		p.pos, p.nl = save, saveNL
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return a.str, nil
 }
 
 // atFieldEnd reports whether the next token ends a field line,
 // consuming nothing: a lone identifier on a line is an embedded type,
-// not a field.
+// not a field. A tag ends the line too, so an embedded type carrying
+// one is rejected as embedded rather than misread as a typeref.
 func (p *Parser) atFieldEnd() bool {
 	save, saveNL := p.pos, p.nl
 	p.skipSpace()
-	end := p.pos >= len(p.src) || p.nl || p.src[p.pos] == ';' || p.src[p.pos] == '}'
+	end := p.pos >= len(p.src) || p.nl ||
+		p.src[p.pos] == ';' || p.src[p.pos] == '}' ||
+		p.src[p.pos] == '`' || p.src[p.pos] == '"'
 	p.pos, p.nl = save, saveNL
 	return end
 }

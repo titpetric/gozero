@@ -9,7 +9,8 @@ import (
 //
 //	program := { typedecl | stmt }
 //	typedecl := "type" name "struct" "{" { field } "}" term
-//	field   := name typeref fterm
+//	field   := name typeref [ tag ] fterm
+//	tag     := rawstring | string
 //	fterm   := ";" | EOL | "}"
 //	stmt    := "var" name typeref term
 //	         | "return" [ arg ] term
