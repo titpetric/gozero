@@ -112,6 +112,16 @@ func (l layout) String() string {
 	return "?"
 }
 
+// classOf is the inverse of layout.String, for reading a shape key.
+func classOf(s string) (layout, bool) {
+	for l := lBool; l <= lF64; l++ {
+		if l.String() == s {
+			return l, true
+		}
+	}
+	return lBad, false
+}
+
 // loadN reads a scalar of class cl out of the frame as raw bits.
 func loadN(at unsafe.Pointer, cl layout) uint64 {
 	switch cl {
