@@ -171,8 +171,11 @@ type vmStmt struct {
 	// vm_range.go.
 	rng *vmRange
 
+	// fors is a condition or three-clause loop. In vm_for.go.
+	fors *vmFor
+
 	// brk and cont raise the loop signals of break and continue. The
-	// parser only admits them inside a range body, so a loop always
+	// parser only admits them inside a loop body, so a loop always
 	// consumes them.
 	brk  bool
 	cont bool
@@ -311,6 +314,12 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 		}
 		if s.rng != nil {
 			if err := p.runRange(ctx, s.rng, slots, frame, ifaces, stack, dest); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if s.fors != nil {
+			if err := p.runFor(ctx, s.fors, slots, frame, ifaces, stack, dest); err != nil {
 				return nil, err
 			}
 			continue

@@ -70,10 +70,13 @@ func fixtureRuntime(t *testing.T) *Runtime {
 	}
 	// The loops fixture's sources: a fresh map per run, a closed
 	// channel per range, and a length the language cannot take itself.
+	// queue is the for fixture's condition source: a fresh drainable
+	// queue per run.
 	for name, fn := range map[string]any{
 		"sizes":        sizesMap,
 		"strlen":       strLen,
 		"closedChanOf": closedChanOf,
+		"queue":        queueOf,
 	} {
 		if err := rt.Bind(name, fn); err != nil {
 			t.Fatal(err)
@@ -112,6 +115,27 @@ func sizesMap() map[string]int64 {
 // strLen measures a string where the language has no len, so a map
 // key contributes an order-independent fact to an assertion.
 func strLen(s string) int64 { return int64(len(s)) }
+
+// fixtureQueue is the condition source of the for fixture: More
+// reports whether an element remains and Next pops one, so a
+// condition loop drains it in order and terminates.
+type fixtureQueue struct{ items []string }
+
+// More reports whether Next has an element to pop.
+func (q *fixtureQueue) More() bool { return len(q.items) > 0 }
+
+// Next pops the front element.
+func (q *fixtureQueue) Next() string {
+	v := q.items[0]
+	q.items = q.items[1:]
+	return v
+}
+
+// queueOf builds a fresh queue per run. The variadic pack is borrowed
+// memory, so the slice is copied.
+func queueOf(vs ...string) *fixtureQueue {
+	return &fixtureQueue{items: append([]string(nil), vs...)}
+}
 
 // fixtureCounter is the accumulator the range fixture drives. A run
 // creates its own through the counter binding, so benchmark

@@ -1,0 +1,41 @@
+// for: a condition loop drains a queue through a bool method, and
+// three-clause loops count up, down, and to a bound a call computed.
+// continue still runs the post clause and break skips it; the loop
+// variable is one flat slot that outlives the loop; the per-iteration
+// ctx.Err() check is the only bound a condition loop keeps.
+q := queue("a", "b", "c");
+buf := bytes.NewBufferString("");
+for q.More() {
+	buf.WriteString(q.Next());
+}
+assert.Equal(tb, "abc", buf.String());
+
+c := counter();
+for i := 0; i < 4; i++ {
+	c.Add(i);
+}
+assert.Equal(tb, 6, c.Sum());
+assert.Equal(tb, 4, i);
+
+d := counter();
+for j := 3; j > 0; j-- {
+	d.Add(j);
+}
+assert.Equal(tb, 6, d.Sum());
+
+n := strlen("gozero");
+e := counter();
+for k := 0; k != n; k++ {
+	e.Add(1);
+	continue;
+	e.Add(100);
+}
+assert.Equal(tb, 6, e.Sum());
+
+f := counter();
+for m := 5; m <= 9; m++ {
+	f.Add(m);
+	break;
+}
+assert.Equal(tb, 5, f.Sum());
+assert.Equal(tb, 5, m);

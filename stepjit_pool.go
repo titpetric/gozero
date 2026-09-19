@@ -152,13 +152,26 @@ func (c *jitCompiler) planPools(plan *jitPlan) {
 				walkArg(s.send.ch, s.send.ch.typ)
 				walkArg(s.send.val, s.send.val.typ)
 			}
-			// A pooled site inside a range body lends one block per
+			// A pooled site inside a loop body lends one block per
 			// run and the later iterations allocate fresh: the scratch
 			// field holds the last block only, so release repools one.
 			// Unpooled, never unsound.
 			if s.rng != nil {
 				walkArg(s.rng.src.over, s.rng.src.over.typ)
 				walkStmts(s.rng.body)
+			}
+			if s.fors != nil {
+				if c := s.fors.src.cond; c != nil {
+					walkArg(c, c.typ)
+				}
+				if iv := s.fors.src.initVal; iv != nil {
+					walkArg(iv, iv.typ)
+				}
+				if cmp := s.fors.src.cmp; cmp != nil {
+					walkArg(cmp.x, cmp.x.typ)
+					walkArg(cmp.y, cmp.y.typ)
+				}
+				walkStmts(s.fors.body)
 			}
 		}
 	}

@@ -12,6 +12,9 @@ func (c *jitCompiler) stmtNode(s plannedStmt, jp *jitProgram) (nodeE, error) {
 	if s.rng != nil {
 		return c.rangeNode(s.rng, jp)
 	}
+	if s.fors != nil {
+		return c.forNode(s.fors, jp)
+	}
 	if s.brk {
 		return raiseSignal(errLoopBreak), nil
 	}

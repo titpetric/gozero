@@ -186,7 +186,7 @@ func (c *Compiler) compileRangeOver(slots map[string]int, env map[string]reflect
 		}
 		return &vmArg{kind: vaConst, val: v, typ: v.Type(), iface: -1}, v.Type(), nil
 	}
-	va, t, err := c.chanSource(slots, env, a)
+	va, t, err := c.sourceArg(slots, env, a, "range bound")
 	if err != nil {
 		return nil, nil, fmt.Errorf("range: %w", err)
 	}
@@ -393,7 +393,7 @@ func (p *vmProgram) runRange(ctx context.Context, r *vmRange, slots, frame []ref
 	return fmt.Errorf("exec: range kind %d cannot run", r.kind)
 }
 
-// runBody executes a range body: the statement kinds run does, minus
+// runBody executes a loop body: the statement kinds run does, minus
 // return, which cannot stand inside a body, plus the two loop
 // signals.
 func (p *vmProgram) runBody(ctx context.Context, stmts []vmStmt, slots, frame []reflect.Value, ifaces []ifacePair, stack map[string]any, dest any) error {
@@ -445,8 +445,14 @@ func (p *vmProgram) runBody(ctx context.Context, stmts []vmStmt, slots, frame []
 			}
 			continue
 		}
+		if s.fors != nil {
+			if err := p.runFor(ctx, s.fors, slots, frame, ifaces, stack, dest); err != nil {
+				return err
+			}
+			continue
+		}
 		if s.call == nil || s.ret {
-			return fmt.Errorf("exec: a statement of this kind cannot stand inside a range body")
+			return fmt.Errorf("exec: a statement of this kind cannot stand inside a loop body")
 		}
 		out, err := s.call.invoke(ctx, slots, frame, ifaces, stack, dest)
 		if err != nil {

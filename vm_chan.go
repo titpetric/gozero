@@ -32,16 +32,17 @@ type vmSend struct {
 	val *vmArg
 }
 
-// chanSource resolves the channel of a receive or send to an argument
-// with a static channel type: a name the program bound, a field read
-// off one, or a call. A stack name is rejected the way a method on one
-// is, because its type is only known at execution.
-func (c *Compiler) chanSource(slots map[string]int, env map[string]reflect.Type, a arg) (*vmArg, reflect.Type, error) {
+// sourceArg resolves a name, a field read off one, or a call to an
+// argument with a static type. It is what a channel operation, a
+// range bound and a loop header compile their values through: a stack
+// name is rejected in all of them, because its type is only known at
+// execution. what names the position for the error.
+func (c *Compiler) sourceArg(slots map[string]int, env map[string]reflect.Type, a arg, what string) (*vmArg, reflect.Type, error) {
 	switch a.kind {
 	case argVar:
 		slot, ok := slots[a.str]
 		if !ok {
-			return nil, nil, fmt.Errorf("compile: %s is not a name bound by the program; a channel from the stack has no static type", a.str)
+			return nil, nil, fmt.Errorf("compile: %s is not a name bound by the program; a %s from the stack has no static type", a.str, what)
 		}
 		t := env[a.str]
 		return &vmArg{kind: vaSlot, slot: slot, name: a.str, typ: t, iface: -1}, t, nil
@@ -68,13 +69,13 @@ func (c *Compiler) chanSource(slots map[string]int, env map[string]reflect.Type,
 		}
 		return &vmArg{kind: vaCall, sub: sub, typ: st, iface: -1}, st, nil
 	}
-	return nil, nil, fmt.Errorf("compile: expected a channel")
+	return nil, nil, fmt.Errorf("compile: a %s is a name, a field or a call", what)
 }
 
 // compileRecv compiles the channel half of a receive; the caller binds
 // the value and ok slots against elem.
 func (c *Compiler) compileRecv(slots map[string]int, env map[string]reflect.Type, a arg) (*vmRecv, error) {
-	ch, t, err := c.chanSource(slots, env, *a.recv)
+	ch, t, err := c.sourceArg(slots, env, *a.recv, "channel")
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +95,7 @@ func (c *Compiler) compileSend(slots map[string]int, env map[string]reflect.Type
 	if len(s.sendCh) > 1 {
 		src = arg{kind: argPath, path: s.sendCh}
 	}
-	ch, t, err := c.chanSource(slots, env, src)
+	ch, t, err := c.sourceArg(slots, env, src, "channel")
 	if err != nil {
 		return nil, err
 	}

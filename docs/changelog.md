@@ -7,6 +7,33 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-19 19:51 +02:00: condition and three-clause for loops
+
+for gains Go's other two forms, header-scoped. A condition loop runs
+while a bool name, field or call holds; the three-clause header
+admits exactly an init assignment, one comparison (==, !=, <, <=, >,
+>=) over integers of one signedness, and the loop variable stepped
+with ++ or --. Comparisons and the step forms exist only in the
+header, so statements and arguments stay operator-free. continue
+still runs the post clause, break skips it, and the loop variable
+keeps its last value after the loop, one flat slot as everywhere.
+
+Neither form carries a data bound, so non-termination is now
+expressible; the per-iteration ctx.Err() check is the bound, and a
+cancelled or expired context ends a spinning loop with its error on
+both tiers. The loop variable steps in the 64-bit bit domain and
+truncates at its own width, so a uint8 counter wraps at 255 the way
+Go's does, identically on both tiers.
+
+The fixture: testdata/for.txt runs 4204 ns/op and 9 allocs/op
+against 2488 ns/op and 10 allocs/op for the same Go, the difference
+being the string box behind assert.Equal that the runtime pools and
+the native side allocates. The loop headers themselves allocate
+nothing. A body slot rewritten per iteration still turns off
+write-once aliasing: BenchmarkForAliasing measures 4 allocs/op for
+four boxed sinks from a loop-written slot against 1 from a
+write-once slot.
+
 ## 2026-09-19 17:40 +02:00: range over strings, maps, channels and funcs, break and continue
 
 The range loop covers the remaining Go sources: strings by rune, maps

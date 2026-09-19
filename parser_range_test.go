@@ -41,7 +41,7 @@ func TestParseRange(t *testing.T) {
 }
 
 // TestParseLoopExit pins break and continue: both parse only inside a
-// range body, close like any statement, and take no label.
+// loop body, close like any statement, and take no label.
 func TestParseLoopExit(t *testing.T) {
 	for name, src := range map[string]string{
 		"break":               `for range xs { break }`,
@@ -57,11 +57,11 @@ func TestParseLoopExit(t *testing.T) {
 	}
 
 	for name, tc := range map[string]struct{ src, want string }{
-		"break at top":     {`break`, "only allowed inside a range body"},
-		"continue at top":  {`continue`, "only allowed inside a range body"},
+		"break at top":     {`break`, "only allowed inside a loop body"},
+		"continue at top":  {`continue`, "only allowed inside a loop body"},
 		"break label":      {`for range xs { break out }`, "a label after break is not in the language"},
 		"continue label":   {`for range xs { continue out }`, "a label after continue is not in the language"},
-		"break after loop": {`for range xs { poke() }; break`, "only allowed inside a range body"},
+		"break after loop": {`for range xs { poke() }; break`, "only allowed inside a loop body"},
 	} {
 		_, err := (&Parser{}).Parse(tc.src)
 		if err == nil {

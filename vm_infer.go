@@ -49,7 +49,7 @@ func conversionArg(e *callExpr) (arg, error) {
 // value has to satisfy. Failing that the literal keeps the width the
 // parser gave it.
 func (c *Compiler) inferLiteralType(prog *program, name string, lit arg) reflect.Type {
-	// A use inside a range body types the name like a use outside one:
+	// A use inside a loop body types the name like a use outside one:
 	// the walk descends into loop bodies.
 	var walk func(stmts []stmt) reflect.Type
 	walk = func(stmts []stmt) reflect.Type {
@@ -61,6 +61,11 @@ func (c *Compiler) inferLiteralType(prog *program, name string, lit arg) reflect
 			}
 			if rng := stmts[si].rng; rng != nil {
 				if t := walk(rng.body); t != nil {
+					return t
+				}
+			}
+			if fors := stmts[si].fors; fors != nil {
+				if t := walk(fors.body); t != nil {
 					return t
 				}
 			}

@@ -48,21 +48,7 @@ func (c *jitCompiler) rangeNode(r *plannedRange, jp *jitProgram) (nodeE, error) 
 		body = append(body, n)
 	}
 	src := r.src
-
-	step := stepFn(func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (bool, error) {
-		for _, n := range body {
-			if err := n(fr, ctx, st, d); err != nil {
-				switch err {
-				case errLoopContinue:
-					return true, nil
-				case errLoopBreak:
-					return false, nil
-				}
-				return false, err
-			}
-		}
-		return true, nil
-	})
+	step := foldSignals(body)
 
 	switch src.kind {
 	case rangeInt:
