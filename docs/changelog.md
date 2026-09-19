@@ -7,6 +7,34 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-19 23:12 +02:00: the if header read by go/parser
+
+An antithesis branch for the conditions track: the same `if`,
+`else if` and `else` surface as the two rungs before it, one bool
+operand or one comparison per header, with the hand-rolled header
+parser replaced. The bytes between `if` and the brace that opens the
+block go to `go/parser.ParseExpr`, and the go/ast tree is walked
+into the compiler's argument forms; operands still type through
+direct reflect checks. Headers gain the Go spellings the line
+grammar never had - parenthesized conditions, hex and binary and
+underscore-grouped numbers, raw strings - and rune literals reject
+by name. Blocks, else placement and every statement inside an arm
+stay hand-rolled and line-oriented; only the header expression is
+delegated.
+
+Measured on the same fixtures as the rungs: if runs 2739 ns against
+1961 ns native at 560 B and 6 allocations on both sides; since runs
+5143 ns against 2500 ns at 13 versus 8 allocations, the delta being
+the two named time.Time bridges. A header comparison prices at a
+bound predicate's cost (194.3 against 176.6 ns, 1 allocation both),
+and a branch-touched interface read still costs the conservative
+write count (479.9 ns and 2 allocations against 419.5 and 1
+aliased). The front end costs 530 inserted lines against 263 across
+the two hand-rolled rungs: ParseExpr removes the tokenizer, but
+lowering the ast back into the argument forms and fencing the rung
+out of Go's full expression grammar costs more than the scanner it
+replaced.
+
 ## 2026-09-10 16:58 +02:00: argument pooling under the binding contract
 
 Arguments are borrowed. A binding receives values that are valid for
