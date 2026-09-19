@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fixtureCtxKey struct{}
@@ -36,6 +37,7 @@ func fixtureRuntime(t *testing.T) *Runtime {
 		"fmt":     {"Sprintf": fmt.Sprintf, "Sprint": fmt.Sprint},
 		"strings": {"Fields": strings.Fields, "HasPrefix": strings.HasPrefix},
 		"path":    {"Join": path.Join},
+		"time":    {"Now": time.Now, "Since": time.Since},
 		// Equal has no variadic tail, (tb, want, got, message): every
 		// parameter has a shape, so an assertion is a direct call. The
 		// message is optional the way every trailing argument is,
@@ -48,6 +50,11 @@ func fixtureRuntime(t *testing.T) *Runtime {
 		if err := rt.BindScope(scope, fns); err != nil {
 			t.Fatal(err)
 		}
+	}
+	// time.Hour is a value, not a func: the duration unit the since
+	// fixture compares against.
+	if err := rt.BindValue("time.Hour", time.Hour); err != nil {
+		t.Fatal(err)
 	}
 	// ctxValue proves the execution context reached a binding the
 	// program never wrote a context into.
