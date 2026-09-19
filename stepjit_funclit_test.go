@@ -34,6 +34,10 @@ func TestFuncLitDirect(t *testing.T) {
 	if w.n != 2 {
 		t.Fatalf("the handler wrote %d bytes, want 2", w.n)
 	}
+	if raceEnabled {
+		t.Log("race detector on: the exact allocation assertion is skipped, its runtime allocates per call")
+		return
+	}
 	if n := testing.AllocsPerRun(200, func() { handler(w, req) }); n != 0 {
 		t.Fatalf("the direct closure allocates %.0f per call, want 0", n)
 	}
