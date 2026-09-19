@@ -157,7 +157,9 @@ func (c *jitCompiler) planPools(plan *jitPlan) {
 				walkArg(s.send.val, s.send.val.typ)
 			}
 			if s.ifs != nil {
-				walkArg(s.ifs.cond, s.ifs.cond.typ)
+				for _, a := range s.ifs.condArgs() {
+					walkArg(a, a.typ)
+				}
 				walkStmts(s.ifs.then)
 				walkStmts(s.ifs.els)
 			}
@@ -181,7 +183,9 @@ func (c *jitCompiler) planPools(plan *jitPlan) {
 			walkArg(s.send.val, s.send.val.typ)
 		}
 		if s.ifs != nil {
-			walkArg(s.ifs.cond, s.ifs.cond.typ)
+			for _, a := range s.ifs.condArgs() {
+				walkArg(a, a.typ)
+			}
 			walkStmts(s.ifs.then)
 			walkStmts(s.ifs.els)
 		}

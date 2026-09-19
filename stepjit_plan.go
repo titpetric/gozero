@@ -64,7 +64,9 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 				walkArg(s.send.val)
 			}
 			if s.ifs != nil {
-				walkArg(s.ifs.cond)
+				for _, a := range s.ifs.condArgs() {
+					walkArg(a)
+				}
 				walkStmts(s.ifs.then)
 				walkStmts(s.ifs.els)
 			}
@@ -88,7 +90,9 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 			walkArg(s.send.val)
 		}
 		if s.ifs != nil {
-			walkArg(s.ifs.cond)
+			for _, a := range s.ifs.condArgs() {
+				walkArg(a)
+			}
 			walkStmts(s.ifs.then)
 			walkStmts(s.ifs.els)
 		}

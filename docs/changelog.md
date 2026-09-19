@@ -7,6 +7,33 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-19 17:50 +02:00: comparisons in the if header, conditions L2
+
+The if header gains one comparison: `==`, `!=`, `<`, `<=`, `>` or
+`>=` between two operands, each a name, a field path, a call, or a
+literal, the L2 rung of [design/conditions.md](design/conditions.md).
+Both sides carry identical static types, a literal side adopts the
+other side's type, and the comparison runs on the underlying kind,
+so `time.Since(t) < time.Hour` orders a named `time.Duration` like
+the int64 it is. The operators do not exist outside the header;
+every other position rejects them at parse time (comparison
+placement). The new `Runtime.BindValue` registers a typed value
+under a dotted name, which is how `time.Hour` reaches a program.
+
+On the direct tier a comparison compiles to one class-closed node,
+two loads and a machine compare, with narrow signed classes
+sign-extended through one canonical form. A call whose struct
+result has no layout class, `time.Now` among them, now bridges as a
+whole statement instead of declining the program. Measured on the
+new `since` fixture against its handwritten mirror: 5213 ns/op, 680
+B/op and 13 allocs/op against 2512 ns/op, 592 B/op and 8 allocs/op,
+where the entire 5-alloc, 88-byte delta is the two reflect bridges
+through `time.Time`; the comparison-free stanzas hold allocation
+parity, and `BenchmarkCmpHeader` prices the comparison itself at a
+bound predicate's cost, 186.4 against 172.2 ns/op at the same one
+boxing allocation. Every existing fixture keeps identical
+allocation counts.
+
 ## 2026-09-19 15:34 +02:00: if, else if and else, conditions L1
 
 The syntax gains its first visible conditional: `if`, `else if` and
