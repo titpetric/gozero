@@ -7,6 +7,36 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-19 15:34 +02:00: if, else if and else, conditions L1
+
+The syntax gains its first visible conditional: `if`, `else if` and
+`else` over braced statement lists, the L1 rung of
+[design/conditions.md](design/conditions.md). The condition is
+exactly one of a declared bool name, a bool field path like
+`req.Close`, or a call returning bool; there is no operator, no
+literal and no init clause in the header. Two rules reject at
+compile time with the rule named: flat scope (`var` and `:=` cannot
+appear inside an arm, because a flat slot would leak the name past
+the brace) and single exit (`return` cannot appear inside an arm).
+
+The reflect tier runs the arm the condition picks through runStmts,
+which both the program and the arms share. The direct tier compiles
+a structured node holding one statement list per arm: no program
+counter, and the only exit stays an error. Programs with an if take
+a structural plan that does not splice and counts a slot written
+inside an arm as written twice, so the write-once interface
+aliasing never fires for a maybe-written name; the shape table
+gains `SS_b` for the string predicates conditions call.
+
+Measured on the new if fixture (a middleware-style guard):
+2879 ns/op, 560 B/op, 6 allocs/op against its handwritten mirror at
+2021 ns/op, 560 B/op, 6 allocs/op, allocation parity at 1.42x time.
+The conservative write count costs one boxing allocation per
+interface read of a branch-touched name where a straight line would
+alias: 499.3 ns, 32 B, 2 allocs against 405.3 ns, 16 B, 1 alloc on
+BenchmarkIfWriteCount. Every existing benchmark keeps identical
+allocation counts, benchstat all equal at n=3.
+
 ## 2026-09-10 16:58 +02:00: argument pooling under the binding contract
 
 Arguments are borrowed. A binding receives values that are valid for

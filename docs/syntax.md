@@ -21,8 +21,12 @@ friends, with the test's `testing.TB` on the stack as `tb`.
 program := { stmt }
 stmt    := "var" name typeref term
          | "return" [ arg ] term
+         | ifstmt
          | path "<-" arg term
          | [ name { "," name } ( ":=" | "=" ) ] rhs term
+ifstmt  := "if" cond block [ "else" ( ifstmt | block ) ] term
+cond    := path | expr
+block   := "{" { stmt } "}"
 term    := ";" | EOL | EOF
 rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv
 typeref := { "*" | "[]" | "chan" | "chan<-" | "<-chan" } path
@@ -37,8 +41,8 @@ elem    := [ ident ":" ] arg
 
 The channel arrow is the only operator. A value is a literal, a
 name, a field read, a composite literal, a receive, or the result of
-a call; a condition, a loop or an arithmetic expression is a Go
-function the host binds ([design/](design/) records why). The end of
+a call; a loop or an arithmetic expression is a Go function the
+host binds ([design/](design/) records why). The end of
 a line closes a statement; the semicolon is a delimiter between
 statements sharing one, so both spellings below are the same
 program:
@@ -55,9 +59,9 @@ assert.Equal(tb, "https", u.Scheme)
 Strings are single- or double-quoted. A number without a decimal
 point is an int64 and one with is a float64, until an assignment or a
 parameter gives it another type. `dest`, `true`, `false`, `nil`,
-`var` and `return` are reserved, and a name cannot shadow a binding:
-`url := ...` with `url.Parse` bound is a compile error, because the
-name could never be read back.
+`var`, `return`, `if` and `else` are reserved, and a name cannot
+shadow a binding: `url := ...` with `url.Parse` bound is a compile
+error, because the name could never be read back.
 
 ## Declarations and assignment
 
@@ -466,6 +470,68 @@ done <- u.Host
 language; [design/channels.md](design/channels.md) records why they
 decompose onto conditions, loops and closures.
 
+## Conditions
+
+`if`, `else if` and `else` run braced statement lists. The condition
+is exactly one of a declared bool name, a bool field path, or a call
+returning bool; there is no operator, no literal and no init clause
+in the header, so a comparison is a bound Go function.
+[design/conditions.md](design/conditions.md) records what the fuller
+forms cost.
+
+<table>
+<tr>
+<th>go</th>
+</tr>
+<tr>
+<td>
+
+```go
+ok := strings.HasPrefix(req.URL.Path, "/api")
+route := ""
+if ok {
+	route = "api"
+} else if req.Close {
+	route = "closed"
+} else {
+	route = "static"
+}
+```
+
+</td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
+<td>
+
+```go
+ok := strings.HasPrefix(req.URL.Path, "/api")
+route := ""
+if ok {
+	route = "api"
+} else if req.Close {
+	route = "closed"
+} else {
+	route = "static"
+}
+```
+
+</td>
+</tr>
+</table>
+
+Two rules keep the arms inside the language's contracts, and both
+reject at compile time with the rule named. Flat scope: `var` and
+`:=` cannot appear inside an arm, because the slot model has no
+block scope and a name declared there would stay visible past the
+brace; declare the name before the `if` and assign with `=`. Single
+exit: `return` cannot appear inside an arm, because a compiled
+program runs front to back and its only early exit is an error;
+return after the join. `else` binds on the closing brace's line, as
+gofmt shapes it, and `if` nests inside arms.
+
 ## The stack and dest
 
 Names the program never binds resolve against the stack map the host
@@ -586,12 +652,14 @@ Middleware-style guarding works through the error contract: a bound
 the program before the next statement, the way `set -e` ends a shell
 script.
 
-What the syntax deliberately leaves out - conditionals, loops,
-closures, operator expressions and struct type declarations - and
-what each would cost the design is researched feature by feature in
-[design/](design/): [conditions](design/conditions.md),
-[loops](design/loops.md), [closures](design/closures.md),
+What the syntax deliberately leaves out - loops, closures, operator
+expressions and struct type declarations - and what each would cost
+the design is researched feature by feature in [design/](design/):
+[conditions](design/conditions.md), [loops](design/loops.md),
+[closures](design/closures.md),
 [expressions](design/expressions.md),
 [structs](design/structs.md). Channel receive and send started
-there and moved into the syntax; [channels](design/channels.md)
-records what landed and what stayed out.
+there and moved into the syntax, and the restricted `if` above did
+the same; [channels](design/channels.md) and
+[conditions](design/conditions.md) record what landed and what
+stayed out.
