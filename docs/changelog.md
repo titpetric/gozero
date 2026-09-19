@@ -7,6 +7,34 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-19 15:33 +02:00: range loops over slices, arrays and integers
+
+The language gains its first loop: `for x := range xs` over slices
+and arrays, and `for i := range n` over integers, with a block body.
+No other for form exists, and break, continue, return and var are
+rejected inside a body with a rule naming why: a body runs every
+statement of every iteration, so the only exits are an error and the
+execution context. The termination guarantee is now context-bounded
+rather than structural - every iteration checks ctx.Err() on both
+tiers, and a cancelled ExecContext ends the program with ctx.Err().
+
+Scope stays flat. The loop variable is one program-level slot reused
+per iteration, a body-defined name outlives the loop, and both hold
+identically on both tiers. On the direct tier a slice range is a
+stride walk over the sliceHdr and an integer range a counted loop;
+loop bodies compile to their own node lists, and a loop-written slot
+counts as multi-write, which turns the write-once interface aliasing
+off and boxes per call the way Go does at the same site.
+BenchmarkRangeAliasing puts the same four any-parameter calls at 1
+alloc from a write-once slot against 5 from a loop variable (106n
+against 466n, median of 3).
+
+The range fixture runs the direct tier at 2116n and 5 allocs per run
+against its handwritten mirror's 1218n and 6 (median of 3, pinned):
+the loop body itself adds no allocation, and the one-alloc win is the
+pooled string box the mirror pays as convTstring. Existing fixtures
+keep identical allocation counts.
+
 ## 2026-09-10 16:58 +02:00: argument pooling under the binding contract
 
 Arguments are borrowed. A binding receives values that are valid for
