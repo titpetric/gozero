@@ -2,12 +2,14 @@ package gozero
 
 import (
 	"fmt"
+	"go/token"
 )
 
 // The grammar has no operators: a statement is a call, and every value
 // is a literal, a name, or the result of another call.
 //
-//	program := { stmt }
+//	program := { typedecl | stmt }
+//	typedecl := "type" name "struct" GoStructBody term
 //	stmt    := "var" name typeref term
 //	         | "return" [ arg ] term
 //	         | path "<-" arg term
@@ -22,6 +24,11 @@ import (
 //	recv    := "<-" ( path | expr )
 //	composite := [ "&" ] path "{" [ elem { "," elem } [ "," ] ] "}"
 //	elem    := [ ident ":" ] arg
+//
+// GoStructBody is not spelled out here because this parser does not
+// read it: the declaration sniff hands the block to go/scanner and
+// go/parser in parser_decl.go, so a struct body is whatever Go's
+// grammar says it is.
 
 // Parser turns a program into a list of statements. A path is resolved
 // by the compiler, not here: http.NewRequest is one bound name,
@@ -37,6 +44,10 @@ type Parser struct {
 	// last token byte was consumed, which is what lets the end of a
 	// line close a statement the way a semicolon does.
 	nl bool
+	// fset positions the go/scanner and go/parser passes a type
+	// declaration takes. It is nil until the first declaration is
+	// claimed, so a program without one allocates nothing here.
+	fset *token.FileSet
 }
 
 // terminated consumes a statement end. The semicolon is a delimiter
@@ -155,6 +166,13 @@ type stmt struct {
 // program is a parsed source unit.
 type program struct {
 	stmts []stmt
+	// types are the struct types the program declares. They are not
+	// statements: the compiler builds them before anything else, so a
+	// declaration can sit after its first use, as in Go.
+	types []typeDecl
+	// fset is the parser's file set when the program declares types;
+	// the go/types pass in declareTypes reads positions from it.
+	fset *token.FileSet
 }
 
 // flatCall reports the single call of a one-statement program whose
@@ -162,7 +180,7 @@ type program struct {
 // This is the form the JIT shape table matches, and the form every
 // statement had before programs grew past one line.
 func (p *program) flatCall() (*callExpr, bool) {
-	if len(p.stmts) != 1 {
+	if len(p.stmts) != 1 || len(p.types) != 0 {
 		return nil, false
 	}
 	s := p.stmts[0]
@@ -187,6 +205,14 @@ func (p *Parser) Parse(src string) (*program, error) {
 		if p.pos >= len(p.src) {
 			break
 		}
+		td, ok, err := p.typeDecl()
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			prog.types = append(prog.types, td)
+			continue
+		}
 		s, err := p.stmt()
 		if err != nil {
 			return nil, err
@@ -196,6 +222,7 @@ func (p *Parser) Parse(src string) (*program, error) {
 	if len(prog.stmts) == 0 {
 		return nil, fmt.Errorf("parse: empty program")
 	}
+	prog.fset = p.fset
 	return prog, nil
 }
 

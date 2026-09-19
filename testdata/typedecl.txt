@@ -1,0 +1,34 @@
+// typedecl: program-declared struct types built with reflect.StructOf:
+// composite literal, field read and write, var zero value, forward
+// reference between declarations, and json output shaped by field order.
+type Point struct {
+	X int64
+	Y int64
+}
+p := Point{X: 3, Y: 4};
+assert.Equal(tb, 3, p.X);
+p.X = 5;
+assert.Equal(tb, 5, p.X);
+
+q := &Point{X: 1};
+assert.Equal(tb, 1, q.X);
+
+var w Point;
+w.Y = 7;
+assert.Equal(tb, 7, w.Y);
+
+// A declaration can name one written after it, as in Go.
+type Wrap struct {
+	Inner Base
+	M int64
+}
+type Base struct { N int64 }
+b := Wrap{Inner: Base{N: 3}, M: 4};
+assert.Equal(tb, 3, b.Inner.N);
+assert.Equal(tb, 4, b.M);
+
+// The declared field order shapes the encoder's output; Point carries
+// no tags, so the keys are the field names.
+buf := bytes.NewBufferString("");
+json.NewEncoder(buf).Encode(Point{X: 1, Y: 2});
+assert.Equal(tb, "{\"X\":1,\"Y\":2}\n", buf.String());

@@ -7,6 +7,36 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-19 22:52 +02:00: struct declarations through the stdlib front end
+
+A program declares struct types with `type Name struct { ... }`,
+built once per source with reflect.StructOf and registered under the
+declared name in a per-compilation registry, as on the structs rungs.
+The declaration's grammar, though, is the standard library's: the
+statement parser sniffs three tokens, go/scanner finds the brace that
+closes the block, go/parser reads the fields off the AST, and
+go/types checks all of a program's declarations as one synthetic
+package before the reflect types are built. Field name lists,
+comments between fields, semicolon separators and both tag spellings
+parse because Go's parser parses them; a duplicate field, a
+redeclared name and value recursion are reported in go/types' own
+words. Field types only the registry can resolve are swapped for a
+placeholder before the check and looked up after it, so unknown
+names and the by-value-only rule keep their compile errors, and the
+reflect build is plain recursion because the checker has already
+ruled a cycle out.
+
+Execution cost is unchanged: a declaration emits no statement, and
+the typedecl and reply fixtures run byte-for-byte with the
+hand-parsed rungs, typedecl at 240 B and 6 allocs on both vm and
+native, reply all-direct at 13 allocs against the mirror's 14. The
+price is at compile time: BenchmarkTypeDeclCompile puts the declared
+program at 41.9us and 214 allocs per uncached compile against 18.4us
+and 99 allocs for the same statements over a BindType'd host shape,
+all of it amortized by the compile cache. benchstat over the locked
+runs shows every existing benchmark's allocs/op and B/op unchanged
+(p=1.000, n=3, all samples equal).
+
 ## 2026-09-10 16:58 +02:00: argument pooling under the binding contract
 
 Arguments are borrowed. A binding receives values that are valid for
