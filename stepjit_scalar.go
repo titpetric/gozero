@@ -54,6 +54,11 @@ func scalarFamilyCall(key string, fptr unsafe.Pointer, a []node) (node, bool) {
 				return ptrScalarCall(fptr, out, a[0])
 			}
 		}
+		if a[0].class == lStr {
+			if out, ok := classOf(key[i+1:]); ok && out.scalar() {
+				return strScalarCall(fptr, out, a[0])
+			}
+		}
 	}
 	return node{}, false
 }
@@ -225,6 +230,64 @@ func ptrScalarCall(fptr unsafe.Pointer, out layout, a node) (node, bool) {
 		return pF(fptr, a.P, out, func(v float32) float64 { return float64(v) }), true
 	case lF64:
 		return pF(fptr, a.P, out, func(v float64) float64 { return v }), true
+	}
+	return node{}, false
+}
+
+// sN is a string parameter and a scalar result, the shape a measure
+// function has; sF is its float half.
+func sN[T any](fptr unsafe.Pointer, a0 nodeS, cl layout, up func(T) uint64) node {
+	f := castFn[func(string) T](fptr)
+	return node{class: cl, N: func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (uint64, error) {
+		s, err := a0(fr, ctx, st, d)
+		if err != nil {
+			return 0, err
+		}
+		return up(f(s)), nil
+	}}
+}
+
+func sF[T any](fptr unsafe.Pointer, a0 nodeS, cl layout, up func(T) float64) node {
+	f := castFn[func(string) T](fptr)
+	return node{class: cl, F: func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (float64, error) {
+		s, err := a0(fr, ctx, st, d)
+		if err != nil {
+			return 0, err
+		}
+		return up(f(s)), nil
+	}}
+}
+
+// strScalarCall covers a string parameter and a scalar result.
+func strScalarCall(fptr unsafe.Pointer, out layout, a node) (node, bool) {
+	switch out {
+	case lBool:
+		return sN(fptr, a.S, out, func(v bool) uint64 {
+			if v {
+				return 1
+			}
+			return 0
+		}), true
+	case lI8:
+		return sN(fptr, a.S, out, func(v int8) uint64 { return uint64(uint8(v)) }), true
+	case lI16:
+		return sN(fptr, a.S, out, func(v int16) uint64 { return uint64(uint16(v)) }), true
+	case lI32:
+		return sN(fptr, a.S, out, func(v int32) uint64 { return uint64(uint32(v)) }), true
+	case lI64:
+		return sN(fptr, a.S, out, func(v int64) uint64 { return uint64(v) }), true
+	case lU8:
+		return sN(fptr, a.S, out, func(v uint8) uint64 { return uint64(v) }), true
+	case lU16:
+		return sN(fptr, a.S, out, func(v uint16) uint64 { return uint64(v) }), true
+	case lU32:
+		return sN(fptr, a.S, out, func(v uint32) uint64 { return uint64(v) }), true
+	case lU64:
+		return sN(fptr, a.S, out, func(v uint64) uint64 { return v }), true
+	case lF32:
+		return sF(fptr, a.S, out, func(v float32) float64 { return float64(v) }), true
+	case lF64:
+		return sF(fptr, a.S, out, func(v float64) float64 { return v }), true
 	}
 	return node{}, false
 }

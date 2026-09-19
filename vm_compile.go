@@ -129,6 +129,10 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			*dst = append(*dst, vmStmt{rng: rng})
 			return nil
 		}
+		if s.brk || s.cont {
+			*dst = append(*dst, vmStmt{brk: s.brk, cont: s.cont})
+			return nil
+		}
 		if s.fieldLhs != nil {
 			fs, err := c.compileFieldSet(slots, env, s)
 			if err != nil {
@@ -483,18 +487,3 @@ func (c *Compiler) compileRetVal(slots map[string]int, env map[string]reflect.Ty
 	return c.compileArg(slots, env, "return", 0, pt, a)
 }
 
-// resultType is the static type of the i'th non-error result.
-func (c *Compiler) resultType(call *vmCall, i int) reflect.Type {
-	ft := call.fn.Type()
-	n := 0
-	for j := 0; j < ft.NumOut(); j++ {
-		if j == call.errIdx {
-			continue
-		}
-		if n == i {
-			return ft.Out(j)
-		}
-		n++
-	}
-	return nil
-}

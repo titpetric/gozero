@@ -7,7 +7,38 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
-## 2026-09-19 15:33 +02:00: range loops over slices, arrays and integers
+## 2026-09-19 17:40 +02:00: range over strings, maps, channels and funcs, break and continue
+
+The range loop covers the remaining Go sources: strings by rune, maps
+by key and value, channels until close, and iterator funcs of the
+iter.Seq and iter.Seq2 shapes. A channel range ends at close where a
+receive statement ends the program with io.EOF; both go through the
+same context-armed receive. Ranging an iterator func casts it to its
+yield shape on the direct tier and drives the body from a real Go
+yield closure; on the reflect tier reflect.Value.Seq and Seq2 do the
+same. A map iterates through a pooled reflect.MapIter whose entries
+store straight into the frame slots, so map order is the only thing a
+program observes.
+
+break and continue land with the loops, as two unexported sentinel
+errors travelling the error return every statement already has: the
+innermost loop consumes them, the parser only admits them inside a
+range body, and both are unforgeable by bindings. The nil-error path
+is untouched, so a body that never breaks pays nothing. break in a
+range-over-func is the yield returning false; an iterator that keeps
+yielding after that panics, as Go's own range-over-func does.
+
+The loops fixture runs the direct tier at 17337n and 57 allocs per
+run against its mirror's 7956n and 45 (median of 3, pinned). The 12
+extra allocations are named: about 7 are the per-element box a
+reflect channel receive already pays under the existing receive
+contract, 1 is the frame going unpooled because a received string
+aliases it into an assert (the L1 aliasing rule, not new), 2 are the
+yield closure's state cell for the two func loops, and the rest is
+pack-pool jitter inside loop bodies, where a pooled site lends one
+block per run and later iterations allocate fresh. Map and string
+ranges themselves allocate nothing steady-state. Existing fixtures
+keep identical allocation counts.
 
 The language gains its first loop: `for x := range xs` over slices
 and arrays, and `for i := range n` over integers, with a block body.

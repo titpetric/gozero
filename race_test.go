@@ -151,3 +151,64 @@ func TestRangeIsConcurrent(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// TestLoopsAreConcurrent runs a compiled map-and-iterator program
+// from many goroutines. The pooled reflect.MapIter is the one piece
+// of shared state the L2 loops add, so this is what pins its reuse
+// as race-free.
+func TestLoopsAreConcurrent(t *testing.T) {
+	rt := NewRuntime()
+	if err := rt.Bind("sized", func() map[string]int64 {
+		return map[string]int64{"a": 1, "bb": 2, "ccc": 3}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.Bind("lines", strings.Lines); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.Bind("mk", counterNew); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.Bind("slen", func(s string) int64 { return int64(len(s)) }); err != nil {
+		t.Fatal(err)
+	}
+	const src = `
+		c := mk()
+		m := sized()
+		for _, v := range m {
+			c.Add(v)
+		}
+		for line := range lines(text) {
+			c.Add(slen(line))
+		}
+		sum := c.Sum()
+		return sum
+	`
+	if err := rt.Supports(src); err != nil {
+		t.Fatalf("this test needs the JIT tier: %v", err)
+	}
+	fn, err := rt.Compile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 400; j++ {
+				got, err := fn.Exec[int64](map[string]any{"text": "xx\nyyy\n"})
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if got != 13 {
+					t.Errorf("got %d, want 13", got)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+}
