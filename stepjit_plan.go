@@ -239,6 +239,15 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 		live[slot] = true
 		writes[slot]++
 	}
+	// A captured slot is live from entry too: its cell is installed
+	// before the first statement, and the enclosing program may write
+	// it at any time, so it counts as written more than once and
+	// nothing may alias or splice it. It is also address-taken, which
+	// enforces the same conservatively.
+	for _, slot := range p.capSlots {
+		live[slot] = true
+		writes[slot] += 2
+	}
 	for _, s := range stmts {
 		if s.recv != nil {
 			if s.out >= 0 {

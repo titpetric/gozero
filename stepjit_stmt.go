@@ -23,13 +23,13 @@ func (c *jitCompiler) stmtNode(s plannedStmt, jp *jitProgram) (nodeE, error) {
 	}
 	var n node
 	if s.lit.IsValid() {
-		field, ok := c.slotOf[s.out]
+		st, ok := c.slotType(s.out)
 		if !ok {
 			return nil, fmt.Errorf("a literal is assigned to a name with no slot")
 		}
-		cl := layoutOf(c.types[field])
+		cl := layoutOf(st)
 		if cl == lBad {
-			return nil, fmt.Errorf("a literal of type %s has no layout class", c.types[field])
+			return nil, fmt.Errorf("a literal of type %s has no layout class", st)
 		}
 		lit, err := constNode(s.lit, cl)
 		if err != nil {
@@ -47,6 +47,15 @@ func (c *jitCompiler) stmtNode(s plannedStmt, jp *jitProgram) (nodeE, error) {
 		// The result is dropped, but the call still runs and its error
 		// still ends the program.
 		return c.dropped(n)
+	}
+
+	// A captured name stores through its cell in the enclosing frame,
+	// which is how the enclosing program observes the body's writes.
+	if cell, ok := c.capCell(s.out); ok {
+		if s.ret {
+			return nil, fmt.Errorf("a captured name cannot carry the returned value")
+		}
+		return capStore(cell, n)
 	}
 
 	field, ok := c.slotOf[s.out]
@@ -131,11 +140,10 @@ func (c *jitCompiler) stmtNode(s plannedStmt, jp *jitProgram) (nodeE, error) {
 // is in the table; a value-struct base or a deeper chain stays on the
 // reflect evaluator.
 func (c *jitCompiler) fieldSetNode(fs *vmFieldSet) (nodeE, error) {
-	field, ok := c.slotOf[fs.base]
+	bt, ok := c.slotType(fs.base)
 	if !ok {
 		return nil, fmt.Errorf("a field target has no slot")
 	}
-	bt := c.types[field]
 	if len(fs.steps) != 1 || len(fs.steps[0].index) != 1 {
 		return nil, fmt.Errorf("only a single field is in the table")
 	}
@@ -182,20 +190,44 @@ func (c *jitCompiler) fieldSetNode(fs *vmFieldSet) (nodeE, error) {
 		return nil, fmt.Errorf("this field value is not in the table")
 	}
 
-	baseOff, fieldOff, name, srcType := c.offs[field], sf.Offset, fs.field, bt
+	fieldOff, name, srcType := sf.Offset, fs.field, bt
 	var target func(fr unsafe.Pointer) (unsafe.Pointer, error)
-	if direct {
-		at := baseOff + fieldOff
-		target = func(fr unsafe.Pointer) (unsafe.Pointer, error) {
-			return unsafe.Add(fr, at), nil
+	if cell, isCap := c.capCell(fs.base); isCap {
+		// The base is a captured name: the struct, or the pointer to
+		// it, lives behind the cell in the enclosing frame, so the
+		// write lands where the enclosing program reads.
+		if direct {
+			target = func(fr unsafe.Pointer) (unsafe.Pointer, error) {
+				return unsafe.Add(cell(fr), fieldOff), nil
+			}
+		} else {
+			target = func(fr unsafe.Pointer) (unsafe.Pointer, error) {
+				base := *(*unsafe.Pointer)(cell(fr))
+				if base == nil {
+					return nil, fmt.Errorf("exec: %s: field write on a nil %s", name, srcType)
+				}
+				return unsafe.Add(base, fieldOff), nil
+			}
 		}
 	} else {
-		target = func(fr unsafe.Pointer) (unsafe.Pointer, error) {
-			base := *(*unsafe.Pointer)(unsafe.Add(fr, baseOff))
-			if base == nil {
-				return nil, fmt.Errorf("exec: %s: field write on a nil %s", name, srcType)
+		field, ok := c.slotOf[fs.base]
+		if !ok {
+			return nil, fmt.Errorf("a field target has no slot")
+		}
+		baseOff := c.offs[field]
+		if direct {
+			at := baseOff + fieldOff
+			target = func(fr unsafe.Pointer) (unsafe.Pointer, error) {
+				return unsafe.Add(fr, at), nil
 			}
-			return unsafe.Add(base, fieldOff), nil
+		} else {
+			target = func(fr unsafe.Pointer) (unsafe.Pointer, error) {
+				base := *(*unsafe.Pointer)(unsafe.Add(fr, baseOff))
+				if base == nil {
+					return nil, fmt.Errorf("exec: %s: field write on a nil %s", name, srcType)
+				}
+				return unsafe.Add(base, fieldOff), nil
+			}
 		}
 	}
 

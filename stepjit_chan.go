@@ -2,6 +2,7 @@ package gozero
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"unsafe" // also required by go:linkname
 )
@@ -25,6 +26,12 @@ func (c *jitCompiler) recvNode(s plannedStmt) (nodeE, error) {
 	et := s.recv.elem
 	valOff, hasVal := uintptr(0), false
 	if s.out >= 0 {
+		if _, isCap := c.capOffs[s.out]; isCap {
+			// A receive into a captured name would need the cell-aware
+			// store; the body stays on the reflect tier instead of
+			// silently dropping the value.
+			return nil, fmt.Errorf("a receive into a captured name stays on the reflect tier")
+		}
 		if field, ok := c.slotOf[s.out]; ok {
 			valOff, hasVal = c.offs[field], true
 		}

@@ -32,13 +32,13 @@ import (
 // it is used and a method must exist on the type of the name it is
 // called on.
 func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
-	return c.compileProgramWith(nil, prog)
+	return c.compileProgramWith(nil, nil, prog)
 }
 
-// compileProgramWith is compileProgram with the parameters of a func
-// literal body pre-declared as typed slots, so the body reads them
-// the way it reads any program-bound name.
-func (c *Compiler) compileProgramWith(params []vmParam, prog *program) (*vmProgram, error) {
+// compileProgramWith is compileProgram with the parameters and the
+// captured names of a func literal body pre-declared as typed slots,
+// so the body reads them the way it reads any program-bound name.
+func (c *Compiler) compileProgramWith(params []vmParam, caps []capRec, prog *program) (*vmProgram, error) {
 	p := &vmProgram{addrTaken: map[int]bool{}}
 	slots := map[string]int{}
 	env := map[string]reflect.Type{}
@@ -100,11 +100,14 @@ func (c *Compiler) compileProgramWith(params []vmParam, prog *program) (*vmProgr
 	}
 
 	// A func literal's parameters take the first slots, typed by the
-	// target signature; declareParams applies their naming rules.
+	// target signature; declareParams applies their naming rules. The
+	// captured names follow, address-taken from the start, so every
+	// read and write resolves to the enclosing run's cell.
 	paramName, err := declareParams(params, reserved, p, newSlot)
 	if err != nil {
 		return nil, err
 	}
+	declareCaps(caps, p, newSlot)
 
 	// A name declared with var fixes its type before anything else is
 	// compiled, so a literal assigned to it converts to that type.
@@ -342,6 +345,9 @@ func (c *Compiler) compileProgramWith(params []vmParam, prog *program) (*vmProgr
 			p.assignArg(s.send.ch)
 			p.assignArg(s.send.val)
 		}
+	}
+	if err := p.finishFuncLits(); err != nil {
+		return nil, err
 	}
 	return p, nil
 }

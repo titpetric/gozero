@@ -41,6 +41,7 @@ const (
 	vaField                  // a struct field read off another value
 	vaCtx                    // the execution context, auto-filled
 	vaStruct                 // a composite literal, built fresh per evaluation
+	vaFuncLit                // a capturing func literal, materialized per run
 )
 
 var ctxType = reflect.TypeFor[context.Context]()
@@ -98,9 +99,11 @@ type vmArg struct {
 	addr  bool
 	elems []vmElem
 
-	// funclit is set on a vaConst holding a materialized func literal.
-	// val carries the reflect.MakeFunc value the reflect tier passes;
-	// the step JIT reads funclit to build the direct closure instead.
+	// funclit is set on a vaConst holding a materialized capture-free
+	// func literal, whose val carries the reflect.MakeFunc value the
+	// reflect tier passes, and on a vaFuncLit, whose value is built per
+	// run over the captured cells. The step JIT reads funclit to build
+	// the direct closure instead in both cases.
 	funclit *vmFuncLit
 }
 
@@ -226,6 +229,12 @@ type vmProgram struct {
 	// signature order. Empty for a top-level program; runWith fills
 	// them before the first statement.
 	params []int
+
+	// capSlots are the slots a func literal body's captured names
+	// occupy, in capture order. runWithEnv installs the enclosing
+	// run's cells here before anything else, so reads see the
+	// enclosing value and writes go through the shared cell.
+	capSlots []int
 }
 
 // apply writes the value through the field chain. Addressability comes
@@ -266,6 +275,15 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 // stored into their slots before the first statement. A top-level
 // program has no parameter slots and passes nil.
 func (p *vmProgram) runWith(ctx context.Context, args []reflect.Value, stack map[string]any, dest any) (any, error) {
+	return p.runWithEnv(ctx, args, nil, stack, dest)
+}
+
+// runWithEnv is runWith with the captured cells of a func literal
+// body, installed into their slots before anything else runs. The
+// cells are the enclosing run's own slot storage, so a read here
+// observes the enclosing program's later writes and a write here is
+// seen by it: capture by cell, both directions.
+func (p *vmProgram) runWithEnv(ctx context.Context, args, env []reflect.Value, stack map[string]any, dest any) (any, error) {
 	// One allocation per run for both the named slots and every call's
 	// argument window. Each call owns a disjoint range, so a nested
 	// call never overwrites the arguments its parent is still filling.
@@ -275,6 +293,11 @@ func (p *vmProgram) runWith(ctx context.Context, args []reflect.Value, stack map
 	if p.nifaces > 0 {
 		ifaces = make([]ifacePair, p.nifaces)
 	}
+	for i, slot := range p.capSlots {
+		if i < len(env) {
+			slots[slot] = env[i]
+		}
+	}
 	for _, in := range p.inits {
 		// New rather than Zero, so a field of a var-declared struct is
 		// settable in place.
@@ -282,13 +305,13 @@ func (p *vmProgram) runWith(ctx context.Context, args []reflect.Value, stack map
 	}
 	for i, slot := range p.params {
 		if i < len(args) {
-			slots[slot] = p.addrCell(args[i], slot)
+			p.setSlot(slots, args[i], slot)
 		}
 	}
 	for i := range p.stmts {
 		s := &p.stmts[i]
 		if s.lit.IsValid() {
-			slots[s.out[0]] = p.addrCell(s.lit, s.out[0])
+			p.setSlot(slots, s.lit, s.out[0])
 			continue
 		}
 		if s.assign != nil {
@@ -296,7 +319,7 @@ func (p *vmProgram) runWith(ctx context.Context, args []reflect.Value, stack map
 			if err != nil {
 				return nil, err
 			}
-			slots[s.out[0]] = v
+			p.setSlot(slots, v, s.out[0])
 			continue
 		}
 		if s.fieldSet != nil {
@@ -311,7 +334,7 @@ func (p *vmProgram) runWith(ctx context.Context, args []reflect.Value, stack map
 				return nil, err
 			}
 			if len(s.out) > 0 {
-				slots[s.out[0]] = p.addrCell(v, s.out[0])
+				p.setSlot(slots, v, s.out[0])
 			}
 			continue
 		}
@@ -344,7 +367,7 @@ func (p *vmProgram) runWith(ctx context.Context, args []reflect.Value, stack map
 				continue
 			}
 			if n < len(s.out) {
-				slots[s.out[n]] = p.addrCell(out[j], s.out[n])
+				p.setSlot(slots, out[j], s.out[n])
 			}
 			n++
 		}
@@ -358,18 +381,26 @@ func (p *vmProgram) runWith(ctx context.Context, args []reflect.Value, stack map
 	return nil, nil
 }
 
-// addrCell stores v into a fresh addressable cell when the slot's
-// address is taken somewhere in the program. A call result and the
-// prebuilt literal value are not addressable, and the literal is also
-// shared between runs, so both go through the copy; every other slot
+// setSlot stores v into a slot. An address-taken slot holds an
+// addressable cell and later writes go through it, so a pointer taken
+// earlier, and a closure that captured the cell, observe them; the
+// same slot on the step JIT tier is frame memory, where writing in
+// place is the only behaviour. A call result and the prebuilt literal
+// value are not addressable, and the literal is also shared between
+// runs, so the first write copies into a fresh cell; every other slot
 // keeps the value as it is.
-func (p *vmProgram) addrCell(v reflect.Value, slot int) reflect.Value {
+func (p *vmProgram) setSlot(slots []reflect.Value, v reflect.Value, slot int) {
 	if !p.addrTaken[slot] {
-		return v
+		slots[slot] = v
+		return
+	}
+	if cur := slots[slot]; cur.IsValid() && cur.CanSet() && cur.Type() == v.Type() {
+		cur.Set(v)
+		return
 	}
 	cell := reflect.New(v.Type()).Elem()
 	cell.Set(v)
-	return cell
+	slots[slot] = cell
 }
 
 func firstNonErr(out []reflect.Value, errIdx int) reflect.Value {
@@ -478,6 +509,19 @@ func (a *vmArg) get(ctx context.Context, slots, frame []reflect.Value, ifaces []
 			return reflect.Zero(a.typ), nil
 		}
 		return a.dynamic(v, ifaces, a.name)
+	case vaFuncLit:
+		// A capturing literal closes over this run's cells, so the func
+		// value is built here, once per evaluation: the same per-run
+		// construction the Go compiler emits for an escaping literal.
+		fl := a.funclit
+		env := make([]reflect.Value, len(fl.capOuter))
+		for i, s := range fl.capOuter {
+			env[i] = slots[s]
+		}
+		body := fl.body
+		return fl.plan.bind(func(ctx context.Context, args []reflect.Value) (any, error) {
+			return body.runWithEnv(ctx, args, env, nil, nil)
+		}), nil
 	}
 	return reflect.Value{}, fmt.Errorf("exec: argument kind %d cannot be resolved", a.kind)
 }

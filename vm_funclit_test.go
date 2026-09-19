@@ -79,10 +79,16 @@ func TestFuncLitRules(t *testing.T) {
 		`mux := http.NewServeMux(); mux.HandleFunc("/", func(dest, r) { });`: "shadows a binding or keyword",
 		`variadicFn(func(xs) { });`:                                          "is variadic",
 		`twoResults(func() { });`:                                            "more than one result besides error",
-		// Capture is a compile error, named.
-		`s := fmt.Sprint("x"); mux := http.NewServeMux(); mux.HandleFunc("/", func(w, r) { fmt.Fprint(w, s) });`: "s is a name of the enclosing program",
-		`mux := http.NewServeMux(); mux.HandleFunc("/", func(w, r) { fmt.Fprint(w, tb) });`:                      "tb is neither a parameter nor a name the body defines",
-		`mux := http.NewServeMux(); mux.HandleFunc("/", func(w, r) { mux.ServeHTTP(w, r) });`:                    "mux is a name of the enclosing program",
+		// A name that is neither local nor of the enclosing program is
+		// an error: stack names do not cross the literal boundary.
+		`mux := http.NewServeMux(); mux.HandleFunc("/", func(w, r) { fmt.Fprint(w, tb) });`: "tb is neither a parameter, a name the body defines, nor a name of the enclosing program",
+		// A declaration of a name the body already captured is one name
+		// for two variables.
+		`s := fmt.Sprint("x"); mux := http.NewServeMux(); mux.HandleFunc("/", func(w, r) { fmt.Fprint(w, s); s := fmt.Sprint("y"); fmt.Fprint(w, s) });`:   "s is declared after the body captured it",
+		`s := fmt.Sprint("x"); mux := http.NewServeMux(); mux.HandleFunc("/", func(w, r) { fmt.Fprint(w, s); var s chan string; fmt.Fprint(w, s) });`:      "s is declared after the body captured it",
+		// A captured cell holds one type for its whole life.
+		`s := fmt.Sprint("x"); mux := http.NewServeMux(); mux.HandleFunc("/", func(w, r) { fmt.Fprint(w, s); s = httptest.NewRecorder() });`:               "captured s is reassigned from string to *httptest.ResponseRecorder",
+		`s := fmt.Sprint("x"); mux := http.NewServeMux(); mux.HandleFunc("/", func(w, r) { fmt.Fprint(w, s) }); s = httptest.NewRecorder(); fmt.Sprint(s)`: "a captured name is reassigned from string to *httptest.ResponseRecorder",
 		// Parameters are names of the body's scope, not redeclarable.
 		`mux := http.NewServeMux(); mux.HandleFunc("/", func(w, r) { var w chan string; });`: "var w redeclares a parameter",
 		// The body's returns against the signature.
@@ -226,14 +232,36 @@ func TestFuncLitNested(t *testing.T) {
 	}
 
 	// The outer literal's parameter is an enclosing name to the inner
-	// literal: capture across literal boundaries is the same rule.
+	// literal: the inner body captures it across the literal boundary,
+	// and both tiers observe the same value on every call.
 	if err := rt.Bind("give", func(f func(string)) { f("x") }); err != nil {
 		t.Fatal(err)
 	}
-	src := `give(func(s) { twice(func() { fmt.Sprint(s) }) });`
-	_, err := rt.Compile(src)
-	if err == nil || !strings.Contains(err.Error(), "s is a name of the enclosing program") {
-		t.Fatalf("got %v, want the capture rule naming s", err)
+	var got []string
+	if err := rt.Bind("sink", func(s string) { got = append(got, s) }); err != nil {
+		t.Fatal(err)
+	}
+	src := `give(func(s) { twice(func() { sink(s) }) });`
+	prog, err := (&Parser{}).Parse(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := rt.compiler.compileProgram(prog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runners := map[string]CompiledFunc{"reflect": p.run}
+	if jp, err := jitCompileProgram(p); err == nil {
+		runners["jit"] = jp.run
+	}
+	for name, fn := range runners {
+		got = nil
+		if _, err := fn(t.Context(), nil, nil); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if len(got) != 2 || got[0] != "x" || got[1] != "x" {
+			t.Fatalf("%s: sink saw %v, want [x x]", name, got)
+		}
 	}
 }
 

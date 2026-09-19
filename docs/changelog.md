@@ -7,6 +7,38 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-19 22:20 +02:00: func literals capture by write-through cell
+
+A func literal now reads and assigns the enclosing program's names,
+captured by cell per Go semantics: the captured slot's storage is
+one addressable cell, so the closure observes the program's later
+writes and the program observes the closure's, during the run,
+after it, and from other goroutines. A := or var seen before any
+use shadows without capturing, a declaration after a capture is a
+compile error naming the rule, and a captured name reassigned at a
+different type is rejected on either side of the boundary. Capture
+resolves lexically through nested literals, so an inner body reaches
+an outer literal's parameter; a capture of a captured name stays on
+the reflect evaluator, which Supports names.
+
+The two costs [closures.md](design/closures.md) predicts are now
+measured. Construction moves into the run and the frame escapes into
+the closure, so frame pooling turns off for the defining program:
+a capturing program pays exactly 2 allocations per run over its
+capture-free twin, the unpooled frame and the closure, at 323 ns
+and 3 allocations per construction against 191 ns and 3 for a Go
+loop building the same escaping closure. On the direct tier the
+per-run value is an ordinary Go closure over the body's nodes and
+the frame pointer, no MakeFunc in the call path: the capturing
+`fmt.Fprint(w, greeting)` handler runs in 204 ns and 1 allocation
+per call against 98 ns and 1 for the identical native closure, the
+allocation being the captured string's interface box on both sides.
+The closure fixture serves a recorded request twice, observing a
+capture write in each direction, in 17.7 us and 54 allocations
+against 14.7 us and 57 for the handwritten mirror, medians of three
+pinned 1s runs; every pre-existing benchmark keeps identical B/op
+and allocs/op.
+
 ## 2026-09-19 19:41 +02:00: func literals in argument position
 
 `mux.HandleFunc("/health", func(w, r) { ... })` compiles: a func
