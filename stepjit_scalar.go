@@ -2,6 +2,7 @@ package gozero
 
 import (
 	"context"
+	"strings"
 	"unsafe" // also required by go:linkname
 )
 
@@ -26,7 +27,36 @@ type (
 	stII_E    = func(ifacePair, ifacePair) ifacePair
 	stSS_E    = func(string, string) ifacePair
 	stPP_PE   = func(unsafe.Pointer, unsafe.Pointer) (unsafe.Pointer, ifacePair)
+	stPS_i64E = func(unsafe.Pointer, string) (int64, ifacePair)
 )
+
+// scalarFamilyCall is callNode's first stop: the call families whose
+// scalar widths are covered generically rather than by one case per
+// key. A miss falls through to the explicit shape table.
+func scalarFamilyCall(key string, fptr unsafe.Pointer, a []node) (node, bool) {
+	i := strings.IndexByte(key, '_')
+	if i <= 0 {
+		return node{}, false
+	}
+	if len(a) == 2 && (a[0].class == lStr || a[0].class == lPtr) && a[1].class.scalar() {
+		if n, ok := mixedScalarCall(fptr, a[0].class, key[i+1:], a[0], a[1]); ok {
+			return n, true
+		}
+	}
+	if len(a) == 1 {
+		if a[0].class.scalar() {
+			if n, ok := scalarCall(fptr, a[0].class, key[i+1:], a[0]); ok {
+				return n, true
+			}
+		}
+		if a[0].class == lPtr {
+			if out, ok := classOf(key[i+1:]); ok && out.scalar() {
+				return ptrScalarCall(fptr, out, a[0])
+			}
+		}
+	}
+	return node{}, false
+}
 
 // nPE and the helpers beside it are the scalar call families. They are
 // generic over the parameter's Go type so one body covers every width:
