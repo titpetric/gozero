@@ -7,6 +7,36 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-19 16:28 +02:00: struct type declarations
+
+A program can declare its own struct types with the grammar's first
+block form: `type Name struct { ... }`, one field per line, each an
+exported name and a typeref resolving through the registry. The
+compiler builds every shape once per source string with
+reflect.StructOf into a per-compilation registry consulted by
+lookupType, so var statements, composite literals, field access and
+json encoding work on a declared type unchanged. Declarations
+resolve in dependency order over as many passes as it takes, so a
+struct can hold one declared after it, by value only.
+
+Every reflect.StructOf ceiling is a compile error naming the rule:
+unexported fields, recursion even through a pointer, and shadowing a
+registered type or binding. Tags, field name lists and embedding are
+parse errors until a later rung, and pointer, slice and chan
+spellings of a declared type do not resolve. The declared name never
+reaches reflect: `%T` prints the unnamed struct spelling.
+
+The direct tier gains one field-table case for the composition
+declarations make common: a read through a struct held by value
+inside another struct compiles to added offsets, bottoming out at a
+frame slot or a pointer load. A write through the same chain, and a
+whole struct written into a field, stay on the reflect evaluator.
+
+The typedecl fixture runs at 240 B and 6 allocations per run on the
+JIT tier, identical to its handwritten mirror (4552ns against the
+mirror's 3477ns), and benchstat over the paired sweeps shows every
+existing benchmark keeping its allocation counts.
+
 ## 2026-09-10 16:58 +02:00: argument pooling under the binding contract
 
 Arguments are borrowed. A binding receives values that are valid for

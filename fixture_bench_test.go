@@ -158,6 +158,41 @@ func (f *testFixtures) testStructs(tb testing.TB) {
 	assertEqual(tb, "https://h/m", m.String(), "")
 }
 
+func (f *testFixtures) testTypedecl(tb testing.TB) {
+	type Point struct {
+		X int64
+		Y int64
+	}
+	p := Point{X: 3, Y: 4}
+	assertEqual(tb, int64(3), p.X, "")
+	p.X = 5
+	assertEqual(tb, int64(5), p.X, "")
+
+	q := &Point{X: 1}
+	assertEqual(tb, int64(1), q.X, "")
+
+	var w Point
+	w.Y = 7
+	assertEqual(tb, int64(7), w.Y, "")
+
+	// Go resolves local types in order, so Base comes first here; the
+	// fixture declares Wrap first to prove declaration order is free.
+	type Base struct{ N int64 }
+	type Wrap struct {
+		Inner Base
+		M     int64
+	}
+	b := Wrap{Inner: Base{N: 3}, M: 4}
+	assertEqual(tb, int64(3), b.Inner.N, "")
+	assertEqual(tb, int64(4), b.M, "")
+
+	buf := bytesNewBufferString("")
+	if err := json.NewEncoder(buf).Encode(Point{X: 1, Y: 2}); err != nil {
+		tb.Fatal(err)
+	}
+	assertEqual(tb, "{\"X\":1,\"Y\":2}\n", buf.String(), "")
+}
+
 func (f *testFixtures) testVariadic(tb testing.TB) {
 	parts := strings.Fields("a b c")
 	joined := path.Join(parts...)
@@ -193,6 +228,7 @@ func BenchmarkFixtures(b *testing.B) {
 		"json":     (*testFixtures).testJSON,
 		"fmt":      (*testFixtures).testFmt,
 		"structs":  (*testFixtures).testStructs,
+		"typedecl": (*testFixtures).testTypedecl,
 		"types":    (*testFixtures).testTypes,
 		"variadic": (*testFixtures).testVariadic,
 		"channels": (*testFixtures).testChannels,
