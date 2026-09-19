@@ -155,6 +155,12 @@ func ifCounters(p *vmProgram, stmts []vmStmt, inArm bool, plan *jitPlan) {
 // ifNode compiles an if chain: the condition as bool bits, each arm
 // its own statement list.
 func (c *jitCompiler) ifNode(n *vmIf, jp *jitProgram) (nodeE, error) {
+	// The comparison lowering lands with the direct-tier commit; until
+	// then a header comparison declines by name and the program runs
+	// on the reflect evaluator.
+	if n.cmp != nil {
+		return nil, fmt.Errorf("a header comparison is not lowered yet")
+	}
 	cond, err := c.condNode(n.cond)
 	if err != nil {
 		return nil, err

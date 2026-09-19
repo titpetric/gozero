@@ -171,15 +171,29 @@ type vmStmt struct {
 	ifs *vmIf
 }
 
-// vmIf is a compiled if chain: the bool condition and the two arms.
-// An else-if nests as an els list holding a single if statement. The
+// vmIf is a compiled if chain: the condition and the two arms. The
+// condition is one bool argument or one comparison, never both. An
+// else-if nests as an els list holding a single if statement. The
 // arms hold no declarations and no returns, both rejected at compile
 // time, so the slot namespace is the program's own and running an
 // arm ends only by finishing it or by an error.
 type vmIf struct {
 	cond *vmArg
+	cmp  *vmCmp
 	then []vmStmt
 	els  []vmStmt
+}
+
+// condArgs is every argument the header evaluates: the single bool
+// condition, or a comparison's two operands. The frame post-pass,
+// the stack-read counter and the pool planner walk headers through
+// it, so an operand call gets its frame window and its pools like a
+// call anywhere else.
+func (n *vmIf) condArgs() []*vmArg {
+	if n.cmp != nil {
+		return []*vmArg{n.cmp.lhs, n.cmp.rhs}
+	}
+	return []*vmArg{n.cond}
 }
 
 // fieldStep is one selector of a field-assignment target.
@@ -369,12 +383,26 @@ func (p *vmProgram) runStmts(ctx context.Context, slots, frame []reflect.Value, 
 // runIf evaluates the condition and runs the arm it picks. A missing
 // else is an empty list, which runs as nothing.
 func (p *vmProgram) runIf(ctx context.Context, slots, frame []reflect.Value, ifaces []ifacePair, stack map[string]any, dest any, n *vmIf) (any, bool, error) {
-	cv, err := n.cond.get(ctx, slots, frame, ifaces, stack, dest)
-	if err != nil {
-		return nil, false, err
+	take := false
+	if n.cmp != nil {
+		lv, err := n.cmp.lhs.get(ctx, slots, frame, ifaces, stack, dest)
+		if err != nil {
+			return nil, false, err
+		}
+		rv, err := n.cmp.rhs.get(ctx, slots, frame, ifaces, stack, dest)
+		if err != nil {
+			return nil, false, err
+		}
+		take = n.cmp.eval(lv, rv)
+	} else {
+		cv, err := n.cond.get(ctx, slots, frame, ifaces, stack, dest)
+		if err != nil {
+			return nil, false, err
+		}
+		take = cv.IsValid() && cv.Bool()
 	}
 	arm := n.els
-	if cv.IsValid() && cv.Bool() {
+	if take {
 		arm = n.then
 	}
 	return p.runStmts(ctx, slots, frame, ifaces, stack, dest, arm)

@@ -83,6 +83,39 @@ func (r *Runtime) Bind(name string, fn any) error {
 	return nil
 }
 
+// BindValue registers a Go value under a name, the way a program
+// reads a package constant: after BindValue("time.Hour", time.Hour)
+// the name compiles to that value wherever an argument or an
+// if-header comparison operand reads it. The value is captured once,
+// at bind time; a func belongs in Bind.
+func (r *Runtime) BindValue(name string, v any) error {
+	if v == nil {
+		return fmt.Errorf("bind: %s is nil, a value binding needs a typed value", name)
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Func {
+		return fmt.Errorf("bind: %s is a func, register it with Bind", name)
+	}
+	r.mu.Lock()
+	if r.compiler.consts == nil {
+		r.compiler.consts = map[string]reflect.Value{}
+	}
+	r.compiler.consts[name] = rv
+	if i := strings.IndexByte(name, '.'); i > 0 {
+		r.compiler.roots[name[:i]] = true
+	} else {
+		r.compiler.roots[name] = true
+	}
+	if r.log != nil {
+		r.log.Debug("bind value", "name", name, "type", rv.Type().String())
+	}
+	r.origin = name
+	r.discover(rv.Type(), 1)
+	r.origin = ""
+	r.mu.Unlock()
+	return nil
+}
+
 // BindScope registers a group of functions under a dotted prefix, so
 // BindScope("json", map[string]any{"NewEncoder": json.NewEncoder})
 // binds json.NewEncoder. It is Bind in a loop and needs no support in
