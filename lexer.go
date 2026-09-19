@@ -158,6 +158,37 @@ func (p *Parser) consumeStr(s string) bool {
 	return true
 }
 
+// consumeIncDec consumes "++" or "--" when it follows on the same
+// line, reporting the step as +1 or -1, and 0 when neither is there.
+// A newline is a statement end, so the scan does not cross one: that
+// would join two statements the source separated.
+func (p *Parser) consumeIncDec() int64 {
+	save, saveNL := p.pos, p.nl
+	p.skipSpace()
+	if !p.nl && p.pos+1 < len(p.src) {
+		if p.src[p.pos] == '+' && p.src[p.pos+1] == '+' {
+			p.pos += 2
+			p.nl = false
+			return 1
+		}
+		if p.src[p.pos] == '-' && p.src[p.pos+1] == '-' {
+			p.pos += 2
+			p.nl = false
+			return -1
+		}
+	}
+	p.pos, p.nl = save, saveNL
+	return 0
+}
+
+// incDecOp spells the operator a step statement was written with.
+func incDecOp(delta int64) string {
+	if delta < 0 {
+		return "--"
+	}
+	return "++"
+}
+
 // peek returns the next non-space byte without consuming it, or 0 at
 // the end of the source.
 func (p *Parser) peek() byte {
