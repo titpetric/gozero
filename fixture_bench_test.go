@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path"
@@ -164,6 +165,19 @@ func (f *testFixtures) testVariadic(tb testing.TB) {
 	assertEqual(tb, "a/b/c", joined, "path.Join over spread fields")
 }
 
+func (f *testFixtures) testFuncLit(tb testing.TB) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(201)
+		fmt.Fprint(w, "ok")
+	})
+	req := httptest.NewRequest("GET", "/health", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	assertEqual(tb, "201", fmt.Sprintf("%d", rec.Code), "")
+	assertEqual(tb, "ok", rec.Body.String(), "")
+}
+
 func (f *testFixtures) testChannels(tb testing.TB) {
 	c := chanOf("a", "b")
 	v := <-c
@@ -196,6 +210,7 @@ func BenchmarkFixtures(b *testing.B) {
 		"types":    (*testFixtures).testTypes,
 		"variadic": (*testFixtures).testVariadic,
 		"channels": (*testFixtures).testChannels,
+		"funclit":  (*testFixtures).testFuncLit,
 	}
 
 	files, err := filepath.Glob(filepath.Join("testdata", "*.txt"))
@@ -248,6 +263,11 @@ func newBenchFixtureRuntime(b *testing.B) *Runtime {
 		"http": {
 			"NewRequest":            http.NewRequest,
 			"NewRequestWithContext": http.NewRequestWithContext,
+			"NewServeMux":           http.NewServeMux,
+		},
+		"httptest": {
+			"NewRequest":  httptest.NewRequest,
+			"NewRecorder": httptest.NewRecorder,
 		},
 		"url": {
 			"Parse":      url.Parse,

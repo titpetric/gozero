@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path"
@@ -26,6 +27,11 @@ func fixtureRuntime(t *testing.T) *Runtime {
 		"http": {
 			"NewRequest":            http.NewRequest,
 			"NewRequestWithContext": http.NewRequestWithContext,
+			"NewServeMux":           http.NewServeMux,
+		},
+		"httptest": {
+			"NewRequest":  httptest.NewRequest,
+			"NewRecorder": httptest.NewRecorder,
 		},
 		"url": {
 			"Parse":      url.Parse,
