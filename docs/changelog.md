@@ -7,6 +7,32 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-19 16:48 +02:00: FuncOf materializes a program as a Go func
+
+`rt.FuncOf[F](src, params...)` wraps a compiled program in a
+`reflect.MakeFunc` bridge of any non-variadic func type F, so a
+program serves `mux.HandleFunc` or any other func-shaped API without
+a hand-written adapter per signature. This is the host API step
+[closures.md](design/closures.md) recommends, with no grammar
+change: parameters enter the run as named stack values (`params` in
+order, `arg0..argN-1` when omitted), the first `context.Context`
+parameter doubles as the execution context, one result besides a
+trailing error fills from `return`, and the error result carries the
+program's error - without one a failing run panics with it. A
+parameter stays an opaque stack value: it is read in argument
+position, and a method call on one takes a binding.
+
+The bridge is built once and the per-call stack map is pooled, so a
+call costs `reflect.MakeFunc`'s own marshalling: the materialized
+`fmt.Fprint(w, "ok")` handler runs in 839 ns with 2 allocations and
+64 B per call against 67 ns and zero for the identical native
+closure, both medians of three pinned 1s runs. The two allocations
+are the argument `[]reflect.Value` and the box the interface
+argument is copied into, both inside reflect; the program itself
+runs on the direct tier through the new `IL_i64E` shape, which
+admits the io.Writer print family. Every pre-existing benchmark
+keeps identical B/op and allocs/op under benchstat.
+
 ## 2026-09-10 16:58 +02:00: argument pooling under the binding contract
 
 Arguments are borrowed. A binding receives values that are valid for
