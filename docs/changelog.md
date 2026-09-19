@@ -7,6 +7,39 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-19 20:48 +02:00: embedded record fields, structural pass
+
+A declared struct can embed another record: a type standing alone
+on its field line, bare or dotted, optionally tagged. The field
+takes the type's base name, its fields promote for reads and
+writes, and json flattens them into the enclosing object. Like a
+tag, the embedded flag is part of the type's identity: the same
+two fields named and embedded mint two runtime types. Records
+only: an embed whose type carries methods in either method set is
+a compile error, because reflect.StructOf promotes value methods
+but drops pointer methods silently (probed on go1.27), and half a
+method set is worse than none. A non-struct embed and an embedded
+pointer are also named errors. On the direct tier a promoted field
+is the summed offset the nested value chain already used; a field
+promoted through an embedded pointer of a host type declines by
+name and stays on the reflect evaluator.
+
+A declared struct also passes by value into a named host parameter
+type with the same fields: reflect's structural assignability, the
+widened capability the design doc flags. The record fixture
+declares Session, builds one, and calls session.Format, a binding
+whose parameter type no bound constructor builds. A struct
+parameter has no layout class, so that one call bridges through
+reflect.Value.Call while its neighbours stay direct: the fixture
+runs at 7117ns and 17 allocations against the mirror's 4280ns and
+15. Isolated, the bridged pass costs 8 allocations and 136 B
+against the native call site's 4 and 64 B: the argument slice, the
+call frame and the result boxing. Pointers do not carry the
+assignability: &Session{} into a *session parameter is a compile
+error, as in Go. benchstat over the paired sweeps shows every
+existing benchmark keeping its allocation counts and bytes, all
+samples equal.
+
 ## 2026-09-19 18:17 +02:00: struct field tags
 
 A declared struct's fields can carry Go tags: a raw backquoted
