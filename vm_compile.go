@@ -32,6 +32,13 @@ import (
 // it is used and a method must exist on the type of the name it is
 // called on.
 func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
+	return c.compileProgramWith(nil, prog)
+}
+
+// compileProgramWith is compileProgram with the parameters of a func
+// literal body pre-declared as typed slots, so the body reads them
+// the way it reads any program-bound name.
+func (c *Compiler) compileProgramWith(params []vmParam, prog *program) (*vmProgram, error) {
 	p := &vmProgram{addrTaken: map[int]bool{}}
 	slots := map[string]int{}
 	env := map[string]reflect.Type{}
@@ -76,22 +83,6 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 		return fmt.Errorf("compile: no new variables on left side of :=")
 	}
 
-	// A name declared with var fixes its type before anything else is
-	// compiled, so a literal assigned to it converts to that type.
-	declared := map[string]reflect.Type{}
-	for si := range prog.stmts {
-		if s := prog.stmts[si]; s.varType != "" {
-			if err := checkName(s.varName); err != nil {
-				return nil, err
-			}
-			t, ok := c.lookupType(s.varType)
-			if !ok {
-				return nil, fmt.Errorf("compile: unknown type %q, register it with BindType", s.varType)
-			}
-			declared[s.varName] = t
-		}
-	}
-
 	newSlot := func(name string, t reflect.Type) int {
 		slot, ok := slots[name]
 		if !ok {
@@ -106,6 +97,32 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 		p.slotTypes[slot] = t
 		env[name] = t
 		return slot
+	}
+
+	// A func literal's parameters take the first slots, typed by the
+	// target signature; declareParams applies their naming rules.
+	paramName, err := declareParams(params, reserved, p, newSlot)
+	if err != nil {
+		return nil, err
+	}
+
+	// A name declared with var fixes its type before anything else is
+	// compiled, so a literal assigned to it converts to that type.
+	declared := map[string]reflect.Type{}
+	for si := range prog.stmts {
+		if s := prog.stmts[si]; s.varType != "" {
+			if err := checkName(s.varName); err != nil {
+				return nil, err
+			}
+			if paramName[s.varName] {
+				return nil, fmt.Errorf("compile: func literal: var %s redeclares a parameter", s.varName)
+			}
+			t, ok := c.lookupType(s.varType)
+			if !ok {
+				return nil, fmt.Errorf("compile: unknown type %q, register it with BindType", s.varType)
+			}
+			declared[s.varName] = t
+		}
 	}
 
 	for si := range prog.stmts {
@@ -180,6 +197,11 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 				if err := checkNew(s.lhs); err != nil {
 					return nil, err
 				}
+			}
+			// h := func(...) {...} has no parameter to take its types
+			// from: a func literal fills only a func-typed parameter.
+			if s.lit.kind == argFuncLit {
+				return nil, fmt.Errorf("compile: %s: a func literal fills only a func-typed parameter of a call and cannot be assigned to a name", name)
 			}
 			// u = url.URL{...} binds the name to the literal's own type,
 			// built fresh on every run.
@@ -397,6 +419,11 @@ func (c *Compiler) compileFieldSet(slots map[string]int, env map[string]reflect.
 	}
 
 	if s.lit != nil {
+		if s.lit.kind == argFuncLit {
+			// A func-typed field takes a literal through the same rules
+			// an argument does: the field's type is the signature.
+			return c.fieldSetFuncLit(slots, env, fs, t, *s.lit)
+		}
 		if s.lit.kind == argStruct {
 			sa, st, err := c.compileStructLit(slots, env, *s.lit)
 			if err != nil {

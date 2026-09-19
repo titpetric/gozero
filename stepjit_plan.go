@@ -231,6 +231,14 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 		live[in.slot] = true
 		writes[in.slot]++
 	}
+	// A func literal body's parameters are written at entry, before
+	// the first statement, so they are live and count one write; a
+	// body that reassigns one counts a second, and the interface
+	// aliasing for that slot falls back to a copy.
+	for _, slot := range p.params {
+		live[slot] = true
+		writes[slot]++
+	}
 	for _, s := range stmts {
 		if s.recv != nil {
 			if s.out >= 0 {
