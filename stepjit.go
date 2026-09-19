@@ -257,7 +257,15 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 		return nil, fmt.Errorf("a name is reassigned at a different type")
 	}
 
-	plan, err := planInline(p)
+	// A program with an if takes the structural plan: statements keep
+	// their nesting and nothing splices, because a branch boundary
+	// makes a producer's single reader conditional. Everything else
+	// keeps the straight-line plan and its splicing.
+	planOf := planInline
+	if hasIf(p.stmts) {
+		planOf = planIf
+	}
+	plan, err := planOf(p)
 	if err != nil {
 		return nil, err
 	}
