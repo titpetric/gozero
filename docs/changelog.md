@@ -7,6 +7,37 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-19 18:38 +02:00: one operator per assignment
+
+The right side of an assignment may combine exactly two values with
++, == or !=: s := a + b concatenates strings and adds integers and
+floats at every width, ok := a == b compares booleans, numbers and
+strings. That pair is the whole expression surface: a second
+operator, parentheses, any other Go operator and an operator in any
+other value position are rejected at parse with the rule named, so
+no expression tree exists for later features to inherit. Operands
+are a program-bound name or a literal; the types must be identical,
+a literal side adopts the other, and two literals are rejected
+rather than folded, because folding is go/constant's job.
+
+Both tiers run an oracle table whose expected values are computed by
+the same expressions in compiled Go: int8 120+10 wraps to -126,
+uint8 255+1 to 0, a float32 sum rounds once at 32 bits and overflows
+to +Inf, NaN compares unequal to itself. On the direct tier an
+operator is two loads and a native operation between machine words:
+scalar operators allocate nothing per run, and s := a + b allocates
+exactly the one string compiled Go allocates, pinned against a
+native mirror.
+
+Measured with the pinned harness: the concat fixture runs 2871
+ns/op at 4 allocs against its handwritten mirror's 2287 ns/op at 6,
+the difference being 32 bytes of interface boxing the vm pools, and
+every existing benchmark keeps its allocation count exactly
+(benchstat, 3 samples each, all equal). A rewritten result slot
+read through an any parameter copies into a box where a write-once
+slot aliases the frame; both corners are pinned at 3 and 2
+allocations per run in TestBinopAliasingCost.
+
 ## 2026-09-19 16:09 +02:00: step statements, n++ and n--
 
 The two IncDecStmt forms land as statements, which is what Go makes
