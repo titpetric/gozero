@@ -25,6 +25,47 @@ func itabFor(ct, it reflect.Type) (unsafe.Pointer, bool) {
 	return pair.tab, true
 }
 
+// itabType reads the concrete type word out of an itab: the second
+// word of runtime.itab and internal/abi.ITab alike. Like the
+// linknamed allocator in stepjit.go, a toolchain change could move
+// it; TestItabType pins the offset against itabFor.
+func itabType(tab unsafe.Pointer) unsafe.Pointer {
+	return *(*unsafe.Pointer)(unsafe.Add(tab, 8))
+}
+
+// ifaceToIface reads an interface slot into a different interface
+// parameter. The pair in the slot carries st's itab and pt needs its
+// own, which depends on the dynamic type, so a raw copy would hand
+// the callee a pair whose method table is the wrong interface's; the
+// typed assertion in conv rebuilds it per call, exactly what the
+// stack path does. A func literal parameter is the common source: the
+// slot is typed http.ResponseWriter and fmt.Fprint wants io.Writer.
+func ifaceToIface(name string, off uintptr, st, pt reflect.Type) (node, error) {
+	conv, ok := ifaceConvs[pt]
+	if !ok {
+		return node{}, fmt.Errorf("%s is not in ifaceConvs", pt)
+	}
+	eface := st.NumMethod() == 0
+	return node{class: lIface, I: func(fr unsafe.Pointer, _ context.Context, _ map[string]any, _ any) (ifacePair, error) {
+		pair := *(*ifacePair)(unsafe.Add(fr, off))
+		if pair.tab == nil {
+			return ifacePair{}, nil
+		}
+		// Rebuilding the slot's pair as an any means swapping the itab
+		// for the concrete type word it holds; conv asserts from there.
+		if !eface {
+			pair.tab = itabType(pair.tab)
+		}
+		var v any
+		*(*ifacePair)(unsafe.Pointer(&v)) = pair
+		out, ok := conv(v)
+		if !ok {
+			return ifacePair{}, fmt.Errorf("exec: variable %q: cannot use %T as %s", name, v, pt)
+		}
+		return out, nil
+	}}, nil
+}
+
 // toIface wraps a computed value as an interface. A pointer-shaped
 // value is the data word itself; anything wider is stored indirectly,
 // which is the allocation the Go compiler makes at the same place.

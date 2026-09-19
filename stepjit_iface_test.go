@@ -9,6 +9,18 @@ import (
 	"unsafe"
 )
 
+// TestItabType pins the itab layout the interface-to-interface
+// conversion reads: the concrete type word sits one word into the
+// table, in runtime.itab and internal/abi.ITab alike.
+func TestItabType(t *testing.T) {
+	var w interface{ Len() int } = &bytes.Buffer{}
+	pair := *(*ifacePair)(unsafe.Pointer(&w))
+	want := rtypePtr(reflect.TypeOf(&bytes.Buffer{}))
+	if got := itabType(pair.tab); got != want {
+		t.Fatalf("itabType read %p, want %p", got, want)
+	}
+}
+
 // TestValueStructIntoInterface pins the aliasing rule for a struct
 // slot handed to an interface parameter: written once it aliases the
 // frame, and a later field write would be visible behind a retained

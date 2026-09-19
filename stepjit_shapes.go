@@ -28,6 +28,9 @@ func callNode(key string, fptr unsafe.Pointer, a []node) (node, bool) {
 			}
 		}
 	}
+	if n, ok := httpShapeCall(key, fptr, a); ok {
+		return n, true
+	}
 	switch key {
 	case "_P":
 		f := castFn[func() unsafe.Pointer](fptr)
@@ -420,14 +423,4 @@ func callNode(key string, fptr unsafe.Pointer, a []node) (node, bool) {
 		}}, true
 	}
 	return node{}, false
-}
-
-// classOf is the inverse of layout.String, for reading a shape key.
-func classOf(s string) (layout, bool) {
-	for l := lBool; l <= lF64; l++ {
-		if l.String() == s {
-			return l, true
-		}
-	}
-	return lBad, false
 }
