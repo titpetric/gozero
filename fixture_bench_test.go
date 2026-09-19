@@ -187,6 +187,58 @@ func (f *testFixtures) testIncDec(tb testing.TB) {
 	assertEqual(tb, "1.5", fmt.Sprintf("%v", x), "")
 }
 
+func (f *testFixtures) testExpr(tb testing.TB) {
+	var n int64
+	n = 7
+	total := n*3 + 1
+	assertEqual(tb, "22", fmt.Sprintf("%d", total), "")
+
+	grouped := (n + 3) * 2
+	assertEqual(tb, "20", fmt.Sprintf("%d", grouped), "")
+
+	neg := -n + 2
+	assertEqual(tb, "-5", fmt.Sprintf("%d", neg), "")
+
+	inv := ^n
+	assertEqual(tb, "-8", fmt.Sprintf("%d", inv), "")
+
+	half := n / 2
+	rem := n % 2
+	assertEqual(tb, "3 1", fmt.Sprintf("%d %d", half, rem), "")
+
+	bits := n&3 | 8
+	assertEqual(tb, "11", fmt.Sprintf("%d", bits), "")
+
+	sh := n << 2 >> 1
+	assertEqual(tb, "14", fmt.Sprintf("%d", sh), "")
+
+	var zero int64
+	ok := n > 5 && n+1 <= 8
+	assertTrue(tb, ok, "")
+	safe := zero != 0 && 7/zero > 1
+	assertEqual(tb, false, safe, "")
+	no := !ok || safe
+	assertEqual(tb, false, no, "")
+
+	day := 60 * 60 * 24
+	assertEqual(tb, "86400", fmt.Sprintf("%d", day), "")
+
+	var w uint8
+	w = 200
+	wide := w*2 + 1
+	assertEqual(tb, "145", fmt.Sprintf("%d", wide), "")
+
+	f2 := 1.5
+	scaled := (f2 + 0.5) * 2.0
+	assertEqual(tb, "4", fmt.Sprintf("%v", scaled), "")
+
+	s := "go"
+	msg := s + "-" + s
+	assertEqual(tb, "go-go", msg, "")
+	within := msg >= "go" && msg < "gp"
+	assertTrue(tb, within, "")
+}
+
 func (f *testFixtures) testConcat(tb testing.TB) {
 	first := "Ada"
 	last := "Lovelace"
@@ -255,6 +307,7 @@ func BenchmarkFixtures(b *testing.B) {
 		"types":    (*testFixtures).testTypes,
 		"incdec":   (*testFixtures).testIncDec,
 		"concat":   (*testFixtures).testConcat,
+		"expr":     (*testFixtures).testExpr,
 		"variadic": (*testFixtures).testVariadic,
 		"channels": (*testFixtures).testChannels,
 	}
