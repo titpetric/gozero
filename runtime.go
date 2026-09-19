@@ -45,7 +45,7 @@ func (r *Runtime) SetLogger(l *slog.Logger) {
 func NewRuntime() *Runtime {
 	types := predeclared()
 	return &Runtime{
-		compiler: Compiler{bindings: map[string]binding{}, types: types},
+		compiler: Compiler{bindings: map[string]binding{}, types: types, roots: map[string]bool{}},
 		cache:    map[string]CompiledFunc{},
 		types:    types,
 	}
@@ -66,6 +66,11 @@ func (r *Runtime) Bind(name string, fn any) error {
 	}
 	r.mu.Lock()
 	r.compiler.bindings[name] = binding{rv: v, raw: fn}
+	if i := strings.IndexByte(name, '.'); i > 0 {
+		r.compiler.roots[name[:i]] = true
+	} else {
+		r.compiler.roots[name] = true
+	}
 	if r.log != nil {
 		r.log.Debug("bind", "name", name, "signature", v.Type().String())
 	}
@@ -73,6 +78,39 @@ func (r *Runtime) Bind(name string, fn any) error {
 	// statement, along with what its methods reach.
 	r.origin = name
 	r.discover(v.Type(), 1)
+	r.origin = ""
+	r.mu.Unlock()
+	return nil
+}
+
+// BindValue registers a Go value under a name, the way a program
+// reads a package constant: after BindValue("time.Hour", time.Hour)
+// the name compiles to that value wherever an argument or an
+// if-header comparison operand reads it. The value is captured once,
+// at bind time; a func belongs in Bind.
+func (r *Runtime) BindValue(name string, v any) error {
+	if v == nil {
+		return fmt.Errorf("bind: %s is nil, a value binding needs a typed value", name)
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Func {
+		return fmt.Errorf("bind: %s is a func, register it with Bind", name)
+	}
+	r.mu.Lock()
+	if r.compiler.consts == nil {
+		r.compiler.consts = map[string]reflect.Value{}
+	}
+	r.compiler.consts[name] = rv
+	if i := strings.IndexByte(name, '.'); i > 0 {
+		r.compiler.roots[name[:i]] = true
+	} else {
+		r.compiler.roots[name] = true
+	}
+	if r.log != nil {
+		r.log.Debug("bind value", "name", name, "type", rv.Type().String())
+	}
+	r.origin = name
+	r.discover(rv.Type(), 1)
 	r.origin = ""
 	r.mu.Unlock()
 	return nil

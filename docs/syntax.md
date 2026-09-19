@@ -21,8 +21,15 @@ friends, with the test's `testing.TB` on the stack as `tb`.
 program := { stmt }
 stmt    := "var" name typeref term
          | "return" [ arg ] term
+         | ifstmt
          | path "<-" arg term
          | [ name { "," name } ( ":=" | "=" ) ] rhs term
+ifstmt  := "if" header block [ "else" ( ifstmt | block ) ] term
+header  := a Go expression, read by go/parser and narrowed to
+           operand [ cmpop operand ]
+operand := path | expr | string | number
+cmpop   := "==" | "!=" | "<" | "<=" | ">" | ">="
+block   := "{" { stmt } "}"
 term    := ";" | EOL | EOF
 rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv
 typeref := { "*" | "[]" | "chan" | "chan<-" | "<-chan" } path
@@ -35,9 +42,10 @@ composite := [ "&" ] path "{" [ elem { "," elem } [ "," ] ] "}"
 elem    := [ ident ":" ] arg
 ```
 
-The channel arrow is the only operator. A value is a literal, a
-name, a field read, a composite literal, a receive, or the result of
-a call; a condition, a loop or an arithmetic expression is a Go
+The channel arrow and the six comparison operators are the only
+operators, and a comparison exists only in an `if` header. A value
+is a literal, a name, a field read, a composite literal, a receive,
+or the result of a call; a loop or an arithmetic expression is a Go
 function the host binds ([design/](design/) records why). The end of
 a line closes a statement; the semicolon is a delimiter between
 statements sharing one, so both spellings below are the same
@@ -55,9 +63,9 @@ assert.Equal(tb, "https", u.Scheme)
 Strings are single- or double-quoted. A number without a decimal
 point is an int64 and one with is a float64, until an assignment or a
 parameter gives it another type. `dest`, `true`, `false`, `nil`,
-`var` and `return` are reserved, and a name cannot shadow a binding:
-`url := ...` with `url.Parse` bound is a compile error, because the
-name could never be read back.
+`var`, `return`, `if` and `else` are reserved, and a name cannot
+shadow a binding: `url := ...` with `url.Parse` bound is a compile
+error, because the name could never be read back.
 
 ## Declarations and assignment
 
@@ -466,6 +474,135 @@ done <- u.Host
 language; [design/channels.md](design/channels.md) records why they
 decompose onto conditions, loops and closures.
 
+## Conditions
+
+`if`, `else if` and `else` run braced statement lists. The condition
+is a declared bool name, a bool field path, a call returning bool,
+or exactly one comparison: `==`, `!=`, `<`, `<=`, `>` or `>=`
+between two operands, each a name, a field path, a call, or a
+literal. There is no init clause, no `&&` and no nested comparison
+in the header, and the operators do not exist outside it: any other
+position rejects them at parse time with the rule named (comparison
+placement). [design/conditions.md](design/conditions.md) records
+what the fuller forms cost.
+
+The header is read by Go's own expression parser: the bytes between
+`if` and the `{` that opens the block go to `go/parser.ParseExpr`,
+and the tree it returns is narrowed to the forms above, each
+rejection naming its rule (composition for `&&`, `||` and `!`,
+arithmetic for the operator expressions). Because Go reads the
+header, a header accepts Go spellings the line grammar does not:
+parenthesized conditions, hex and binary and underscore-grouped
+numbers, raw and fully escaped strings. A rune literal is rejected -
+the language's only character data is a string - and the header and
+its `{` share a line, though a parenthesized argument list may break
+lines the way Go allows.
+
+<table>
+<tr>
+<th>go</th>
+</tr>
+<tr>
+<td>
+
+```go
+ok := strings.HasPrefix(req.URL.Path, "/api")
+route := ""
+if ok {
+	route = "api"
+} else if req.Close {
+	route = "closed"
+} else {
+	route = "static"
+}
+```
+
+</td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
+<td>
+
+```go
+ok := strings.HasPrefix(req.URL.Path, "/api")
+route := ""
+if ok {
+	route = "api"
+} else if req.Close {
+	route = "closed"
+} else {
+	route = "static"
+}
+```
+
+</td>
+</tr>
+</table>
+
+A comparison types in one line: both sides carry identical static
+types, and a literal side adopts the other side's type. The
+comparison itself runs on the underlying kind - integers, floats and
+strings compare and order, bool compares with `==` and `!=` only -
+so a named scalar type works the way its kind does, which is what
+lets a `time.Duration` order against `time.Hour`:
+
+<table>
+<tr>
+<th>go</th>
+</tr>
+<tr>
+<td>
+
+```go
+t := time.Now()
+age := "stale"
+if time.Since(t) < time.Hour {
+	age = "fresh"
+}
+```
+
+</td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
+<td>
+
+```go
+t := time.Now()
+age := "stale"
+if time.Since(t) < time.Hour {
+	age = "fresh"
+}
+```
+
+</td>
+</tr>
+</table>
+
+`time.Hour` reaches the program through a value binding:
+`BindValue("time.Hour", time.Hour)` registers a typed value under a
+dotted name, which then reads as a comparison operand or as an
+argument the way a Go program reads a package constant. Everything
+outside the scalar kinds stays out of the rung and rejects with the
+rule named (comparable scalar): pointers, interfaces, structs and
+`nil` do not compare, mixed static types do not compare (identical
+types), and two literal sides are a constant condition (constant
+comparison).
+
+Two rules keep the arms inside the language's contracts, and both
+reject at compile time with the rule named. Flat scope: `var` and
+`:=` cannot appear inside an arm, because the slot model has no
+block scope and a name declared there would stay visible past the
+brace; declare the name before the `if` and assign with `=`. Single
+exit: `return` cannot appear inside an arm, because a compiled
+program runs front to back and its only early exit is an error;
+return after the join. `else` binds on the closing brace's line, as
+gofmt shapes it, and `if` nests inside arms.
+
 ## The stack and dest
 
 Names the program never binds resolve against the stack map the host
@@ -586,12 +723,14 @@ Middleware-style guarding works through the error contract: a bound
 the program before the next statement, the way `set -e` ends a shell
 script.
 
-What the syntax deliberately leaves out - conditionals, loops,
-closures, operator expressions and struct type declarations - and
-what each would cost the design is researched feature by feature in
-[design/](design/): [conditions](design/conditions.md),
-[loops](design/loops.md), [closures](design/closures.md),
+What the syntax deliberately leaves out - loops, closures, operator
+expressions and struct type declarations - and what each would cost
+the design is researched feature by feature in [design/](design/):
+[conditions](design/conditions.md), [loops](design/loops.md),
+[closures](design/closures.md),
 [expressions](design/expressions.md),
 [structs](design/structs.md). Channel receive and send started
-there and moved into the syntax; [channels](design/channels.md)
-records what landed and what stayed out.
+there and moved into the syntax, and the restricted `if` above did
+the same; [channels](design/channels.md) and
+[conditions](design/conditions.md) record what landed and what
+stayed out.

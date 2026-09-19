@@ -416,7 +416,8 @@ func callNode(key string, fptr unsafe.Pointer, a []node) (node, bool) {
 			return asError(f(s0, s1))
 		}}, true
 	}
-	return node{}, false
+	// The predicate shapes of the conditions rung, stepjit_if.go.
+	return condShapes(key, fptr, a)
 }
 
 // classOf is the inverse of layout.String, for reading a shape key.

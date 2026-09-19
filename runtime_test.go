@@ -181,6 +181,42 @@ func TestRuntime_Bind(t *testing.T) {
 	}
 }
 
+// TestRuntime_BindValue pins the value-binding surface: a value reads
+// as an argument and as a comparison operand, a func and a nil are
+// rejected, and the bound name cannot be shadowed.
+func TestRuntime_BindValue(t *testing.T) {
+	rt := NewRuntime()
+	if err := rt.BindValue("limits.Max", func() {}); err == nil {
+		t.Fatal("expected an error binding a func as a value")
+	}
+	if err := rt.BindValue("limits.Max", nil); err == nil {
+		t.Fatal("expected an error binding nil")
+	}
+	if err := rt.BindValue("limits.Max", int64(10)); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.Bind("f", func(v int64) string { return fmt.Sprint(v) }); err != nil {
+		t.Fatal(err)
+	}
+	got, err := rt.Eval[string](`return f(limits.Max);`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "10" {
+		t.Errorf("got %q, want 10", got)
+	}
+	got, err = rt.Eval[string](`s := "low"; if 3 < limits.Max { s = f(limits.Max); }; return s;`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "10" {
+		t.Errorf("comparison got %q, want 10", got)
+	}
+	if _, err := rt.Eval[string](`limits := "x"; return limits;`, nil); err == nil {
+		t.Error("expected the value root to reject shadowing")
+	}
+}
+
 // TestRuntime is the round trip in one place: construct, bind, compile,
 // exec, scan.
 func TestRuntime(t *testing.T) {

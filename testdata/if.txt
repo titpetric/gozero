@@ -1,0 +1,37 @@
+// if: a middleware-style guard. The condition is one of a declared
+// bool name, a bool field path, or a call returning bool; else if
+// chains, nesting works, and every name an arm writes is declared
+// before the if.
+req := http.NewRequest("GET", "https://example.com/api/users");
+ok := strings.HasPrefix(req.URL.Path, "/api");
+assert.True(tb, ok);
+
+route := "";
+if ok {
+	route = "api";
+} else {
+	route = "static";
+}
+assert.Equal(tb, "api", route);
+
+// A bool field path as the condition, and an else if chain.
+verdict := "";
+if req.Close {
+	verdict = "close";
+} else if ok {
+	verdict = "keep";
+} else {
+	verdict = "drop";
+}
+assert.Equal(tb, "keep", verdict);
+
+// A call as the condition, a nested if, and no else arm.
+label := "none";
+if strings.HasPrefix(req.URL.Path, "/api") {
+	if req.Close {
+		label = "api-close";
+	} else {
+		label = "api-alive";
+	}
+}
+assert.Equal(tb, "api-alive", label);
