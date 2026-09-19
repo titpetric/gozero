@@ -3,6 +3,7 @@ package gozero
 import (
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 func joinPath(path []string) string {
@@ -73,6 +74,31 @@ func (p *Parser) stringLitEscaped(quote byte, start int) (arg, error) {
 		p.pos++
 	}
 	return arg{}, fmt.Errorf("parse: unterminated string at offset %d", p.pos)
+}
+
+// rawString reads a backquoted raw string literal: no escapes, spans
+// lines, and carriage returns are discarded, as in Go. The only place
+// the grammar admits one is a struct field tag.
+func (p *Parser) rawString() (arg, error) {
+	p.pos++ // opening backquote
+	start := p.pos
+	hasCR := false
+	for p.pos < len(p.src) {
+		switch p.src[p.pos] {
+		case '`':
+			lit := p.src[start:p.pos]
+			p.pos++
+			p.nl = false
+			if hasCR {
+				lit = strings.ReplaceAll(lit, "\r", "")
+			}
+			return arg{kind: argString, str: lit}, nil
+		case '\r':
+			hasCR = true
+		}
+		p.pos++
+	}
+	return arg{}, fmt.Errorf("parse: unterminated raw string at offset %d", p.pos)
 }
 
 func (p *Parser) numberLit() (arg, error) {
