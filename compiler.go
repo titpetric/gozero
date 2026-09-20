@@ -26,6 +26,10 @@ type Compiler struct {
 	// types is the Runtime's registry, shared by reference so a Bind
 	// after a Compile is visible.
 	types map[string]reflect.Type
+	// roots is the first segment of every binding's name, maintained
+	// by Bind, so a compile checks name collisions with two map reads
+	// instead of building a reserved set per program.
+	roots map[string]bool
 }
 
 // Compile validates a program and builds the constructed func.

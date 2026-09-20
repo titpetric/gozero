@@ -7,6 +7,31 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-20 15:19 +02:00: mechanical moves ahead of the merged ladder
+
+Five behaviour-preserving refactors the ladder branches each carried
+mid-feature, landed once. The syntax and the run-time paths are
+unchanged; every benchmark keeps identical allocation counts.
+
+The field assignment lives in vm_field.go: the statement's type,
+compiler and apply in one file, the way vm_chan.go holds the channel
+forms. On the direct tier, fieldNode splits its address computation
+into fieldAddr and both move to stepjit_field.go, so a new field
+source lands beside the two existing ones instead of growing
+stepjit_arg.go.
+
+compileProgram's statement loop moves onto progCompiler.compileStmts
+and the frame post-pass onto assignStmts, so a nested statement list
+can compile and be walked through exactly the code the top level
+uses. The scalar-family pre-dispatch moves out of the shape table
+into scalarFamilyCall beside the families it dispatches, and classOf
+sits next to layout.String, its inverse.
+
+Reserved-name checking reads a roots map Bind maintains instead of
+building a reserved set per compile, so a future keyword is a switch
+case at compile time rather than a map entry that can tip the bucket
+boundary TestParseAllocBudget guards.
+
 ## 2026-09-20 14:51 +02:00: four latent fixes from the ladder experiment
 
 Four defects the design-ladder branches surfaced, each fixed on the

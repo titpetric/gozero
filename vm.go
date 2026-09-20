@@ -168,21 +168,6 @@ type vmStmt struct {
 	send *vmSend
 }
 
-// fieldStep is one selector of a field-assignment target.
-type fieldStep struct {
-	index []int
-	deref bool
-}
-
-// vmFieldSet is a compiled field assignment: the slot the base name
-// lives in, the selectors to the field, and the value.
-type vmFieldSet struct {
-	base  int // slot of the base name
-	steps []fieldStep
-	val   *vmArg
-	field string // for diagnostics
-}
-
 // slotInit is the zero value a var statement puts in scope before the
 // program runs.
 type slotInit struct {
@@ -216,34 +201,6 @@ type vmProgram struct {
 	// statement so a name reads as its type's zero value even when
 	// nothing assigned it.
 	inits []slotInit
-}
-
-// apply writes the value through the field chain. Addressability comes
-// from a pointer in the chain; a struct held by value in a slot is only
-// settable when the slot was created addressable by a var declaration.
-func (fs *vmFieldSet) apply(ctx context.Context, slots, frame []reflect.Value, ifaces []ifacePair, stack map[string]any, dest any) error {
-	v := slots[fs.base]
-	if !v.IsValid() {
-		return fmt.Errorf("exec: %s: the base is not set", fs.field)
-	}
-	for _, st := range fs.steps {
-		if st.deref {
-			if v.IsNil() {
-				return fmt.Errorf("exec: %s: field write on a nil %s", fs.field, v.Type())
-			}
-			v = v.Elem()
-		}
-		v = v.FieldByIndex(st.index)
-	}
-	if !v.CanSet() {
-		return fmt.Errorf("exec: %s: the value is not addressable, declare the base with var or hold it behind a pointer", fs.field)
-	}
-	val, err := fs.val.get(ctx, slots, frame, ifaces, stack, dest)
-	if err != nil {
-		return err
-	}
-	v.Set(val)
-	return nil
 }
 
 // run executes the program. Slots are allocated per execution, so

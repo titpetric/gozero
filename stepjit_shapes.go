@@ -2,31 +2,14 @@ package gozero
 
 import (
 	"context"
-	"strings"
 	"unsafe" // also required by go:linkname
 )
 
 // callNode builds the node for one call from the nodes of its
 // arguments, or reports that the shape is outside the table.
 func callNode(key string, fptr unsafe.Pointer, a []node) (node, bool) {
-	if i := strings.IndexByte(key, '_'); i > 0 && len(a) == 2 {
-		if (a[0].class == lStr || a[0].class == lPtr) && a[1].class.scalar() {
-			if n, ok := mixedScalarCall(fptr, a[0].class, key[i+1:], a[0], a[1]); ok {
-				return n, true
-			}
-		}
-	}
-	if i := strings.IndexByte(key, '_'); i > 0 && len(a) == 1 {
-		if a[0].class.scalar() {
-			if n, ok := scalarCall(fptr, a[0].class, key[i+1:], a[0]); ok {
-				return n, true
-			}
-		}
-		if a[0].class == lPtr {
-			if out, ok := classOf(key[i+1:]); ok && out.scalar() {
-				return ptrScalarCall(fptr, out, a[0])
-			}
-		}
+	if n, ok := scalarFamilyCall(key, fptr, a); ok {
+		return n, true
 	}
 	switch key {
 	case "_P":
@@ -417,14 +400,4 @@ func callNode(key string, fptr unsafe.Pointer, a []node) (node, bool) {
 		}}, true
 	}
 	return node{}, false
-}
-
-// classOf is the inverse of layout.String, for reading a shape key.
-func classOf(s string) (layout, bool) {
-	for l := lBool; l <= lF64; l++ {
-		if l.String() == s {
-			return l, true
-		}
-	}
-	return lBad, false
 }
