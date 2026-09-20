@@ -122,6 +122,9 @@ func (c *Compiler) compileStatement(call *callExpr) (*Statement, error) {
 			s.args[i] = reflect.Zero(pt)
 			continue
 		}
+		if !v.IsValid() {
+			return nil, fmt.Errorf("compile: %s argument %d: unsupported argument", name, i+1)
+		}
 		if !v.Type().AssignableTo(pt) {
 			return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, i+1, v.Type(), pt)
 		}
