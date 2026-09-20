@@ -18,6 +18,12 @@ func callNode(key string, fptr unsafe.Pointer, a []node) (node, bool) {
 			return f(), nil
 		}}, true
 
+	case "_S":
+		f := castFn[func() string](fptr)
+		return node{class: lStr, S: func(_ unsafe.Pointer, _ context.Context, _ map[string]any, _ any) (string, error) {
+			return f(), nil
+		}}, true
+
 	case "PSi64_":
 		f, a0, a1, a2 := castFn[func(unsafe.Pointer, string, int64)](fptr), a[0].P, a[1].S, a[2].N
 		return node{class: lNone, E: func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) error {
@@ -35,6 +41,26 @@ func callNode(key string, fptr unsafe.Pointer, a []node) (node, bool) {
 			}
 			f(p0, s1, int64(n2))
 			return nil
+		}}, true
+
+	case "PS_i64E":
+		// bytes.Buffer.WriteString and the other io writers: the count
+		// result travels as i64 and the trailing error is checked here.
+		f, a0, a1 := castFn[stPS_i64E](fptr), a[0].P, a[1].S
+		return node{class: lI64, N: func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (uint64, error) {
+			p0, err := a0(fr, ctx, st, d)
+			if err != nil {
+				return 0, err
+			}
+			s1, err := a1(fr, ctx, st, d)
+			if err != nil {
+				return 0, err
+			}
+			n, e := f(p0, s1)
+			if err := asError(e); err != nil {
+				return 0, err
+			}
+			return uint64(n), nil
 		}}, true
 
 	case "PS_i64":

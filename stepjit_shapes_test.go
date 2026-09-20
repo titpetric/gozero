@@ -142,3 +142,71 @@ func TestUncoveredShapeKeys(t *testing.T) {
 		}
 	}
 }
+
+// TestWriterGetterShapesJIT pins the PS_i64E and _S shapes: the io
+// writer form bytes.Buffer's WriteString has, with its count result
+// and checked trailing error, and a niladic string getter.
+func TestWriterGetterShapesJIT(t *testing.T) {
+	rt := NewRuntime()
+	if err := rt.BindScope("bytes", map[string]any{"NewBufferString": bytes.NewBufferString}); err != nil {
+		t.Fatal(err)
+	}
+	for name, fn := range map[string]any{
+		"version": func() string { return "v1.2.3" },
+		"put": func(b *bytes.Buffer, s string) (int, error) {
+			if s == "" {
+				return 0, errors.New("nothing to write")
+			}
+			return b.WriteString(s)
+		},
+	} {
+		if err := rt.Bind(name, fn); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, tc := range map[string]struct {
+		src   string
+		check func(fn CompiledFunc) error
+	}{
+		"_S": {`s := version(); return s`, func(fn CompiledFunc) error {
+			s, err := fn.Exec[string](nil)
+			if err != nil || s != "v1.2.3" {
+				return fmt.Errorf("got %q, %v, want v1.2.3", s, err)
+			}
+			return nil
+		}},
+		"PS_i64E count": {`buf := bytes.NewBufferString("a"); n := buf.WriteString("bc"); return n`, func(fn CompiledFunc) error {
+			n, err := fn.Exec[int](nil)
+			if err != nil || n != 2 {
+				return fmt.Errorf("got %v, %v, want 2", n, err)
+			}
+			return nil
+		}},
+		"PS_i64E effect": {`buf := bytes.NewBufferString("a"); buf.WriteString("bc"); s := buf.String(); return s`, func(fn CompiledFunc) error {
+			s, err := fn.Exec[string](nil)
+			if err != nil || s != "abc" {
+				return fmt.Errorf("got %q, %v, want abc", s, err)
+			}
+			return nil
+		}},
+		"PS_i64E error": {`buf := bytes.NewBufferString(""); n := put(buf, ""); return n`, func(fn CompiledFunc) error {
+			if _, err := fn.Exec[int](nil); err == nil || !strings.Contains(err.Error(), "nothing to write") {
+				return fmt.Errorf("err = %v, want the binding error", err)
+			}
+			return nil
+		}},
+	} {
+		if err := rt.Supports(tc.src); err != nil {
+			t.Errorf("%s: did not JIT: %v", name, err)
+			continue
+		}
+		fn, err := rt.Compile(tc.src)
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if err := tc.check(fn); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}

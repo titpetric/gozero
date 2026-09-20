@@ -27,6 +27,7 @@ type (
 	stII_E    = func(ifacePair, ifacePair) ifacePair
 	stSS_E    = func(string, string) ifacePair
 	stPP_PE   = func(unsafe.Pointer, unsafe.Pointer) (unsafe.Pointer, ifacePair)
+	stPS_i64E = func(unsafe.Pointer, string) (int64, ifacePair)
 )
 
 // scalarFamilyCall is callNode's first stop: the call families whose
