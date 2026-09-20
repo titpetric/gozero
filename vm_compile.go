@@ -3,7 +3,6 @@ package gozero
 import (
 	"fmt"
 	"reflect"
-	"strings"
 )
 
 // The multi-statement VM. A program is a list of calls whose results
@@ -39,17 +38,15 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 	// A name that collides with a binding can never be read back:
 	// path resolution prefers the binding, so url := ... with url.Parse
 	// bound compiles and then silently resolves the other way. Shadowing
-	// is rejected instead.
-	reserved := map[string]bool{"dest": true, "true": true, "false": true, "nil": true, "var": true, "return": true}
-	for name := range c.bindings {
-		if i := strings.IndexByte(name, '.'); i > 0 {
-			reserved[name[:i]] = true
-		} else {
-			reserved[name] = true
-		}
-	}
+	// is rejected instead. The binding roots live in c.roots, maintained
+	// by Bind, so the check is a switch and a map read rather than a
+	// reserved set built per program.
 	checkName := func(name string) error {
-		if reserved[name] {
+		switch name {
+		case "dest", "true", "false", "nil", "var", "return":
+			return fmt.Errorf("compile: %s shadows a binding or keyword and cannot be assigned", name)
+		}
+		if c.roots[name] {
 			return fmt.Errorf("compile: %s shadows a binding or keyword and cannot be assigned", name)
 		}
 		return nil
