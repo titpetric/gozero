@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newRuntime(t *testing.T) *Runtime {
@@ -178,6 +179,82 @@ func TestRuntime_Bind(t *testing.T) {
 	}
 	if got != "ABC" {
 		t.Errorf("got %q, want ABC", got)
+	}
+}
+
+// TestRuntime_BindValue pins the value-binding surface: a scalar, a
+// string and a named-type value each read as a call argument with
+// the static type they were bound with, on both compile paths. A
+// func and a nil are rejected, the bound root cannot be shadowed,
+// and a rebind overwrites, the rules Bind has.
+func TestRuntime_BindValue(t *testing.T) {
+	rt := NewRuntime()
+	if err := rt.BindValue("limits.Max", func() {}); err == nil {
+		t.Fatal("expected an error binding a func as a value")
+	}
+	if err := rt.BindValue("limits.Max", nil); err == nil {
+		t.Fatal("expected an error binding nil")
+	}
+	for name, v := range map[string]any{
+		"limits.Max": int64(10),
+		"urls.Home":  "https://example.com/home",
+		"time.Hour":  time.Hour,
+	} {
+		if err := rt.BindValue(name, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, fn := range map[string]any{
+		"itoa": func(v int64) string { return fmt.Sprint(v) },
+		"path": func(u string) string { return strings.TrimPrefix(u, "https://example.com") },
+		"span": func(d time.Duration) string { return d.String() },
+	} {
+		if err := rt.Bind(name, fn); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// One flat call compiles through compileStatement; a program with
+	// a declaration compiles every argument through compileArg. The
+	// named-type case only passes because the value keeps its static
+	// type: span takes time.Duration, not int64.
+	for src, want := range map[string]string{
+		`return itoa(limits.Max);`:         "10",
+		`return path(urls.Home);`:          "/home",
+		`return span(time.Hour);`:          "1h0m0s",
+		`s := itoa(limits.Max); return s;`: "10",
+		`s := path(urls.Home); return s;`:  "/home",
+		`s := span(time.Hour); return s;`:  "1h0m0s",
+	} {
+		got, err := rt.Eval[string](src, nil)
+		if err != nil {
+			t.Fatalf("%s: %v", src, err)
+		}
+		if got != want {
+			t.Errorf("%s: got %q, want %q", src, got, want)
+		}
+	}
+	// The static type flows into the assignability check: a
+	// time.Duration does not pass as int64 on either path.
+	for _, src := range []string{
+		`return itoa(time.Hour);`,
+		`s := itoa(time.Hour); return s;`,
+	} {
+		if _, err := rt.Compile(src); err == nil || !strings.Contains(err.Error(), "cannot use time.Duration as int64") {
+			t.Errorf("%s: err = %v, want the named type rejected as int64", src, err)
+		}
+	}
+	if _, err := rt.Eval[string](`limits := "x"; return limits;`, nil); err == nil {
+		t.Error("expected the value root to reject shadowing")
+	}
+	if err := rt.BindValue("limits.Max", int64(12)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := rt.Eval[string](`v := itoa(limits.Max); return v;`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "12" {
+		t.Errorf("rebind got %q, want 12", got)
 	}
 }
 
