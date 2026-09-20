@@ -193,6 +193,85 @@ func TestPtrScalarShapesJIT(t *testing.T) {
 	}
 }
 
+// TestStrScalarShapesJIT pins a string parameter with a scalar
+// result, the sN and sF constructors, at a signed, an unsigned, a
+// bool and both float widths.
+func TestStrScalarShapesJIT(t *testing.T) {
+	rt := NewRuntime()
+	for name, fn := range map[string]any{
+		"slen":  func(s string) int64 { return int64(len(s)) },
+		"sneg":  func(s string) int8 { return int8(-len(s)) },
+		"su8":   func(s string) uint8 { return uint8(len(s)) },
+		"sbool": func(s string) bool { return len(s) > 0 },
+		"sf64":  func(s string) float64 { return float64(len(s)) / 2 },
+		"sf32":  func(s string) float32 { return float32(len(s)) },
+	} {
+		if err := rt.Bind(name, fn); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, tc := range map[string]struct {
+		src   string
+		check func(fn CompiledFunc) error
+	}{
+		"int64": {`n := slen("abcd"); return n`, func(fn CompiledFunc) error {
+			n, err := fn.Exec[int64](nil)
+			if err != nil || n != 4 {
+				return fmt.Errorf("got %v, %v, want 4", n, err)
+			}
+			return nil
+		}},
+		"int8 negative": {`n := sneg("abcd"); return n`, func(fn CompiledFunc) error {
+			n, err := fn.Exec[int8](nil)
+			if err != nil || n != -4 {
+				return fmt.Errorf("got %v, %v, want -4", n, err)
+			}
+			return nil
+		}},
+		"uint8": {`n := su8("abcd"); return n`, func(fn CompiledFunc) error {
+			n, err := fn.Exec[uint8](nil)
+			if err != nil || n != 4 {
+				return fmt.Errorf("got %v, %v, want 4", n, err)
+			}
+			return nil
+		}},
+		"bool": {`b := sbool("abcd"); return b`, func(fn CompiledFunc) error {
+			b, err := fn.Exec[bool](nil)
+			if err != nil || !b {
+				return fmt.Errorf("got %v, %v, want true", b, err)
+			}
+			return nil
+		}},
+		"float64": {`f := sf64("abcd"); return f`, func(fn CompiledFunc) error {
+			f, err := fn.Exec[float64](nil)
+			if err != nil || f != 2 {
+				return fmt.Errorf("got %v, %v, want 2", f, err)
+			}
+			return nil
+		}},
+		"float32": {`f := sf32("abcd"); return f`, func(fn CompiledFunc) error {
+			f, err := fn.Exec[float32](nil)
+			if err != nil || f != 4 {
+				return fmt.Errorf("got %v, %v, want 4", f, err)
+			}
+			return nil
+		}},
+	} {
+		if err := rt.Supports(tc.src); err != nil {
+			t.Errorf("%s: did not JIT: %v", name, err)
+			continue
+		}
+		fn, err := rt.Compile(tc.src)
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if err := tc.check(fn); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
 // TestScalarErrorOnlyShapesJIT pins a scalar parameter with a lone
 // error result, the nE and fE constructors, on both outcomes.
 func TestScalarErrorOnlyShapesJIT(t *testing.T) {
