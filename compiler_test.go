@@ -32,20 +32,22 @@ func TestCompiler(t *testing.T) {
 // single-statement path for an argument kind it does not carry. A
 // dotted path or a nil literal in a flat call left the argument's
 // reflect.Value zero, and the assignability check reached v.Type() on
-// it and panicked; both are a named compile error instead.
+// it and panicked; both are a named compile error instead. A dotted
+// path names its own rule, because it could have been a value
+// binding; a nil literal keeps the catch-all.
 func TestCompilerRejectsUnsupportedArg(t *testing.T) {
 	rt := newRuntime(t)
-	for _, src := range []string{
-		`return NewRequest(a.b, "https://example.com");`,
-		`return NewRequest("GET", "https://example.com", nil);`,
+	for src, want := range map[string]string{
+		`return NewRequest(a.b, "https://example.com");`:        "not a name bound by the program",
+		`return NewRequest("GET", "https://example.com", nil);`: "unsupported argument",
 	} {
 		prog, err := (&Parser{}).Parse(src)
 		if err != nil {
 			t.Fatal(err)
 		}
 		_, err = rt.compiler.Compile(prog)
-		if err == nil || !strings.Contains(err.Error(), "unsupported argument") {
-			t.Errorf("%s: want a named unsupported-argument error, got %v", src, err)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: want the error to name %q, got %v", src, want, err)
 		}
 	}
 }

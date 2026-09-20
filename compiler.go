@@ -30,6 +30,11 @@ type Compiler struct {
 	// by Bind, so a compile checks name collisions with two map reads
 	// instead of building a reserved set per program.
 	roots map[string]bool
+	// consts are the value bindings BindValue registers: a dotted
+	// name resolving to one typed value, the way a program reads a Go
+	// package constant such as time.Hour. Nil until the first
+	// BindValue; a nil map reads as empty.
+	consts map[string]reflect.Value
 }
 
 // Compile validates a program and builds the constructed func.
@@ -125,6 +130,14 @@ func (c *Compiler) compileStatement(call *callExpr) (*Statement, error) {
 			s.vars = append(s.vars, varSlot{index: i, name: a.str, typ: pt, zero: reflect.Zero(pt)})
 			s.args[i] = reflect.Zero(pt)
 			continue
+		case argPath:
+			// A dotted name here can only be a value binding; a field
+			// read needs the program compiler and its slots.
+			cv, ok := c.consts[joinPath(a.path)]
+			if !ok {
+				return nil, fmt.Errorf("compile: %s argument %d: %s is not a name bound by the program", name, i+1, a.path[0])
+			}
+			v = cv
 		}
 		if !v.IsValid() {
 			return nil, fmt.Errorf("compile: %s argument %d: unsupported argument", name, i+1)
