@@ -5,6 +5,12 @@ date: "2026-09-08T10:18:28+02:00"
 
 Changes to the language and the runtime after the chapters were written, newest first. Each entry records when it landed, what the syntax gained, and how it is used.
 
+## 2026-09-20 16:11 +02:00: one-time reflow of the committed markdown
+
+The mdox configuration dropped soft wraps, so the formatter joins hard-wrapped prose into one line per paragraph. Every committed chapter and the README predate that setting, which meant any run of the format gate reflowed all of them and mixed formatter churn into unrelated diffs.
+
+This entry marks the one-time reflow: all sixteen documents and the README formatted in a single commit, no content edits. The formatter's output is now canonical; a second run produces no diff, so from here a documentation diff contains only what its author changed.
+
 ## 2026-09-20 15:59 +02:00: Runtime.BindValue, typed value bindings
 
 Bind carries funcs, so a Go constant such as time.Hour had no way into a program: a host could wrap it in a getter, at the cost of a call, or leave it out. BindValue registers a typed value under a dotted name, and the name compiles to that value wherever a call argument reads a dotted path, on both the single-statement path and the program compiler.
