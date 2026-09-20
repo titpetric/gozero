@@ -127,6 +127,12 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 			if s.retArg.kind != vaSlot {
 				return nil, fmt.Errorf("a returned expression is not in the table")
 			}
+			// In any position but the last the return is an early
+			// exit: skipping it here would run the statements after
+			// it, which the reflect evaluator never reaches.
+			if i != len(p.stmts)-1 {
+				return nil, fmt.Errorf("a return before the last statement is not a straight line")
+			}
 			retSlot = s.retArg.slot
 			continue
 		}
@@ -155,7 +161,13 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 			continue
 		}
 		if s.call == nil {
-			continue // a bare "return;" leaves the program without a value
+			// A bare "return;" leaves the program without a value; in
+			// any position but the last it is an early exit, like the
+			// value form above.
+			if s.ret && i != len(p.stmts)-1 {
+				return nil, fmt.Errorf("a return before the last statement is not a straight line")
+			}
+			continue
 		}
 		if s.ret && i != len(p.stmts)-1 {
 			return nil, fmt.Errorf("a return before the last statement is not a straight line")

@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -77,6 +78,68 @@ func TestPlanInlineLeavesTheTreeAlone(t *testing.T) {
 	if got, want := dest.String(), "\"/b1234\"\n"; got != want {
 		t.Errorf("bridged tier: dest = %q, want %q", got, want)
 	}
+}
+
+// TestPlanInlineDeclinesMidReturn pins the early-exit rule for the two
+// return forms planInline used to wave through: "return name;" and a
+// bare "return;". Both recorded the exit and kept planning, so the
+// direct tier ran the statements after the return, which the reflect
+// evaluator never reaches. Such a program declines by name and runs on
+// the reflect tier, where the tail must stay unexecuted.
+func TestPlanInlineDeclinesMidReturn(t *testing.T) {
+	newRuntime := func(t *testing.T, ran *[]string) *Runtime {
+		t.Helper()
+		rt := NewRuntime()
+		if err := rt.Bind("record", func(tag, val string) error {
+			*ran = append(*ran, tag)
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return rt
+	}
+
+	t.Run("value form", func(t *testing.T) {
+		var ran []string
+		rt := newRuntime(t, &ran)
+		src := "s := \"a\"\nreturn s\nrecord(\"tail\", \"x\")\n"
+		if err := rt.Supports(src); err == nil || !strings.Contains(err.Error(), "straight line") {
+			t.Errorf("a value return before the last statement should decline by name, got %v", err)
+		}
+		fn, err := rt.Compile(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := fn.Exec[string](nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != "a" {
+			t.Errorf("result = %q, want %q", got, "a")
+		}
+		if len(ran) != 0 {
+			t.Errorf("the tail after the return ran: %v", ran)
+		}
+	})
+
+	t.Run("bare form", func(t *testing.T) {
+		var ran []string
+		rt := newRuntime(t, &ran)
+		src := "record(\"head\", \"x\")\nreturn\nrecord(\"tail\", \"y\")\n"
+		if err := rt.Supports(src); err == nil || !strings.Contains(err.Error(), "straight line") {
+			t.Errorf("a bare return before the last statement should decline by name, got %v", err)
+		}
+		fn, err := rt.Compile(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := fn(context.Background(), nil, nil); err != nil {
+			t.Fatal(err)
+		}
+		if want := []string{"head"}; len(ran) != 1 || ran[0] != want[0] {
+			t.Errorf("ran = %v, want %v", ran, want)
+		}
+	})
 }
 
 // TestReadCountSeesFieldReads guards the analysis that decides whether a

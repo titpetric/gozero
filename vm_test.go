@@ -55,6 +55,49 @@ func TestProgramWritesThroughDest(t *testing.T) {
 	}
 }
 
+// cellProbe is a value type whose pointer-receiver method hands its
+// address out, the only way the grammar takes an address of a name.
+type cellProbe struct{ v string }
+
+func (c *cellProbe) Self() *cellProbe { return c }
+
+// TestAddrTakenSlotWritesThroughItsCell pins the memory model for &x
+// after reassignment. On the step JIT tier the frame is the
+// variable's storage, so a pointer taken earlier observes a later
+// write, which is Go's rule. The reflect evaluator stored every write
+// to an address-taken slot in a fresh cell, so a pointer taken before
+// the write kept reading the old one: the two tiers disagreed on what
+// *p is. A value-struct slot has no layout class, which keeps this
+// program on the reflect evaluator.
+func TestAddrTakenSlotWritesThroughItsCell(t *testing.T) {
+	rt := NewRuntime()
+	for name, fn := range map[string]any{
+		"mk":   func(v string) cellProbe { return cellProbe{v: v} },
+		"read": func(p *cellProbe) string { return p.v },
+	} {
+		if err := rt.Bind(name, fn); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const src = `
+		c := mk("a");
+		p := c.Self();
+		c = mk("b");
+		return read(p);
+	`
+	fn, err := rt.Compile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := fn.Exec[string](nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "b" {
+		t.Errorf("read(p) = %q, want %q: the reassignment must be visible through the pointer", got, "b")
+	}
+}
+
 // TestProgramErrorBubbles checks that a failing call stops the program
 // and surfaces through Scan without the source naming an error.
 func TestProgramErrorBubbles(t *testing.T) {

@@ -3,11 +3,83 @@ package gozero
 import (
 	"bytes"
 	"context"
+	"io"
 	"net/url"
 	"reflect"
 	"testing"
 	"unsafe"
 )
+
+// TestItabType pins the itab layout the interface-to-interface
+// conversion reads: the concrete type word sits one word into the
+// table, in runtime.itab and internal/abi.ITab alike.
+func TestItabType(t *testing.T) {
+	var w interface{ Len() int } = &bytes.Buffer{}
+	pair := *(*ifacePair)(unsafe.Pointer(&w))
+	want := rtypePtr(reflect.TypeOf(&bytes.Buffer{}))
+	if got := itabType(pair.tab); got != want {
+		t.Fatalf("itabType read %p, want %p", got, want)
+	}
+}
+
+// itabWriter is an interface whose method table does not start at
+// Write: sorted by name, Append takes slot 0 and Write slot 1, the
+// shape http.ResponseWriter has around io.Writer.Write.
+type itabWriter interface {
+	Append(p []byte) (int, error)
+	Write(p []byte) (int, error)
+}
+
+// itabRecorder records which method a dispatch lands on. Append and
+// Write share a signature, so a call through the wrong table slot is
+// observable instead of memory-unsafe.
+type itabRecorder struct{ log []string }
+
+func (r *itabRecorder) Append(p []byte) (int, error) {
+	r.log = append(r.log, "Append:"+string(p))
+	return len(p), nil
+}
+
+func (r *itabRecorder) Write(p []byte) (int, error) {
+	r.log = append(r.log, "Write:"+string(p))
+	return len(p), nil
+}
+
+// TestIfaceSlotIntoOtherIface pins the conversion between two
+// interface types: a slot typed itabWriter fills an io.Writer
+// parameter. The slot's pair carries itabWriter's method table, where
+// Write is slot 1; copying the pair raw hands the callee a table it
+// reads as io.Writer's, whose slot 0 is Append, so w.Write dispatches
+// the wrong method. The pair has to be rebuilt around the dynamic
+// type, which is what the reflect tier's Call does.
+func TestIfaceSlotIntoOtherIface(t *testing.T) {
+	rec := &itabRecorder{}
+	rt := NewRuntime()
+	for name, fn := range map[string]any{
+		"rec":    func() *itabRecorder { return rec },
+		"asItab": func(r *itabRecorder) itabWriter { return r },
+		"sink":   func(w, _ io.Writer) error { _, err := w.Write([]byte("x")); return err },
+	} {
+		if err := rt.Bind(name, fn); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const src = `
+		r := rec();
+		w := asItab(r);
+		sink(w, w);
+	`
+	jit, slow := compilePair(t, rt, src)
+	if _, err := slow(context.Background(), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := jit(context.Background(), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"Write:x", "Write:x"}; !reflect.DeepEqual(rec.log, want) {
+		t.Errorf("dispatch log = %v, want %v", rec.log, want)
+	}
+}
 
 // TestValueStructIntoInterface pins the aliasing rule for a struct
 // slot handed to an interface parameter: written once it aliases the
