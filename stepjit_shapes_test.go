@@ -142,3 +142,129 @@ func TestUncoveredShapeKeys(t *testing.T) {
 		}
 	}
 }
+
+// TestWriterGetterShapesJIT pins the PS_i64E and _S shapes: the io
+// writer form bytes.Buffer's WriteString has, with its count result
+// and checked trailing error, and a niladic string getter.
+func TestWriterGetterShapesJIT(t *testing.T) {
+	rt := NewRuntime()
+	if err := rt.BindScope("bytes", map[string]any{"NewBufferString": bytes.NewBufferString}); err != nil {
+		t.Fatal(err)
+	}
+	for name, fn := range map[string]any{
+		"version": func() string { return "v1.2.3" },
+		"put": func(b *bytes.Buffer, s string) (int, error) {
+			if s == "" {
+				return 0, errors.New("nothing to write")
+			}
+			return b.WriteString(s)
+		},
+	} {
+		if err := rt.Bind(name, fn); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, tc := range map[string]struct {
+		src   string
+		check func(fn CompiledFunc) error
+	}{
+		"_S": {`s := version(); return s`, func(fn CompiledFunc) error {
+			s, err := fn.Exec[string](nil)
+			if err != nil || s != "v1.2.3" {
+				return fmt.Errorf("got %q, %v, want v1.2.3", s, err)
+			}
+			return nil
+		}},
+		"PS_i64E count": {`buf := bytes.NewBufferString("a"); n := buf.WriteString("bc"); return n`, func(fn CompiledFunc) error {
+			n, err := fn.Exec[int](nil)
+			if err != nil || n != 2 {
+				return fmt.Errorf("got %v, %v, want 2", n, err)
+			}
+			return nil
+		}},
+		"PS_i64E effect": {`buf := bytes.NewBufferString("a"); buf.WriteString("bc"); s := buf.String(); return s`, func(fn CompiledFunc) error {
+			s, err := fn.Exec[string](nil)
+			if err != nil || s != "abc" {
+				return fmt.Errorf("got %q, %v, want abc", s, err)
+			}
+			return nil
+		}},
+		"PS_i64E error": {`buf := bytes.NewBufferString(""); n := put(buf, ""); return n`, func(fn CompiledFunc) error {
+			if _, err := fn.Exec[int](nil); err == nil || !strings.Contains(err.Error(), "nothing to write") {
+				return fmt.Errorf("err = %v, want the binding error", err)
+			}
+			return nil
+		}},
+	} {
+		if err := rt.Supports(tc.src); err != nil {
+			t.Errorf("%s: did not JIT: %v", name, err)
+			continue
+		}
+		fn, err := rt.Compile(tc.src)
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if err := tc.check(fn); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+// failWriter is an io.Writer that always errors, for the trailing
+// error branch of the print shapes.
+type failWriter struct{}
+
+func (failWriter) Write([]byte) (int, error) { return 0, errors.New("sink is closed") }
+
+// TestIfaceSliceCountShapeJIT pins IL_i64E, the io.Writer print
+// family: fmt.Fprint's count and effect on both a program-built
+// buffer and a stack-fed writer, and its trailing error.
+func TestIfaceSliceCountShapeJIT(t *testing.T) {
+	rt := NewRuntime()
+	if err := rt.BindScope("bytes", map[string]any{"NewBufferString": bytes.NewBufferString}); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.BindScope("fmt", map[string]any{"Fprint": fmt.Fprint}); err != nil {
+		t.Fatal(err)
+	}
+	for name, tc := range map[string]struct {
+		src   string
+		stack map[string]any
+		check func(fn CompiledFunc, stack map[string]any) error
+	}{
+		"count": {`buf := bytes.NewBufferString(""); n := fmt.Fprint(buf, "ab", "c"); return n`, nil, func(fn CompiledFunc, stack map[string]any) error {
+			n, err := fn.Exec[int](stack)
+			if err != nil || n != 3 {
+				return fmt.Errorf("got %v, %v, want 3", n, err)
+			}
+			return nil
+		}},
+		"effect": {`buf := bytes.NewBufferString(""); fmt.Fprint(buf, "ab", "c"); s := buf.String(); return s`, nil, func(fn CompiledFunc, stack map[string]any) error {
+			s, err := fn.Exec[string](stack)
+			if err != nil || s != "abc" {
+				return fmt.Errorf("got %q, %v, want abc", s, err)
+			}
+			return nil
+		}},
+		"error": {`n := fmt.Fprint(w, "x"); return n`, map[string]any{"w": failWriter{}}, func(fn CompiledFunc, stack map[string]any) error {
+			if _, err := fn.Exec[int](stack); err == nil || !strings.Contains(err.Error(), "sink is closed") {
+				return fmt.Errorf("err = %v, want the writer's error", err)
+			}
+			return nil
+		}},
+	} {
+		if err := rt.Supports(tc.src); err != nil {
+			t.Errorf("%s: did not JIT: %v", name, err)
+			continue
+		}
+		fn, err := rt.Compile(tc.src)
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if err := tc.check(fn, tc.stack); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}

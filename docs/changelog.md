@@ -7,6 +7,27 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-20 15:41 +02:00: call-shape table additions
+
+Three target-independent call shapes, extending the direct tier to
+signatures common host bindings already have. The syntax is
+unchanged; a binding of one of these signatures now compiles direct
+instead of bridging its call through reflect.
+
+PS_i64E is the io writer form bytes.Buffer's WriteString has:
+func(*T, string) (int, error), the count as i64 and the trailing
+error checked at the call. _S is a niladic string getter,
+func() string. IL_i64E is fmt.Fprint and the io.Writer print family:
+func(io.Writer, ...any) (int, error), an interface, a variadic pack
+and the count-and-error pair. The string-parameter scalar-result
+family covers func(string) T for every scalar width T through the
+sN and sF constructors, dispatched generically beside the pointer
+family rather than one table case per width.
+
+Each shape has a test asserting via Supports that a binding of that
+signature compiles direct, and existing fixtures keep identical
+allocation counts.
+
 ## 2026-09-20 15:19 +02:00: mechanical moves ahead of the merged ladder
 
 Five behaviour-preserving refactors the ladder branches each carried
