@@ -266,7 +266,7 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 	for i := range p.stmts {
 		s := &p.stmts[i]
 		if s.lit.IsValid() {
-			slots[s.out[0]] = p.addrCell(s.lit, s.out[0])
+			p.setSlot(slots, s.lit, s.out[0])
 			continue
 		}
 		if s.assign != nil {
@@ -274,7 +274,7 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 			if err != nil {
 				return nil, err
 			}
-			slots[s.out[0]] = v
+			p.setSlot(slots, v, s.out[0])
 			continue
 		}
 		if s.fieldSet != nil {
@@ -289,7 +289,7 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 				return nil, err
 			}
 			if len(s.out) > 0 {
-				slots[s.out[0]] = p.addrCell(v, s.out[0])
+				p.setSlot(slots, v, s.out[0])
 			}
 			continue
 		}
@@ -322,7 +322,7 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 				continue
 			}
 			if n < len(s.out) {
-				slots[s.out[n]] = p.addrCell(out[j], s.out[n])
+				p.setSlot(slots, out[j], s.out[n])
 			}
 			n++
 		}
@@ -336,18 +336,25 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 	return nil, nil
 }
 
-// addrCell stores v into a fresh addressable cell when the slot's
-// address is taken somewhere in the program. A call result and the
-// prebuilt literal value are not addressable, and the literal is also
-// shared between runs, so both go through the copy; every other slot
-// keeps the value as it is.
-func (p *vmProgram) addrCell(v reflect.Value, slot int) reflect.Value {
+// setSlot stores v into a slot. An address-taken slot holds an
+// addressable cell and later writes go through it, so a pointer taken
+// earlier observes them; the same slot on the step JIT tier is frame
+// memory, where writing in place is the only behaviour. A call result
+// and the prebuilt literal value are not addressable, and the literal
+// is also shared between runs, so the first write copies into a fresh
+// cell; every other slot keeps the value as it is.
+func (p *vmProgram) setSlot(slots []reflect.Value, v reflect.Value, slot int) {
 	if !p.addrTaken[slot] {
-		return v
+		slots[slot] = v
+		return
+	}
+	if cur := slots[slot]; cur.IsValid() && cur.CanSet() && cur.Type() == v.Type() {
+		cur.Set(v)
+		return
 	}
 	cell := reflect.New(v.Type()).Elem()
 	cell.Set(v)
-	return cell
+	slots[slot] = cell
 }
 
 func firstNonErr(out []reflect.Value, errIdx int) reflect.Value {
