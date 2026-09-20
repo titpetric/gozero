@@ -7,6 +7,28 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-20 15:59 +02:00: Runtime.BindValue, typed value bindings
+
+Bind carries funcs, so a Go constant such as time.Hour had no way
+into a program: a host could wrap it in a getter, at the cost of a
+call, or leave it out. BindValue registers a typed value under a
+dotted name, and the name compiles to that value wherever a call
+argument reads a dotted path, on both the single-statement path and
+the program compiler.
+
+The value keeps the static type it was bound with: after
+BindValue("time.Hour", time.Hour), a binding taking time.Duration
+accepts time.Hour and a binding taking int64 rejects it at compile
+time. The name's root joins the same roots map Bind maintains, so a
+program cannot shadow it, and a rebind overwrites, the rule Bind
+has. The value is captured once, at bind time; a func is rejected
+toward Bind, a nil toward a typed value.
+
+On the direct tier a value binding compiles like a literal: a
+constant node, no per-call work. A dotted path in a flat call that
+names no value binding now fails as "not a name bound by the
+program" instead of the unsupported-argument catch-all.
+
 ## 2026-09-20 15:41 +02:00: call-shape table additions
 
 Three target-independent call shapes, extending the direct tier to
