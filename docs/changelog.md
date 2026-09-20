@@ -7,6 +7,38 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-20 14:51 +02:00: four latent fixes from the ladder experiment
+
+Four defects the design-ladder branches surfaced, each fixed on the
+base with a failing test first. The syntax is unchanged.
+
+A return before the last statement declines the direct tier in the
+value form (`return name;`) and the bare form (`return;`), as the
+call form always did. The planner waved both through, so the direct
+tier ran the statements after the return, which the reflect
+evaluator never reaches.
+
+An argument kind the single-statement path does not carry, such as
+a dotted path or a `nil` literal in a flat call, is a named compile
+error. It used to reach `reflect.Value.Type` on a zero value and
+panic.
+
+An interface-typed slot filling a parameter of a different
+interface type rebuilds the interface pair through the itab's
+concrete type word. The raw two-word copy handed the callee the
+slot type's method table, so a method call on the parameter
+dispatched the wrong method; `http.ResponseWriter` into `io.Writer`
+is the common shape. TestItabType pins the type word's offset, the
+same toolchain risk class as the linknamed allocator.
+
+The reflect evaluator writes an address-taken slot through its
+existing cell. Every write allocated a fresh cell, so a pointer
+taken before a reassignment kept reading the old value, where the
+step JIT's frame memory and Go both show the new one.
+
+Every existing benchmark keeps identical allocation counts,
+benchstat all equal at n=3.
+
 ## 2026-09-10 16:58 +02:00: argument pooling under the binding contract
 
 Arguments are borrowed. A binding receives values that are valid for
