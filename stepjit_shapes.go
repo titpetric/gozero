@@ -411,6 +411,9 @@ func callNode(key string, fptr unsafe.Pointer, a []node) (node, bool) {
 			return asError(f(i0, i1))
 		}}, true
 
+	case "IL_i64E":
+		return ifaceSliceCountE(fptr, a[0].I, a[1].L), true
+
 	case "SS_E":
 		f, a0, a1 := castFn[stSS_E](fptr), a[0].S, a[1].S
 		return node{class: lNone, E: func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) error {

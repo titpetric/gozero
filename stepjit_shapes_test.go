@@ -210,3 +210,61 @@ func TestWriterGetterShapesJIT(t *testing.T) {
 		}
 	}
 }
+
+// failWriter is an io.Writer that always errors, for the trailing
+// error branch of the print shapes.
+type failWriter struct{}
+
+func (failWriter) Write([]byte) (int, error) { return 0, errors.New("sink is closed") }
+
+// TestIfaceSliceCountShapeJIT pins IL_i64E, the io.Writer print
+// family: fmt.Fprint's count and effect on both a program-built
+// buffer and a stack-fed writer, and its trailing error.
+func TestIfaceSliceCountShapeJIT(t *testing.T) {
+	rt := NewRuntime()
+	if err := rt.BindScope("bytes", map[string]any{"NewBufferString": bytes.NewBufferString}); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.BindScope("fmt", map[string]any{"Fprint": fmt.Fprint}); err != nil {
+		t.Fatal(err)
+	}
+	for name, tc := range map[string]struct {
+		src   string
+		stack map[string]any
+		check func(fn CompiledFunc, stack map[string]any) error
+	}{
+		"count": {`buf := bytes.NewBufferString(""); n := fmt.Fprint(buf, "ab", "c"); return n`, nil, func(fn CompiledFunc, stack map[string]any) error {
+			n, err := fn.Exec[int](stack)
+			if err != nil || n != 3 {
+				return fmt.Errorf("got %v, %v, want 3", n, err)
+			}
+			return nil
+		}},
+		"effect": {`buf := bytes.NewBufferString(""); fmt.Fprint(buf, "ab", "c"); s := buf.String(); return s`, nil, func(fn CompiledFunc, stack map[string]any) error {
+			s, err := fn.Exec[string](stack)
+			if err != nil || s != "abc" {
+				return fmt.Errorf("got %q, %v, want abc", s, err)
+			}
+			return nil
+		}},
+		"error": {`n := fmt.Fprint(w, "x"); return n`, map[string]any{"w": failWriter{}}, func(fn CompiledFunc, stack map[string]any) error {
+			if _, err := fn.Exec[int](stack); err == nil || !strings.Contains(err.Error(), "sink is closed") {
+				return fmt.Errorf("err = %v, want the writer's error", err)
+			}
+			return nil
+		}},
+	} {
+		if err := rt.Supports(tc.src); err != nil {
+			t.Errorf("%s: did not JIT: %v", name, err)
+			continue
+		}
+		fn, err := rt.Compile(tc.src)
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if err := tc.check(fn, tc.stack); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
