@@ -30,6 +30,12 @@ type Compiler struct {
 	// by Bind, so a compile checks name collisions with two map reads
 	// instead of building a reserved set per program.
 	roots map[string]bool
+	// declaredTypes is the program-local type registry: the struct
+	// types the program being compiled declares, layered over types by
+	// lookupType. compileProgram sets it on a per-compilation copy of
+	// the Compiler, never on the shared instance concurrent
+	// compilations read.
+	declaredTypes map[string]reflect.Type
 	// consts are the value bindings BindValue registers: a dotted
 	// name resolving to one typed value, the way a program reads a Go
 	// package constant such as time.Hour. Nil until the first

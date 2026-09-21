@@ -32,6 +32,16 @@ import (
 // it is used and a method must exist on the type of the name it is
 // called on.
 func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
+	// Declared types are built first, on a copy: the copy scopes the
+	// program-local names to this compilation, and the shared Compiler,
+	// which concurrent compilations read, stays as it was.
+	if len(prog.types) > 0 {
+		cc := *c
+		if err := cc.declareTypes(prog); err != nil {
+			return nil, err
+		}
+		c = &cc
+	}
 	pc := &progCompiler{
 		c:     c,
 		p:     &vmProgram{addrTaken: map[int]bool{}},
@@ -91,10 +101,12 @@ type progCompiler struct {
 // could never be read back.
 func (pc *progCompiler) checkName(name string) error {
 	switch name {
-	case "dest", "true", "false", "nil", "var", "return", "if", "else", "for", "range", "break", "continue":
+	case "dest", "true", "false", "nil", "var", "return", "if", "else", "for", "range", "break", "continue", "type", "struct":
 		return fmt.Errorf("compile: %s shadows a binding or keyword and cannot be assigned", name)
 	}
-	if pc.c.roots[name] {
+	// A declared type's name is reserved the same way a binding's root
+	// is: Point{} and var p Point must keep meaning the type.
+	if pc.c.roots[name] || pc.c.declaredTypes[name] != nil {
 		return fmt.Errorf("compile: %s shadows a binding or keyword and cannot be assigned", name)
 	}
 	return nil
