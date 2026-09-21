@@ -43,6 +43,19 @@ type Compiler struct {
 	consts map[string]reflect.Value
 }
 
+// shadowed reports whether name could never be read back inside a
+// program: a keyword, or the root of a binding, which path resolution
+// would prefer. It is the predicate behind both name rules - what an
+// assignment may declare and what a FuncOf parameter may be called -
+// so the two can never drift apart.
+func (c *Compiler) shadowed(name string) bool {
+	switch name {
+	case "dest", "true", "false", "nil", "var", "return", "if", "else", "for", "range", "break", "continue", "type", "struct":
+		return true
+	}
+	return c.roots[name]
+}
+
 // Compile validates a program and builds the constructed func.
 //
 // A program that is one flat call keeps the original single-statement
