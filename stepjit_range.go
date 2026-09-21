@@ -23,6 +23,25 @@ import (
 // iteration, break ends the loop, any other error ends the program.
 type stepFn func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (more bool, err error)
 
+// foldSignals turns a compiled body into its step. Every loop form
+// on this tier reads its signals through it.
+func foldSignals(body []nodeE) stepFn {
+	return func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (bool, error) {
+		for _, n := range body {
+			if err := n(fr, ctx, st, d); err != nil {
+				switch err {
+				case errLoopContinue:
+					return true, nil
+				case errLoopBreak:
+					return false, nil
+				}
+				return false, err
+			}
+		}
+		return true, nil
+	}
+}
+
 // raiseSignal is the compiled form of break and continue: the signal
 // travels the error return and the innermost loop's step consumes it.
 func raiseSignal(sig error) nodeE {
@@ -37,20 +56,7 @@ func (c *jitCompiler) rangeNode(r *vmRange, jp *jitProgram) (nodeE, error) {
 	if err != nil {
 		return nil, err
 	}
-	step := stepFn(func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (bool, error) {
-		for _, n := range body {
-			if err := n(fr, ctx, st, d); err != nil {
-				switch err {
-				case errLoopContinue:
-					return true, nil
-				case errLoopBreak:
-					return false, nil
-				}
-				return false, err
-			}
-		}
-		return true, nil
-	})
+	step := foldSignals(body)
 	if r.overInt {
 		return c.intRangeNode(r, step)
 	}

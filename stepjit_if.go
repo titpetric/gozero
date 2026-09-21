@@ -31,7 +31,7 @@ import (
 // top level is enough.
 func hasBlocks(stmts []vmStmt) bool {
 	for i := range stmts {
-		if stmts[i].ifs != nil || stmts[i].rng != nil {
+		if stmts[i].ifs != nil || stmts[i].rng != nil || stmts[i].fors != nil {
 			return true
 		}
 	}
@@ -105,6 +105,8 @@ func planBlockStmt(s *vmStmt) (plannedStmt, error) {
 		return plannedStmt{ifs: s.ifs, out: -1}, nil
 	case s.rng != nil:
 		return plannedStmt{rng: s.rng, out: -1}, nil
+	case s.fors != nil:
+		return plannedStmt{fors: s.fors, out: -1}, nil
 	case s.brk || s.cont:
 		return plannedStmt{brk: s.brk, cont: s.cont, out: -1}, nil
 	case s.assign != nil:
@@ -184,6 +186,16 @@ func blockCounters(p *vmProgram, stmts []vmStmt, nested bool, plan *jitPlan) {
 				}
 			}
 			blockCounters(p, s.rng.body, true, plan)
+		}
+		if s.fors != nil {
+			// The loop variable is written by the init and again by
+			// the post clause of every iteration, so it takes the
+			// same two a range key does.
+			if slot := s.fors.initSlot; slot >= 0 {
+				plan.live[slot] = true
+				plan.writes[slot] += 2
+			}
+			blockCounters(p, s.fors.body, true, plan)
 		}
 	}
 }
