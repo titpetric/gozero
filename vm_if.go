@@ -10,11 +10,21 @@ import (
 // declaration forms that would need one are rejected inside an arm,
 // so every name an arm writes exists before the if.
 func (pc *progCompiler) compileIf(is *ifStmt, dst *[]vmStmt) error {
-	cond, err := pc.compileCond(is.cond)
-	if err != nil {
-		return err
+	node := &vmIf{}
+	if is.cmp != nil {
+		cmp, err := pc.compileCmp(is.cmp)
+		if err != nil {
+			return err
+		}
+		node.cmp = cmp
+	} else {
+		cond, err := pc.compileCond(is.cond)
+		if err != nil {
+			return err
+		}
+		node.cond = cond
 	}
-	node := &vmIf{cond: cond}
+	var err error
 	pc.branch++
 	err = pc.compileStmts(is.then, &node.then)
 	if err == nil {
@@ -49,19 +59,12 @@ func (pc *progCompiler) compileCond(a arg) (*vmArg, error) {
 		return &vmArg{kind: vaSlot, slot: slot, name: a.str, typ: t, iface: -1}, nil
 
 	case argPath:
-		slot, ok := pc.slots[a.path[0]]
-		if !ok {
+		if _, ok := pc.slots[a.path[0]]; !ok {
 			return nil, fmt.Errorf("compile: the if condition %s is not a name bound by the program (condition form)", a.path[0])
 		}
-		curType := pc.env[a.path[0]]
-		cur := &vmArg{kind: vaSlot, slot: slot, name: a.path[0], typ: curType, iface: -1}
-		for _, seg := range a.path[1:] {
-			f, deref, ok := fieldOf(curType, seg)
-			if !ok {
-				return nil, fmt.Errorf("compile: %s has no field %s", curType, seg)
-			}
-			cur = &vmArg{kind: vaField, src: cur, index: f.Index, deref: deref, typ: f.Type, iface: -1}
-			curType = f.Type
+		cur, curType, err := pc.pathOperand(a.path)
+		if err != nil {
+			return nil, err
 		}
 		if curType.Kind() != reflect.Bool {
 			return nil, fmt.Errorf("compile: the if condition must be bool, %s is %s", joinPath(a.path), curType)

@@ -405,7 +405,9 @@ func (p *vmProgram) assignStmts(stmts []vmStmt) {
 			p.assignArg(s.send.val)
 		}
 		if s.ifs != nil {
-			p.assignArg(s.ifs.cond)
+			for _, a := range s.ifs.condArgs() {
+				p.assignArg(a)
+			}
 			p.assignStmts(s.ifs.then)
 			p.assignStmts(s.ifs.els)
 		}
