@@ -5,6 +5,14 @@ date: "2026-09-08T10:18:28+02:00"
 
 Changes to the language and the runtime after the chapters were written, newest first. Each entry records when it landed, what the syntax gained, and how it is used.
 
+## 2026-09-21 08:48 +02:00: step statements, n++ and n--
+
+The two IncDecStmt forms land as statements, which is what Go makes them: they produce no value, so the grammar stays operator-free and no expression tree appears. A step compiles only against a program-bound name of an integer or float type; a non-numeric type, an undefined name, a field target and a step in value position are each rejected at compile time with the rule named. Every scalar class steps at its own width and wraps the way compiled Go wraps, uint8 255 to 0 included, pinned by an equivalence table that runs both tiers.
+
+On the direct tier a step is a load, an add and a store at the slot's frame offset: nothing allocates, nothing bridges, and a step never appears in Supports output. The interface-aliasing gate is untouched, because it only ever covers non-scalar slots and a step only compiles at a scalar. The reflect tier steps an addressed slot in place and copies any other into a fresh cell first, so the prebuilt literal a compiled program shares between runs is never mutated.
+
+Measured with the pinned harness: the incdec fixture runs 4203 ns/op at 7 allocs against its handwritten mirror's 3427 ns/op at 14, the difference on both sides being fmt.Sprintf's argument packs and result strings. Every existing benchmark keeps its allocation count exactly (benchstat, 3 samples each, all equal); BenchmarkCostWithoutCaching moves 32 B/op, which is the parsed statement struct growing from 144 to 168 bytes for the name and the step and landing one size class up.
+
 ## 2026-09-20 16:11 +02:00: one-time reflow of the committed markdown
 
 The mdox configuration dropped soft wraps, so the formatter joins hard-wrapped prose into one line per paragraph. Every committed chapter and the README predate that setting, which meant any run of the format gate reflowed all of them and mixed formatter churn into unrelated diffs.
