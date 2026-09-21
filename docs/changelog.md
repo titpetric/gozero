@@ -5,6 +5,16 @@ date: "2026-09-08T10:18:28+02:00"
 
 Changes to the language and the runtime after the chapters were written, newest first. Each entry records when it landed, what the syntax gained, and how it is used.
 
+## 2026-09-21 09:12 +02:00: if, else if and else, with return inside an arm
+
+The syntax gains its first visible conditional: `if`, `else if` and `else` over braced statement lists, with the block grammar general enough for any later construct with a braced body. The condition is exactly one of a declared bool name, a bool field path like `req.Close`, or a call returning bool; there is no operator, no literal and no init clause in the header. One rule rejects at compile time with the rule named: flat scope, meaning `var` and `:=` cannot appear inside an arm, because a flat slot would leak the name past the brace. Arms share the program's slot namespace, so every name an arm writes is declared before the `if`, and a skipped arm leaves the zero value Go would.
+
+`return` inside an arm works, with or without a value. It travels an unexported sentinel on the error return every statement already has, which the top of the program consumes: the value rides beside the signal, the statements written after it never run, and a program without one compares against nothing, so the nil-error hot path is unchanged. Equivalence tests pin return from a then arm, from an else arm, from a nested `if`, and mid-arm with trailing statements, against the reflect evaluator.
+
+The reflect tier runs the arm the condition picks through `runStmts`, which both the program and the arms share. The direct tier compiles a structured node holding one statement list per arm: no program counter, and the only exit stays an error. Programs with an `if` take a structural plan that does not splice and counts a slot written inside an arm as written twice, so the write-once interface aliasing never fires for a maybe-written name; the shape table gains `SS_b` for the string predicates conditions call.
+
+Measured on the new `if` fixture, a middleware-style guard: 2845 ns/op, 560 B/op, 6 allocs/op against its handwritten mirror at 2079 ns/op, 560 B/op, 6 allocs/op, allocation parity at 1.37x time. The conservative write count costs one boxing allocation per interface read of a branch-touched name where a straight line would alias: 491.5 ns, 32 B, 2 allocs against 402.8 ns, 16 B, 1 alloc on BenchmarkIfWriteCount. Every existing benchmark keeps identical allocation counts.
+
 ## 2026-09-21 08:48 +02:00: step statements, n++ and n--
 
 The two IncDecStmt forms land as statements, which is what Go makes them: they produce no value, so the grammar stays operator-free and no expression tree appears. A step compiles only against a program-bound name of an integer or float type; a non-numeric type, an undefined name, a field target and a step in value position are each rejected at compile time with the rule named. Every scalar class steps at its own width and wraps the way compiled Go wraps, uint8 255 to 0 included, pinned by an equivalence table that runs both tiers.
