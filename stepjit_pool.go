@@ -133,9 +133,13 @@ func (c *jitCompiler) planPools(plan *jitPlan) {
 			walkArg(a, pt)
 		}
 	}
-	// walkStmts covers an if's arms, whose statements are still
-	// vmStmt: the same sites as the plannedStmt loop below, so a call
-	// inside an arm pools its pack and boxes like one outside.
+	// walkStmts covers the nested lists an if arm and a loop body
+	// hold, whose statements are still vmStmt: the same sites as the
+	// plannedStmt loop below, so a call inside one pools its pack and
+	// boxes like a call outside. A pooled site inside a loop body
+	// lends one block per run and the later iterations allocate
+	// fresh, because the scratch field holds the last block only:
+	// unpooled, never unsound.
 	var walkStmts func([]vmStmt)
 	walkStmts = func(stmts []vmStmt) {
 		for i := range stmts {
@@ -161,6 +165,10 @@ func (c *jitCompiler) planPools(plan *jitPlan) {
 				walkStmts(s.ifs.then)
 				walkStmts(s.ifs.els)
 			}
+			if s.rng != nil {
+				walkArg(s.rng.over, s.rng.over.typ)
+				walkStmts(s.rng.body)
+			}
 		}
 	}
 	for _, s := range plan.stmts {
@@ -184,6 +192,10 @@ func (c *jitCompiler) planPools(plan *jitPlan) {
 			walkArg(s.ifs.cond, s.ifs.cond.typ)
 			walkStmts(s.ifs.then)
 			walkStmts(s.ifs.els)
+		}
+		if s.rng != nil {
+			walkArg(s.rng.over, s.rng.over.typ)
+			walkStmts(s.rng.body)
 		}
 	}
 }

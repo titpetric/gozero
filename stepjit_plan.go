@@ -10,6 +10,9 @@ import (
 // spliced producers, whose arguments compile too.
 func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 	counts := map[string]int{}
+	// A read inside a loop body runs per iteration, so it counts as
+	// more than one: hoisting it keeps the loop off the stack map.
+	mult := 1
 	var walkCall func(*vmCall)
 	var walkArg func(*vmArg)
 	walkArg = func(a *vmArg) {
@@ -20,7 +23,7 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 		case vaStack:
 			if a.typ != nil {
 				if cl := layoutOf(a.typ); cl == lIface || cl == lStr {
-					counts[a.name]++
+					counts[a.name] += mult
 				}
 			}
 		case vaCall:
@@ -40,10 +43,18 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 			walkArg(a)
 		}
 	}
-	// walkStmts covers an if's arms, whose statements are still
-	// vmStmt: the same edges as the plannedStmt loop below, plus the
-	// condition and the nested arms.
+	// walkStmts covers the nested lists an if arm and a loop body
+	// hold, whose statements are still vmStmt: the same edges as the
+	// plannedStmt loop below, plus the condition, the ranged bound
+	// and the lists themselves.
 	var walkStmts func([]vmStmt)
+	walkRange := func(r *vmRange) {
+		walkArg(r.over)
+		saved := mult
+		mult = 2
+		walkStmts(r.body)
+		mult = saved
+	}
 	walkStmts = func(stmts []vmStmt) {
 		for i := range stmts {
 			s := &stmts[i]
@@ -68,6 +79,9 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 				walkStmts(s.ifs.then)
 				walkStmts(s.ifs.els)
 			}
+			if s.rng != nil {
+				walkRange(s.rng)
+			}
 		}
 	}
 	for _, s := range plan.stmts {
@@ -91,6 +105,9 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 			walkArg(s.ifs.cond)
 			walkStmts(s.ifs.then)
 			walkStmts(s.ifs.els)
+		}
+		if s.rng != nil {
+			walkRange(s.rng)
 		}
 	}
 	return counts
@@ -124,6 +141,12 @@ type plannedStmt struct {
 	// convert when the node builder reaches them. Only the structural
 	// plan in stepjit_if.go produces one.
 	ifs *vmIf
+
+	// rng is a range loop, travelling whole for rangeNode the way an
+	// if does; brk and cont raise the loop signals its step consumes.
+	rng  *vmRange
+	brk  bool
+	cont bool
 }
 
 // jitPlan is everything planInline works out for the compiler.
@@ -201,6 +224,13 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 		if s.inc != nil {
 			stmts = append(stmts, plannedStmt{inc: s.inc, out: -1})
 			continue
+		}
+		if s.brk || s.cont {
+			// Unreachable through the parser, which admits either only
+			// inside a range body, and a program with a loop takes the
+			// structural plan; a defect must not drop a stray signal
+			// out of a straight line.
+			return nil, fmt.Errorf("break or continue outside a loop")
 		}
 		if s.lit.IsValid() {
 			out := -1
