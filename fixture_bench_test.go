@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path"
@@ -31,6 +32,7 @@ func BenchmarkFixtures(b *testing.B) {
 		"incdec":   (*testFixtures).testIncDec,
 		"variadic": (*testFixtures).testVariadic,
 		"channels": (*testFixtures).testChannels,
+		"funclit":  (*testFixtures).testFuncLit,
 		"if":       (*testFixtures).testIf,
 		"range":    (*testFixtures).testRange,
 		"for":      (*testFixtures).testFor,
@@ -87,6 +89,11 @@ func newBenchFixtureRuntime(b *testing.B) *Runtime {
 		"http": {
 			"NewRequest":            http.NewRequest,
 			"NewRequestWithContext": http.NewRequestWithContext,
+			"NewServeMux":           http.NewServeMux,
+		},
+		"httptest": {
+			"NewRequest":  httptest.NewRequest,
+			"NewRecorder": httptest.NewRecorder,
 		},
 		"url": {
 			"Parse":      url.Parse,

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"path"
 	"strings"
@@ -414,6 +415,19 @@ func (f *testFixtures) testSince(tb testing.TB) {
 		age = "fresh"
 	}
 	assertEqual(tb, "fresh", age, "")
+}
+
+func (f *testFixtures) testFuncLit(tb testing.TB) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(201)
+		fmt.Fprint(w, "ok")
+	})
+	req := httptest.NewRequest("GET", "/health", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	assertEqual(tb, "201", fmt.Sprintf("%d", rec.Code), "")
+	assertEqual(tb, "ok", rec.Body.String(), "")
 }
 
 func (f *testFixtures) testChannels(tb testing.TB) {
