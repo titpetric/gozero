@@ -32,7 +32,9 @@ operand := path | expr | string | number
 cmpop   := "==" | "!=" | "<" | "<=" | ">" | ">="
 block   := "{" { stmt } "}"
 term    := ";" | EOL | EOF
-rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv
+rhs     := binop | expr | string | number | "true" | "false" | "nil" | composite | recv
+binop   := bvalue ( "+" | "==" | "!=" ) bvalue
+bvalue  := name | string | number | "true" | "false"
 typeref := { "*" | "[]" | "chan" | "chan<-" | "<-chan" } path
 expr    := path "(" [ args ] ")" { "." ident "(" [ args ] ")" }
 path    := ident { "." ident }
@@ -44,7 +46,7 @@ elem    := [ ident ":" ] arg
 funclit := "func" "(" [ name { "," name } ] ")" block
 ```
 
-The channel arrow, the six comparison operators and `++`/`--` are the only operators; a comparison exists only in an `if` or three-clause `for` header, and the two step operators only as a statement or a `for` post clause. A value is a literal, a name, a field read, a composite literal, a receive, or the result of a call; an arithmetic expression is a Go function the host binds ([design/](design/) records why). The end of a line closes a statement; the semicolon is a delimiter between statements sharing one, so both spellings below are the same program:
+The channel arrow, `+`, the six comparison operators and `++`/`--` are the only operators, and each has one position. One `+`, `==` or `!=` stands on the right of an assignment; the four ordering comparisons exist only in an `if` or three-clause `for` header; the two step operators only as a statement or a `for` post clause. There is no expression tree: a second operator in a statement, parentheses, and every other Go operator are rejected at parse with the rule named, so arithmetic beyond one addition is a Go function the host binds ([design/](design/) records why). A value is a literal, a name, a field read, a composite literal, a receive, or the result of a call. The end of a line closes a statement; the semicolon is a delimiter between statements sharing one, so both spellings below are the same program:
 
 ```
 u := url.Parse("https://example.com"); assert.Equal(tb, "https", u.Scheme)
@@ -99,6 +101,70 @@ y = 9 // still int32
 </table>
 
 The two columns are identical: declaration syntax is a part of Go the language keeps whole. `y := int32(7)` is a conversion hint, the short form of `var y int32; y = 7`: the named type fixes the literal, later assignments convert to it, and use does not override it. A literal declared without a hint takes its type from the first binding parameter the program passes it to, falling back to the parsed width; that inference is the depth [types.md](types.md) covers.
+
+## Operators
+
+The right side of an assignment may combine exactly two values with one operator: `+`, `==` or `!=`. `+` concatenates strings and adds integers and floats at every width; `==` and `!=` compare booleans, integers, floats and strings. That pair is the whole expression surface of the language. [design/expressions.md](design/expressions.md) records what a full grammar would cost, and why this is the rung that landed.
+
+<table>
+<tr>
+<th>go</th>
+</tr>
+<tr>
+<td>
+
+```go
+first := "Ada"
+last := "Lovelace"
+full := first + " "
+full = full + last
+
+n := int64(40)
+m := n + 2
+ok := m == 42
+```
+
+</td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
+<td>
+
+```go
+first := "Ada"
+last := "Lovelace"
+full := first + " "
+full = full + last
+
+n := 40
+m := n + 2
+ok := m == 42
+```
+
+</td>
+</tr>
+</table>
+
+An operand is a name the program bound earlier or a literal. A call, a field read, a composite literal, a receive, `nil` and a name that only exists on the stack are each rejected by name, because an operand must carry a static type the compiler can read off a slot. The two sides carry identical types, a literal side adopts the named side's type under Go's representability rules (`n + 300` on an `int8` and `w + -1` on a `uint8` are compile errors), and two literals are rejected rather than folded: folding is `go/constant`'s job, and reimplementing its arithmetic is what the design refuses.
+
+The result types as Go types it: a sum at the operands' type, a comparison as `bool`. A sum wraps at the type's width the way compiled Go wraps, `uint8` 255 + 1 to 0, and a `float32` sum rounds once at 32 bits. `==` and `!=` compare what the `if` header compares, so a NaN is unequal to itself and pointers, channels, interfaces and structs stay out: no operator adds a panic site to the language.
+
+Every other spelling is rejected at parse with the rule named, so no expression tree exists for a later feature to inherit:
+
+```go
+s := a + b + c // one operator per assignment, bind the + result to a name before +
+s := (a + b)   // parentheses do not group a value, one operator per assignment
+s := a - b     // operator - is not in the grammar
+ok := a && b   // operator && is not in the grammar
+ok := a < b    // a comparison with < is only legal in an if or for header
+a == b         // an operator expression cannot be a statement
+f(a + b)       // an operator expression cannot be an argument
+return a + b   // an operator expression cannot be returned
+```
+
+The four ordering comparisons keep the placement rule they landed with: they read in an `if` or three-clause `for` header and nowhere else. `+`, `==` and `!=` read on the right of an assignment and nowhere else, so an argument, a return value, a field write, a send and a composite element stay operator-free.
 
 ## Implicit error checks
 
