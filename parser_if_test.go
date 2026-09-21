@@ -26,6 +26,14 @@ func TestParseIf(t *testing.T) {
 		"assign in arm": {"s := \"\"\nif ok {\n\ts = \"x\"\n}\n", 2},
 		"step in arm":   {"n := 0\nif ok {\n\tn++\n}\n", 2},
 		"return in arm": {"if ok {\n\treturn\n}\nf()\n", 2},
+		"cmp names":     {"if a == b {\n\tf()\n}\n", 1},
+		"cmp literal":   {"if status == 200 {\n\tf()\n}\n", 1},
+		"cmp lit left":  {"if 200 == status {\n\tf()\n}\n", 1},
+		"cmp string":    {"if m == \"GET\" {\n\tf()\n}\n", 1},
+		"cmp call":      {"if time.Since(t) < time.Hour {\n\tf()\n}\n", 1},
+		"cmp field":     {"if req.Method != \"GET\" {\n\tf()\n}\n", 1},
+		"cmp negative":  {"if n < -1 {\n\tf()\n}\n", 1},
+		"cmp ge":        {"if n >= 500 {\n\tf()\n}\n", 1},
 	} {
 		prog, err := (&Parser{}).Parse(tc.src)
 		if err != nil {
@@ -44,9 +52,10 @@ func TestParseIf(t *testing.T) {
 		"stray else":       "else {\n\tf()\n}\n",
 		"literal cond":     "if 5 {\n\tf()\n}\n",
 		"else next line":   "if ok {\n\tf()\n}\nelse {\n\tg()\n}\n",
-		"operator cond":    "if a == b {\n\tf()\n}\n",
 		"cond composite":   "if u{Path: \"/\"} {\n\tf()\n}\n",
 		"unterminated arm": "if ok { f() g() }",
+		"cmp no rhs":       "if a == {\n\tf()\n}\n",
+		"cmp arrow":        "if a <-1 {\n\tf()\n}\n",
 	} {
 		if _, err := (&Parser{}).Parse(src); err == nil {
 			t.Errorf("%s: expected a parse error for %q", name, src)

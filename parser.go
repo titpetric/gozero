@@ -4,8 +4,9 @@ import (
 	"fmt"
 )
 
-// The grammar has no operators: a statement is a call, and every value
-// is a literal, a name, or the result of another call.
+// The grammar has no operators outside a condition header: a
+// statement is a call, and every value is a literal, a name, or the
+// result of another call.
 //
 //	program := { stmt }
 //	stmt    := "var" name typeref term
@@ -19,7 +20,9 @@ import (
 //	         | [ name { "," name } ( ":=" | "=" ) ] rhs term
 //	ifstmt  := "if" cond block [ "else" ( ifstmt | block ) ] term
 //	forstmt := "for" [ name [ "," name ] ":=" ] "range" arg block term
-//	cond    := path | expr
+//	cond    := operand [ cmpop operand ]
+//	operand := path | expr | string | number
+//	cmpop   := "==" | "!=" | "<" | "<=" | ">" | ">="
 //	block   := "{" { stmt } "}"
 //	term    := ";" | EOL | EOF
 //	rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv
@@ -283,6 +286,9 @@ func (p *Parser) stmt() (stmt, error) {
 				s.retVal = &a
 			}
 		}
+		if err := p.rejectCmp(); err != nil {
+			return s, err
+		}
 		if !p.terminated() {
 			return s, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
 		}
@@ -416,14 +422,39 @@ func (p *Parser) stmt() (stmt, error) {
 		case argCall:
 			p.pos = save
 		case argVar, argPath:
+			if err := p.rejectCmp(); err != nil {
+				return stmt{}, err
+			}
 			return stmt{}, fmt.Errorf("parse: cannot assign a name to a name at offset %d", save)
 		default:
+			if err := p.rejectCmp(); err != nil {
+				return stmt{}, err
+			}
 			if !p.terminated() {
 				return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
 			}
 			return stmt{lhs: lhs, define: define, lit: &a}, nil
 		}
 	}
+
+	// A bare comparison, "x == 5;", is rejected by name before the
+	// call parse turns it into "expected '('". The sniff scans the
+	// path with ident and consume so a call statement pays no
+	// allocation for it.
+	cmpSave, cmpNL := p.pos, p.nl
+	if p.ident() != "" {
+		for {
+			dot := p.pos
+			if !p.consume('.') || p.ident() == "" {
+				p.pos = dot
+				break
+			}
+		}
+		if err := p.rejectCmp(); err != nil {
+			return stmt{}, err
+		}
+	}
+	p.pos, p.nl = cmpSave, cmpNL
 
 	call, err := p.expr()
 	if err != nil {
@@ -455,8 +486,8 @@ func (p *Parser) assignList() ([]string, bool, bool) {
 	if p.consumeStr(":=") {
 		return lhs, true, true
 	}
-	// "==" does not exist in the grammar, but a lone "=" must not
-	// swallow one if it ever does.
+	// "==" is a comparison, and a lone "=" must not swallow its first
+	// byte: the placement check downstream names the rule.
 	if p.pos < len(p.src) && p.src[p.pos] == '=' && (p.pos+1 >= len(p.src) || p.src[p.pos+1] != '=') {
 		p.pos++
 		return lhs, false, true
