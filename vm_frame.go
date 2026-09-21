@@ -38,6 +38,10 @@ func (p *vmProgram) assignStmts(stmts []vmStmt) {
 			p.assignArg(s.send.ch)
 			p.assignArg(s.send.val)
 		}
+		if s.binop != nil {
+			p.assignArg(s.binop.x)
+			p.assignArg(s.binop.y)
+		}
 		if s.ifs != nil {
 			for _, a := range s.ifs.condArgs() {
 				p.assignArg(a)

@@ -3,6 +3,7 @@ package gozero
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 )
 
 // The multi-statement VM. A program is a list of calls whose results
@@ -35,6 +36,65 @@ func nilAs(pt reflect.Type) (reflect.Value, error) {
 		return reflect.Zero(pt), nil
 	}
 	return reflect.Value{}, fmt.Errorf("cannot use nil as %s", pt)
+}
+
+// adoptLiteral converts a literal operand to the type the other
+// operand of an operator fixed. It exists beside literalValue
+// because Go's untyped constants convert to named string and bool
+// types, which AssignableTo does not cover; the numeric kinds go
+// through the same representability checks every literal argument
+// gets. Both operator forms adopt through it, a header comparison
+// (cmpLiteral, vm_cmp.go) and an operator assignment (vm_binop.go),
+// and each wraps the error with its own position.
+func adoptLiteral(t reflect.Type, a arg) (reflect.Value, error) {
+	v := reflect.New(t).Elem()
+	switch a.kind {
+	case argVar, argBool:
+		// true and false: a condition header reads them as a path and
+		// an assignment's arg reader as a bool literal.
+		if t.Kind() != reflect.Bool {
+			return reflect.Value{}, fmt.Errorf("cannot use %s as %s", spellArg(a), t)
+		}
+		v.SetBool(a.b || a.str == "true")
+	case argString:
+		if t.Kind() != reflect.String {
+			return reflect.Value{}, fmt.Errorf("cannot use %s as %s", spellArg(a), t)
+		}
+		v.SetString(a.str)
+	default:
+		return literalAs(t, a)
+	}
+	return v, nil
+}
+
+// spellArg spells an operand back the way the source wrote it, for
+// error messages.
+func spellArg(a arg) string {
+	switch a.kind {
+	case argString:
+		return strconv.Quote(a.str)
+	case argInt:
+		return strconv.FormatInt(a.i, 10)
+	case argFloat:
+		return strconv.FormatFloat(a.f, 'g', -1, 64)
+	case argBool:
+		return strconv.FormatBool(a.b)
+	case argVar:
+		return a.str
+	case argPath:
+		return joinPath(a.path)
+	case argNil:
+		return "nil"
+	case argCall:
+		return joinPath(a.sub.path) + "(...)"
+	case argStruct:
+		return joinPath(a.path) + "{...}"
+	case argRecv:
+		return "<-" + spellArg(*a.recv)
+	case argFuncLit:
+		return "a func literal"
+	}
+	return "a value"
 }
 
 // literalValue converts a parsed literal to type t.

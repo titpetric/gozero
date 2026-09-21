@@ -242,6 +242,14 @@ func (pc *progCompiler) compileStmts(list []stmt, dst *[]vmStmt) error {
 			*dst = append(*dst, vmStmt{inc: in})
 			continue
 		}
+		if s.binOp != "" {
+			bs, err := pc.compileBinopStmt(s)
+			if err != nil {
+				return err
+			}
+			*dst = append(*dst, bs)
+			continue
+		}
 		if s.lit != nil && s.lit.kind == argRecv {
 			// The ok of Go's two-value receive is implicit, like the
 			// trailing error of a call: a closed channel ends the

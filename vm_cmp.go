@@ -54,17 +54,24 @@ func (c *vmCmp) test(ctx context.Context, slots, frame []reflect.Value, ifaces [
 
 // eval runs the comparison over two resolved operands.
 func (c *vmCmp) eval(lv, rv reflect.Value) bool {
-	switch c.class {
+	return cmpEval(c.op, c.class, lv, rv)
+}
+
+// cmpEval is one comparison over two resolved operands that carry
+// the same class. vm_binop.go runs its == and != through it, so one
+// table answers both operator forms and neither can drift.
+func cmpEval(op string, class cmpClass, lv, rv reflect.Value) bool {
+	switch class {
 	case cmpInt:
-		return cmpOrdered(c.op, lv.Int(), rv.Int())
+		return cmpOrdered(op, lv.Int(), rv.Int())
 	case cmpUint:
-		return cmpOrdered(c.op, lv.Uint(), rv.Uint())
+		return cmpOrdered(op, lv.Uint(), rv.Uint())
 	case cmpFloat:
-		return cmpOrdered(c.op, lv.Float(), rv.Float())
+		return cmpOrdered(op, lv.Float(), rv.Float())
 	case cmpStr:
-		return cmpOrdered(c.op, lv.String(), rv.String())
+		return cmpOrdered(op, lv.String(), rv.String())
 	case cmpBool:
-		if c.op == "==" {
+		if op == "==" {
 			return lv.Bool() == rv.Bool()
 		}
 		return lv.Bool() != rv.Bool()
@@ -213,28 +220,12 @@ func (pc *progCompiler) pathOperand(path []string) (*vmArg, reflect.Type, error)
 }
 
 // cmpLiteral converts a literal side to the type the other side
-// fixed. Numbers go through literalAs, which already handles named
-// scalar types and rejects overflow; strings and bools convert here
-// because assignability is not the rule, adoption is.
+// fixed, through the adoption vm_literal.go holds for both operator
+// forms, and names the header the failure happened in.
 func cmpLiteral(t reflect.Type, a arg) (*vmArg, error) {
-	v := reflect.New(t).Elem()
-	switch {
-	case a.kind == argVar: // "true" or "false"
-		if t.Kind() != reflect.Bool {
-			return nil, fmt.Errorf("compile: cannot use %s as %s in a header comparison (identical types)", a.str, t)
-		}
-		v.SetBool(a.str == "true")
-	case a.kind == argString:
-		if t.Kind() != reflect.String {
-			return nil, fmt.Errorf("compile: cannot use a string as %s in a header comparison (identical types)", t)
-		}
-		v.SetString(a.str)
-	default:
-		lit, err := literalAs(t, a)
-		if err != nil {
-			return nil, fmt.Errorf("compile: %v in a header comparison (identical types)", err)
-		}
-		v = lit
+	v, err := adoptLiteral(t, a)
+	if err != nil {
+		return nil, fmt.Errorf("compile: %v in a header comparison (identical types)", err)
 	}
 	return &vmArg{kind: vaConst, val: v, typ: t, iface: -1}, nil
 }

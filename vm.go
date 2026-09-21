@@ -175,6 +175,10 @@ type vmStmt struct {
 	// inc is a step statement, n++ or n--, in vm_inc.go.
 	inc *vmInc
 
+	// binop is an operator assignment, s := a + b, in vm_binop.go;
+	// its result slot is out[0].
+	binop *vmBinop
+
 	// ifs is an if statement: the arm the condition picks runs. In
 	// vm_if.go.
 	ifs *vmIf
@@ -342,6 +346,14 @@ func (p *vmProgram) runStmts(ctx context.Context, slots, frame []reflect.Value, 
 			if err := s.inc.exec(slots, p.addrTaken[s.inc.slot]); err != nil {
 				return nil, err
 			}
+			continue
+		}
+		if s.binop != nil {
+			v, err := s.binop.exec(slots)
+			if err != nil {
+				return nil, err
+			}
+			p.setSlot(slots, v, s.out[0])
 			continue
 		}
 		if s.ifs != nil {

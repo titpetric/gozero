@@ -254,6 +254,12 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 			stmts = append(stmts, plannedStmt{inc: s.inc, out: -1})
 			continue
 		}
+		// The direct tier lands with the next change; until then an
+		// operator program runs on the reflect evaluator, with the
+		// reason named rather than the statement silently dropped.
+		if s.binop != nil {
+			return nil, fmt.Errorf("an operator assignment is not in the table")
+		}
 		if s.brk || s.cont {
 			// Unreachable through the parser, which admits either only
 			// inside a range body, and a program with a loop takes the
