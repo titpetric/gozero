@@ -192,7 +192,7 @@ func TestIfWritesConservative(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := planIf(p)
+	plan, err := planBlocks(p)
 	if err != nil {
 		t.Fatal(err)
 	}

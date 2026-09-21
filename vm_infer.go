@@ -49,12 +49,8 @@ func conversionArg(e *callExpr) (arg, error) {
 // value has to satisfy. Failing that the literal keeps the width the
 // parser gave it.
 func (c *Compiler) inferLiteralType(prog *program, name string, lit arg) reflect.Type {
-	for si := range prog.stmts {
-		if call := prog.stmts[si].call; call != nil {
-			if t := c.useType(call, name); t != nil {
-				return t
-			}
-		}
+	if t := c.useTypeIn(prog.stmts, name); t != nil {
+		return t
 	}
 	switch lit.kind {
 	case argFloat:
@@ -69,6 +65,35 @@ func (c *Compiler) inferLiteralType(prog *program, name string, lit arg) reflect
 		return nil
 	}
 	return reflect.TypeFor[int64]()
+}
+
+// useTypeIn searches a statement list for the first call that types
+// name. It descends into the nested lists a range body and an if arm
+// hold, because a use inside one types the name exactly as a use
+// outside it does; nothing else about scope is nested.
+func (c *Compiler) useTypeIn(stmts []stmt, name string) reflect.Type {
+	for si := range stmts {
+		s := &stmts[si]
+		if s.call != nil {
+			if t := c.useType(s.call, name); t != nil {
+				return t
+			}
+		}
+		if s.rng != nil {
+			if t := c.useTypeIn(s.rng.body, name); t != nil {
+				return t
+			}
+		}
+		if s.ifs != nil {
+			if t := c.useTypeIn(s.ifs.then, name); t != nil {
+				return t
+			}
+			if t := c.useTypeIn(s.ifs.els, name); t != nil {
+				return t
+			}
+		}
+	}
+	return nil
 }
 
 // useType is the parameter type a call gives to name, looking through

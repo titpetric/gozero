@@ -7,35 +7,40 @@ import (
 	"unsafe" // also required by go:linkname
 )
 
-// Conditions on the direct tier. An if compiles to a structured node
-// holding one []nodeE per arm: no program counter, no jump, the arm
-// runs front to back exactly like the program's own list, and the
+// Conditions on the direct tier, and the structural plan every
+// construct with a braced body shares. An if compiles to a structured
+// node holding one []nodeE per arm: no program counter, no jump, the
+// arm runs front to back exactly like the program's own list, and the
 // only exit is an error. A return inside an arm raises
 // errProgramReturn on that error return, leaving its value in a
-// hidden frame field that run reads back.
+// hidden frame field that run reads back. A range loop (stepjit_range.go)
+// is the same shape with the body as its list.
 //
-// A program with an if takes the structural plan below instead of
+// A program with either takes the structural plan below instead of
 // planInline: statements keep their nesting and nothing splices,
 // because findSplice cannot prove a producer's single reader runs
-// when a branch boundary sits between them. Slots written inside an
-// arm are counted as written twice, so the write-once interface
-// aliasing in argNode never fires for a maybe-written slot; that is
-// the allocation cost docs/design/conditions.md predicts, and
-// BenchmarkIfWriteCount measures it.
+// when a branch or a loop boundary sits between them. Slots written
+// inside a nested list are counted as written twice, so the
+// write-once interface aliasing in argNode never fires for a
+// maybe-written or loop-carried slot; that is the allocation cost
+// docs/design/conditions.md and docs/design/loops.md predict, and
+// BenchmarkIfWriteCount and BenchmarkRangeAliasing measure it.
 
-// hasIf reports an if statement in the program's top-level list. A
-// nested if sits inside one, so the top level is enough.
-func hasIf(stmts []vmStmt) bool {
+// hasBlocks reports a construct with a nested statement list in the
+// program's top-level list. A nested one sits inside another, so the
+// top level is enough.
+func hasBlocks(stmts []vmStmt) bool {
 	for i := range stmts {
-		if stmts[i].ifs != nil {
+		if stmts[i].ifs != nil || stmts[i].rng != nil {
 			return true
 		}
 	}
 	return false
 }
 
-// planIf is the structural plan for a program with an if.
-func planIf(p *vmProgram) (*jitPlan, error) {
+// planBlocks is the structural plan for a program with a nested
+// statement list.
+func planBlocks(p *vmProgram) (*jitPlan, error) {
 	plan := &jitPlan{
 		live:    map[int]bool{},
 		writes:  map[int]int{},
@@ -70,7 +75,7 @@ func planIf(p *vmProgram) (*jitPlan, error) {
 		if s.ret && i != last {
 			return nil, fmt.Errorf("a return before the last statement is not a straight line")
 		}
-		ps, err := planIfStmt(s)
+		ps, err := planBlockStmt(s)
 		if err != nil {
 			return nil, err
 		}
@@ -82,15 +87,15 @@ func planIf(p *vmProgram) (*jitPlan, error) {
 		plan.live[in.slot] = true
 		plan.writes[in.slot]++
 	}
-	ifCounters(p, p.stmts, false, plan)
+	blockCounters(p, p.stmts, false, plan)
 	return plan, nil
 }
 
-// planIfStmt converts one statement for the structural plan. It is
+// planBlockStmt converts one statement for the structural plan. It is
 // planInline's per-statement mapping without the splice pass; an if
-// travels whole, and its arms convert again when the node builder
-// reaches them.
-func planIfStmt(s *vmStmt) (plannedStmt, error) {
+// and a loop travel whole, and their nested lists convert again when
+// the node builder reaches them.
+func planBlockStmt(s *vmStmt) (plannedStmt, error) {
 	out := -1
 	if len(s.out) > 0 {
 		out = s.out[0]
@@ -98,6 +103,10 @@ func planIfStmt(s *vmStmt) (plannedStmt, error) {
 	switch {
 	case s.ifs != nil:
 		return plannedStmt{ifs: s.ifs, out: -1}, nil
+	case s.rng != nil:
+		return plannedStmt{rng: s.rng, out: -1}, nil
+	case s.brk || s.cont:
+		return plannedStmt{brk: s.brk, cont: s.cont, out: -1}, nil
 	case s.assign != nil:
 		return plannedStmt{assign: s.assign, out: out}, nil
 	case s.fieldSet != nil:
@@ -119,17 +128,18 @@ func planIfStmt(s *vmStmt) (plannedStmt, error) {
 	return plannedStmt{}, fmt.Errorf("this statement is not in the table")
 }
 
-// ifCounters fills writes and live over the statement tree. inArm
-// bumps every write by two: a slot assigned inside an arm is
-// maybe-written, so it must never count as written exactly once,
-// which is the condition the interface aliasing in argNode needs.
-// The count is conservative on purpose; the price is a copy where a
+// blockCounters fills writes and live over the statement tree.
+// nested bumps every write by two: a slot assigned inside an arm is
+// maybe-written and one assigned inside a loop body is written once
+// per iteration, so neither may count as written exactly once, which
+// is the condition the interface aliasing in argNode needs. The count
+// is conservative on purpose; the price is a copy where a
 // straight-line program would alias, never a wrong value. The walk
 // also finds the returns inside arms, which is what asks for the
 // signal field.
-func ifCounters(p *vmProgram, stmts []vmStmt, inArm bool, plan *jitPlan) {
+func blockCounters(p *vmProgram, stmts []vmStmt, nested bool, plan *jitPlan) {
 	bump := 1
-	if inArm {
+	if nested {
 		bump = 2
 	}
 	for i := range stmts {
@@ -157,12 +167,23 @@ func ifCounters(p *vmProgram, stmts []vmStmt, inArm bool, plan *jitPlan) {
 		if s.retArg != nil && s.retArg.kind == vaSlot {
 			plan.live[s.retArg.slot] = true
 		}
-		if inArm && s.ret {
+		if nested && s.ret {
 			plan.retSignal = true
 		}
 		if s.ifs != nil {
-			ifCounters(p, s.ifs.then, true, plan)
-			ifCounters(p, s.ifs.els, true, plan)
+			blockCounters(p, s.ifs.then, true, plan)
+			blockCounters(p, s.ifs.els, true, plan)
+		}
+		if s.rng != nil {
+			// The loop variable is written once per iteration by
+			// definition, so it takes the same two as a body slot.
+			for _, slot := range [2]int{s.rng.keySlot, s.rng.valSlot} {
+				if slot >= 0 {
+					plan.live[slot] = true
+					plan.writes[slot] += 2
+				}
+			}
+			blockCounters(p, s.rng.body, true, plan)
 		}
 	}
 }
@@ -174,11 +195,11 @@ func (c *jitCompiler) ifNode(n *vmIf, jp *jitProgram) (nodeE, error) {
 	if err != nil {
 		return nil, err
 	}
-	then, err := c.armNodes(n.then, jp)
+	then, err := c.blockNodes(n.then, jp)
 	if err != nil {
 		return nil, err
 	}
-	els, err := c.armNodes(n.els, jp)
+	els, err := c.blockNodes(n.els, jp)
 	if err != nil {
 		return nil, err
 	}
@@ -200,12 +221,12 @@ func (c *jitCompiler) ifNode(n *vmIf, jp *jitProgram) (nodeE, error) {
 	}, nil
 }
 
-// armNodes compiles one arm's statement list through the same
-// stmtNode path the top level takes. A return compiles to the signal
-// raise instead; the statements written after it in the same arm
-// still compile and never run, exactly as the reflect evaluator
-// never reaches them.
-func (c *jitCompiler) armNodes(stmts []vmStmt, jp *jitProgram) ([]nodeE, error) {
+// blockNodes compiles one nested statement list, an if arm or a loop
+// body, through the same stmtNode path the top level takes. A return
+// compiles to the signal raise instead; the statements written after
+// it in the same list still compile and never run, exactly as the
+// reflect evaluator never reaches them.
+func (c *jitCompiler) blockNodes(stmts []vmStmt, jp *jitProgram) ([]nodeE, error) {
 	if len(stmts) == 0 {
 		return nil, nil
 	}
@@ -220,7 +241,7 @@ func (c *jitCompiler) armNodes(stmts []vmStmt, jp *jitProgram) ([]nodeE, error) 
 			out = append(out, n)
 			continue
 		}
-		ps, err := planIfStmt(s)
+		ps, err := planBlockStmt(s)
 		if err != nil {
 			return nil, err
 		}

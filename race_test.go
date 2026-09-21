@@ -3,6 +3,8 @@ package gozero
 import (
 	"net/http"
 	"net/url"
+	"path"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -92,6 +94,56 @@ func TestJITTierIsConcurrent(t *testing.T) {
 				}
 				if u.Path != want {
 					t.Errorf("path = %q, want %q", u.Path, want)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// TestRangeIsConcurrent runs a compiled range program from many
+// goroutines. The loop variable is a frame slot and the frame is
+// per-run, so concurrent loops share nothing but the closures and
+// the pools.
+func TestRangeIsConcurrent(t *testing.T) {
+	rt := NewRuntime()
+	if err := rt.Bind("fields", strings.Fields); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.Bind("join", path.Join); err != nil {
+		t.Fatal(err)
+	}
+	const src = `
+		j := ""
+		xs := fields(line)
+		for _, s := range xs {
+			j = join(j, s)
+		}
+		return j
+	`
+	if err := rt.Supports(src); err != nil {
+		t.Fatalf("this test needs the JIT tier: %v", err)
+	}
+	fn, err := rt.Compile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		part := string(rune('a' + i))
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 400; j++ {
+				got, err := fn.Exec[string](map[string]any{"line": part + " " + part})
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if want := part + "/" + part; got != want {
+					t.Errorf("got %q, want %q", got, want)
 					return
 				}
 			}

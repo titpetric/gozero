@@ -281,8 +281,8 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 	// makes a producer's single reader conditional. Everything else
 	// keeps the straight-line plan and its splicing.
 	planOf := planInline
-	if hasIf(p.stmts) {
-		planOf = planIf
+	if hasBlocks(p.stmts) {
+		planOf = planBlocks
 	}
 	plan, err := planOf(p)
 	if err != nil {

@@ -38,7 +38,7 @@ The binding contract: a call's arguments are valid for the duration of the call,
 
 ## control signal
 
-An unexported sentinel error that carries control flow out of a nested statement list. Every statement on both tiers already returns an error, so a signal needs no second return value and no flag to check: a statement raises it, the construct that owns the exit compares against it and consumes it, and a run whose statements all return nil never makes the comparison. `errProgramReturn` is the one the language has today, raised by a `return` inside an `if` arm and consumed at the top of the program. A binding cannot produce a signal, because the values are unexported.
+An unexported sentinel error that carries control flow out of a nested statement list. Every statement on both tiers already returns an error, so a signal needs no second return value and no flag to check: a statement raises it, the construct that owns the exit compares against it and consumes it, and a run whose statements all return nil never makes the comparison. There are three: `errProgramReturn`, raised by a `return` inside an `if` arm and consumed at the top of the program, and `errLoopBreak` and `errLoopContinue`, raised by `break` and `continue` and consumed by the innermost range loop. A binding cannot produce a signal, because the values are unexported.
 
 ## direct-call tier
 
@@ -51,6 +51,10 @@ A pointer escapes when it outlives the scope that created it, which forces the p
 ## fixture
 
 A gozero program stored as a file under `testdata/`, for example `testdata/http.txt`. The test suite compiles and runs every fixture; each fixture makes its own assertions through a bound assert function.
+
+## flat scope
+
+The language's one scope rule: a program has a single namespace of slots, and a braced body does not open a new one. A name a range body declares outlives the loop, holding its last value, and the loop variable is one slot reused per iteration rather than a fresh variable per iteration. The declaration forms that would be misread under the rule are rejected where they are written: `var` inside any body, and `:=` inside an `if` arm.
 
 ## frame
 

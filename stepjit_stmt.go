@@ -12,6 +12,15 @@ func (c *jitCompiler) stmtNode(s plannedStmt, jp *jitProgram) (nodeE, error) {
 	if s.ifs != nil {
 		return c.ifNode(s.ifs, jp)
 	}
+	if s.rng != nil {
+		return c.rangeNode(s.rng, jp)
+	}
+	if s.brk {
+		return raiseSignal(errLoopBreak), nil
+	}
+	if s.cont {
+		return raiseSignal(errLoopContinue), nil
+	}
 	if s.inc != nil {
 		return c.incNode(s.inc)
 	}

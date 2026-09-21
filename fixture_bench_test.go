@@ -187,6 +187,32 @@ func (f *testFixtures) testIncDec(tb testing.TB) {
 	assertEqual(tb, "1.5", fmt.Sprintf("%v", x), "")
 }
 
+func (f *testFixtures) testRange(tb testing.TB) {
+	parts := strings.Fields("a b c")
+	buf := bytesNewBufferString("")
+	for _, s := range parts {
+		buf.WriteString(s)
+	}
+	assertEqual(tb, "abc", buf.String(), "")
+
+	c := counterNew()
+	for i := range 4 {
+		c.Add(int64(i))
+	}
+	assertEqual(tb, int64(6), c.Sum(), "")
+
+	for range parts {
+		c.Add(1)
+	}
+	assertEqual(tb, int64(9), c.Sum(), "")
+
+	for i := range 10 {
+		c.Add(int64(i))
+		break
+	}
+	assertEqual(tb, int64(9), c.Sum(), "")
+}
+
 func (f *testFixtures) testVariadic(tb testing.TB) {
 	parts := strings.Fields("a b c")
 	joined := path.Join(parts...)
@@ -264,6 +290,7 @@ func BenchmarkFixtures(b *testing.B) {
 		"variadic": (*testFixtures).testVariadic,
 		"channels": (*testFixtures).testChannels,
 		"if":       (*testFixtures).testIf,
+		"range":    (*testFixtures).testRange,
 	}
 
 	files, err := filepath.Glob(filepath.Join("testdata", "*.txt"))
@@ -346,6 +373,9 @@ func newBenchFixtureRuntime(b *testing.B) *Runtime {
 		b.Fatal(err)
 	}
 	if err := rt.Bind("chanOf", chanOf); err != nil {
+		b.Fatal(err)
+	}
+	if err := rt.Bind("counter", counterNew); err != nil {
 		b.Fatal(err)
 	}
 	return rt

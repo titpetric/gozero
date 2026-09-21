@@ -91,7 +91,7 @@ type progCompiler struct {
 // could never be read back.
 func (pc *progCompiler) checkName(name string) error {
 	switch name {
-	case "dest", "true", "false", "nil", "var", "return", "if", "else":
+	case "dest", "true", "false", "nil", "var", "return", "if", "else", "for", "range", "break", "continue":
 		return fmt.Errorf("compile: %s shadows a binding or keyword and cannot be assigned", name)
 	}
 	if pc.c.roots[name] {
@@ -167,6 +167,16 @@ func (pc *progCompiler) compileStmts(list []stmt, dst *[]vmStmt) error {
 			if err := pc.compileIf(s.ifs, dst); err != nil {
 				return err
 			}
+			continue
+		}
+		if s.rng != nil {
+			if err := pc.compileRange(s.rng, dst); err != nil {
+				return err
+			}
+			continue
+		}
+		if s.brk || s.cont {
+			*dst = append(*dst, vmStmt{brk: s.brk, cont: s.cont})
 			continue
 		}
 
@@ -369,8 +379,9 @@ func (pc *progCompiler) compileStmts(list []stmt, dst *[]vmStmt) error {
 }
 
 // assignStmts walks a statement list for the frame post-pass. An if
-// statement descends into its condition and both arms, so a call
-// anywhere in the tree gets its window.
+// statement descends into its condition and both arms and a range
+// into its bound and its body, so a call anywhere in the tree gets
+// its window.
 func (p *vmProgram) assignStmts(stmts []vmStmt) {
 	for i := range stmts {
 		s := &stmts[i]
@@ -397,6 +408,10 @@ func (p *vmProgram) assignStmts(stmts []vmStmt) {
 			p.assignArg(s.ifs.cond)
 			p.assignStmts(s.ifs.then)
 			p.assignStmts(s.ifs.els)
+		}
+		if s.rng != nil {
+			p.assignArg(s.rng.over)
+			p.assignStmts(s.rng.body)
 		}
 	}
 }

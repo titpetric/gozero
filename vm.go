@@ -173,6 +173,12 @@ type vmStmt struct {
 	// ifs is an if statement: the arm the condition picks runs. In
 	// vm_if.go.
 	ifs *vmIf
+
+	// rng is a range loop, its body a nested statement list; brk and
+	// cont raise the two loop signals a loop consumes. In vm_range.go.
+	rng  *vmRange
+	brk  bool
+	cont bool
 }
 
 // vmIf is a compiled if chain: the bool condition and the two arms.
@@ -250,10 +256,11 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 	return nil, nil
 }
 
-// runStmts executes one statement list: the program's own, or an if
-// arm. A return raises errProgramReturn with the value beside it, so
-// an arm leaves through the same error return a failing call uses and
-// run is the only place that consumes the signal.
+// runStmts executes one statement list: the program's own, an if arm,
+// or a range body. A return raises errProgramReturn with the value
+// beside it and break and continue raise their own signals, so a
+// nested list leaves through the same error return a failing call
+// uses; run consumes the first signal and runRange the other two.
 func (p *vmProgram) runStmts(ctx context.Context, slots, frame []reflect.Value, ifaces []ifacePair, stack map[string]any, dest any, stmts []vmStmt) (any, error) {
 	for i := range stmts {
 		s := &stmts[i]
@@ -303,6 +310,18 @@ func (p *vmProgram) runStmts(ctx context.Context, slots, frame []reflect.Value, 
 				return v, err
 			}
 			continue
+		}
+		if s.rng != nil {
+			if err := p.runRange(ctx, s.rng, slots, frame, ifaces, stack, dest); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if s.brk {
+			return nil, errLoopBreak
+		}
+		if s.cont {
+			return nil, errLoopContinue
 		}
 		if s.retArg != nil {
 			v, err := s.retArg.get(ctx, slots, frame, ifaces, stack, dest)

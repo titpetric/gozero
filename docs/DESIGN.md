@@ -7,7 +7,7 @@ gozero executes imperative programs against bound Go functions. A program is tex
 
 ## The imperative principle
 
-The language has statements and nothing else: a call, a name bound to a call's results, a var declaration, a field read or write, a channel receive or send, a return. The language has no operators beyond the channel arrow, no conditionals, no loops and no standard library. Everything a program can do, it does by calling a Go function the host bound:
+The language has statements and nothing else: a call, a name bound to a call's results, a var declaration, a field read or write, a channel receive or send, a step, a condition, a range loop, a return. The language has no operators beyond the channel arrow, no expressions of its own and no standard library. The two constructs with a braced body take their operand from a call, not an expression: an `if` condition is a bool a binding produced, and a `range` iterates a value one handed back. Everything a program can do, it does by calling a Go function the host bound:
 
 ```go
 rt := gozero.NewRuntime()
@@ -115,4 +115,4 @@ A cached single call costs tens of nanoseconds over native with the same allocat
 - A call returned directly, `return f(x)`, does not reach the direct tier: a returned value needs a slot. The named form, `v := f(x); return v`, does. The planner could give a trailing returned call a slot of its own.
 - `jit.go` holds the original single-statement tier, still used for a flat non-variadic call. Some of its shapes are unreachable from any test; whether the tier still earns its place against the program compiler is an open question.
 - Frame pooling is gated per program: a frame no pointer escapes is recycled through a pool, an aliased or addressed frame allocates fresh. The trade and the approaches not taken are recorded at the end of [overheads.md](overheads.md).
-- Extending the syntax with conditionals, loops, closures, operator expressions or struct type declarations is researched and declined, feature by feature, in [design/](design/). Channel receive and send started as the same research and moved into the syntax; [design/channels.md](design/channels.md) records what landed and what stayed out.
+- Extending the syntax with closures, operator expressions or struct type declarations is researched and declined, feature by feature, in [design/](design/). Channel receive and send, conditions and range loops started as the same research and moved into the syntax; [design/channels.md](design/channels.md), [design/conditions.md](design/conditions.md) and [design/loops.md](design/loops.md) record what landed and what stayed out.
