@@ -66,16 +66,16 @@ func TestRangeCompileErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, tc := range map[string]struct{ src, want string }{
-		"break outside":    {`poke(); break`, "break is only allowed inside a range body"},
-		"continue outside": {`continue; poke()`, "continue is only allowed inside a range body"},
-		"break after":      {`for i := range 2 { touch(i) }; break`, "break is only allowed inside a range body"},
+		"break outside":    {`poke(); break`, "break is only allowed inside a loop body"},
+		"continue outside": {`continue; poke()`, "continue is only allowed inside a loop body"},
+		"break after":      {`for i := range 2 { touch(i) }; break`, "break is only allowed inside a loop body"},
 		"break label":      {`for i := range 3 { break out }`, "a label after break is not in the language"},
 		"continue label":   {`for i := range 3 { continue out }`, "a label after continue is not in the language"},
-		"return in body":   {`for i := range 3 { return i }`, "return cannot stand inside a range body"},
-		"var in body":      {`for i := range 3 { var u url.URL }`, "var declaration cannot stand inside a range body"},
+		"return in body":   {`for i := range 3 { return i }`, "return cannot stand inside a loop body"},
+		"var in body":      {`for i := range 3 { var u url.URL }`, "var declaration cannot stand inside a loop body"},
 		"assign form":      {`i := 0; for i = range 3 { poke() }`, "declares its names with :="},
 		"three names":      {`for a, b, c := range 3 { poke() }`, "at most two names"},
-		"no range":         {`for poke() { }`, "only the range form"},
+		"named no range":   {`for i, j := 0; i < 3; i++ { poke() }`, "declares exactly one name"},
 		"map":              {`m := hdr(); for k := range m { rec(k) }`, "cannot range over map[string][]string"},
 		"string":           {`s := "abc"; for i := range s { touch(i) }`, "cannot range over string"},
 		"two int vars":     {`for i, v := range 3 { touch(i) }`, "permits one iteration variable"},

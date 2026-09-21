@@ -175,6 +175,12 @@ func (pc *progCompiler) compileStmts(list []stmt, dst *[]vmStmt) error {
 			}
 			continue
 		}
+		if s.fors != nil {
+			if err := pc.compileFor(s.fors, dst); err != nil {
+				return err
+			}
+			continue
+		}
 		if s.brk || s.cont {
 			*dst = append(*dst, vmStmt{brk: s.brk, cont: s.cont})
 			continue

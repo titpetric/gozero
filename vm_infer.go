@@ -84,6 +84,11 @@ func (c *Compiler) useTypeIn(stmts []stmt, name string) reflect.Type {
 				return t
 			}
 		}
+		if s.fors != nil {
+			if t := c.useTypeIn(s.fors.body, name); t != nil {
+				return t
+			}
+		}
 		if s.ifs != nil {
 			if t := c.useTypeIn(s.ifs.then, name); t != nil {
 				return t
