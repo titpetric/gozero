@@ -116,7 +116,11 @@ var binopPrograms = map[string]struct{ src, want string }{
 	},
 	"float32 overflows to Inf": {
 		`x := float32(340000000000000000000000000000000000000.0); z := x + x; s := fmt.Sprintf("%v", z); return s;`,
-		func() string { x := float32(340000000000000000000000000000000000000.0); z := x + x; return fmt.Sprintf("%v", z) }(),
+		func() string {
+			x := float32(340000000000000000000000000000000000000.0)
+			z := x + x
+			return fmt.Sprintf("%v", z)
+		}(),
 	},
 	"int equal": {
 		`n := 42; ok := n == 42; s := fmt.Sprintf("%v", ok); return s;`,
