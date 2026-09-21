@@ -171,7 +171,7 @@ func TestFuncOfDeclines(t *testing.T) {
 	// The parameter rule and the assignment rule read one predicate,
 	// so every word the statement grammar took is out of bounds here
 	// too, without funcof.go carrying a second list to keep current.
-	for _, kw := range []string{"if", "else", "for", "range", "break", "continue", "type", "struct", "var", "return", "true", "false", "nil"} {
+	for _, kw := range []string{"if", "else", "for", "range", "break", "continue", "type", "struct", "func", "var", "return", "true", "false", "nil"} {
 		if _, err := rt.FuncOf[func(string) string](src, kw); err == nil || !strings.Contains(err.Error(), "shadows") {
 			t.Fatalf("keyword %q: %v", kw, err)
 		}

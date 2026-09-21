@@ -50,7 +50,7 @@ type Compiler struct {
 // so the two can never drift apart.
 func (c *Compiler) shadowed(name string) bool {
 	switch name {
-	case "dest", "true", "false", "nil", "var", "return", "if", "else", "for", "range", "break", "continue", "type", "struct":
+	case "dest", "true", "false", "nil", "var", "return", "if", "else", "for", "range", "break", "continue", "type", "struct", "func":
 		return true
 	}
 	return c.roots[name]
