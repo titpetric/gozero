@@ -34,7 +34,7 @@ func fixtureRuntime(t *testing.T) *Runtime {
 		},
 		"json":    {"NewEncoder": json.NewEncoder},
 		"bytes":   {"NewBufferString": bytes.NewBufferString},
-		"fmt":     {"Sprintf": fmt.Sprintf, "Sprint": fmt.Sprint},
+		"fmt":     {"Sprintf": fmt.Sprintf, "Sprint": fmt.Sprint, "Fprint": fmt.Fprint},
 		"strings": {"Fields": strings.Fields, "HasPrefix": strings.HasPrefix},
 		"path":    {"Join": path.Join},
 		"time":    {"Now": time.Now, "Since": time.Since},

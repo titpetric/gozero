@@ -102,9 +102,11 @@ v, err = fn.Exec[*http.Request](stack)
 v, err = fn.ExecContext[*http.Request](ctx, stack)
 err = fn.Scan(&dest, stack) // dest bound to the name "dest"
 err = rt.Supports(src)      // nil when every call is direct
+
+h, err := rt.FuncOf[http.HandlerFunc](src, "w", "r") // src as a func value
 ```
 
-`Eval`, `Exec` and `Scan` are generic methods, which needs the go1.27 language version the go.mod selects. A panic inside a binding arrives as `*PanicError` carrying the value and a stack, on every tier, because `Compile` wraps what it returns.
+`Eval`, `Exec`, `Scan` and `FuncOf` are generic methods, which needs the go1.27 language version the go.mod selects. A panic inside a binding arrives as `*PanicError` carrying the value and a stack, on every tier, because `Compile` wraps what it returns.
 
 ## Costs
 

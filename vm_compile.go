@@ -100,13 +100,9 @@ type progCompiler struct {
 // binding's root, which path resolution would prefer, so the name
 // could never be read back.
 func (pc *progCompiler) checkName(name string) error {
-	switch name {
-	case "dest", "true", "false", "nil", "var", "return", "if", "else", "for", "range", "break", "continue", "type", "struct":
-		return fmt.Errorf("compile: %s shadows a binding or keyword and cannot be assigned", name)
-	}
 	// A declared type's name is reserved the same way a binding's root
 	// is: Point{} and var p Point must keep meaning the type.
-	if pc.c.roots[name] || pc.c.declaredTypes[name] != nil {
+	if pc.c.shadowed(name) || pc.c.declaredTypes[name] != nil {
 		return fmt.Errorf("compile: %s shadows a binding or keyword and cannot be assigned", name)
 	}
 	return nil
