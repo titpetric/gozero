@@ -66,6 +66,9 @@ func (p *Parser) args() ([]arg, error) {
 			return out, nil
 		}
 		if len(out) > 0 && !p.consume(',') {
+			if err := p.rejectOperator("an argument"); err != nil {
+				return nil, err
+			}
 			return nil, fmt.Errorf("parse: expected ',' or ')' at offset %d", p.pos)
 		}
 		a, err := p.arg()
@@ -179,6 +182,9 @@ func (p *Parser) composite(path []string, addr bool) (arg, error) {
 			return a, nil
 		}
 		if len(a.elems) > 0 && !p.consume(',') {
+			if err := p.rejectOperator("an element"); err != nil {
+				return arg{}, err
+			}
 			return arg{}, fmt.Errorf("parse: expected ',' or '}' at offset %d", p.pos)
 		}
 		if p.consume('}') {

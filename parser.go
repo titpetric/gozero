@@ -4,9 +4,11 @@ import (
 	"fmt"
 )
 
-// The grammar has no operators outside a condition header: a
-// statement is a call, and every value is a literal, a name, or the
-// result of another call.
+// The grammar has one operator position outside a condition header:
+// the right side of an assignment may combine exactly two values
+// with +, == or !=. There is no expression tree beyond that pair - a
+// second operator and parentheses are rejected by rule, and every
+// other value position stays operator-free.
 //
 //	program := { typedecl | stmt }
 //	typedecl := "type" name "struct" "{" { field } "}" term
@@ -31,7 +33,8 @@ import (
 //	cmpop   := "==" | "!=" | "<" | "<=" | ">" | ">="
 //	block   := "{" { stmt } "}"
 //	term    := ";" | EOL | EOF
-//	rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv
+//	rhs     := binop | expr | string | number | "true" | "false" | "nil" | composite | recv
+//	binop   := arg ( "+" | "==" | "!=" ) arg
 //	typeref := { "*" | "[]" | "chan" | "chan<-" | "<-chan" } path
 //	expr    := path "(" [ args ] ")" { "." ident "(" [ args ] ")" }
 //	path    := ident { "." ident }
@@ -196,6 +199,14 @@ type stmt struct {
 	incName  string
 	incDelta int64
 
+	// binOp, binX and binY are an operator assignment,
+	// "s := a + b;". The operands stay flat args rather than a tree:
+	// one operator per assignment is the rule, so there is nothing
+	// to nest. parser_binop.go.
+	binOp string
+	binX  *arg
+	binY  *arg
+
 	// ifs is an if statement with its else chain, parser_if.go.
 	ifs *ifStmt
 
@@ -324,7 +335,7 @@ func (p *Parser) stmt() (stmt, error) {
 				s.retVal = &a
 			}
 		}
-		if err := p.rejectCmp(); err != nil {
+		if err := p.rejectOperator("returned"); err != nil {
 			return s, err
 		}
 		if !p.terminated() {
@@ -388,6 +399,9 @@ func (p *Parser) stmt() (stmt, error) {
 				if err != nil {
 					return stmt{}, err
 				}
+				if err := p.rejectOperator("assigned to a field"); err != nil {
+					return stmt{}, err
+				}
 				if a.kind == argVar || a.kind == argPath {
 					return stmt{}, fmt.Errorf("parse: cannot assign a name to a field at offset %d", p.pos)
 				}
@@ -414,6 +428,9 @@ func (p *Parser) stmt() (stmt, error) {
 		if p.consumeStr("<-") {
 			v, err := p.arg()
 			if err != nil {
+				return stmt{}, err
+			}
+			if err := p.rejectOperator("sent"); err != nil {
 				return stmt{}, err
 			}
 			if !p.terminated() {
@@ -447,27 +464,28 @@ func (p *Parser) stmt() (stmt, error) {
 		lhs, define = nil, false
 	}
 
-	// The right-hand side is one arg: a call is the statement, a
-	// literal assigns, and a bare name is rejected here with its own
-	// message rather than surfacing as "expected '('".
+	// The right-hand side is one arg, or two joined by an operator: a
+	// call is the statement, a literal assigns, and a bare name is
+	// rejected here with its own message rather than surfacing as
+	// "expected '('".
 	if len(lhs) > 0 {
+		if p.peek() == '(' {
+			return stmt{}, fmt.Errorf("parse: parentheses do not group a value, one operator per assignment")
+		}
 		save := p.pos
 		a, err := p.arg()
 		if err != nil {
 			return stmt{}, err
 		}
+		if op := p.peekBinOp(); op != "" {
+			return p.binopStmt(lhs, define, a, op)
+		}
 		switch a.kind {
 		case argCall:
 			p.pos = save
 		case argVar, argPath:
-			if err := p.rejectCmp(); err != nil {
-				return stmt{}, err
-			}
 			return stmt{}, fmt.Errorf("parse: cannot assign a name to a name at offset %d", save)
 		default:
-			if err := p.rejectCmp(); err != nil {
-				return stmt{}, err
-			}
 			if !p.terminated() {
 				return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
 			}
@@ -475,24 +493,9 @@ func (p *Parser) stmt() (stmt, error) {
 		}
 	}
 
-	// A bare comparison, "x == 5;", is rejected by name before the
-	// call parse turns it into "expected '('". The sniff scans the
-	// path with ident and consume so a call statement pays no
-	// allocation for it.
-	cmpSave, cmpNL := p.pos, p.nl
-	if p.ident() != "" {
-		for {
-			dot := p.pos
-			if !p.consume('.') || p.ident() == "" {
-				p.pos = dot
-				break
-			}
-		}
-		if err := p.rejectCmp(); err != nil {
-			return stmt{}, err
-		}
+	if err := p.rejectBareOperator(); err != nil {
+		return stmt{}, err
 	}
-	p.pos, p.nl = cmpSave, cmpNL
 
 	call, err := p.expr()
 	if err != nil {

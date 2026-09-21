@@ -5,9 +5,12 @@ import (
 )
 
 // Comparisons: ==, !=, <, <=, > and >= between two operands. The
-// operators exist in one place, a condition header, an if's or a
-// three-clause for's, and nowhere else; every statement position
-// that could swallow one rejects it by name (comparison placement).
+// four ordering operators exist in one place, a condition header, an
+// if's or a three-clause for's, and nowhere else; every statement
+// position that could swallow one rejects it by name (comparison
+// placement), through rejectOperator in parser_binop.go. == and !=
+// also stand on the right of an assignment, which is the operator
+// statement that file parses.
 //
 //	cond    := operand [ cmpop operand ]
 //	operand := path | expr | string | number
@@ -83,16 +86,4 @@ func (p *Parser) cmpOp() (string, bool) {
 		}
 	}
 	return "", false
-}
-
-// rejectCmp fails with the placement rule when a comparison operator
-// follows, which is how "y := x == 5" names its error instead of
-// surfacing as a strange assignment.
-func (p *Parser) rejectCmp() error {
-	save, saveNL := p.pos, p.nl
-	if _, ok := p.cmpOp(); ok {
-		return fmt.Errorf("parse: a comparison is only legal in an if or for header (comparison placement) at offset %d", save)
-	}
-	p.pos, p.nl = save, saveNL
-	return nil
 }

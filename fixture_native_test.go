@@ -262,6 +262,36 @@ func (f *testFixtures) testIncDec(tb testing.TB) {
 	assertEqual(tb, "1.5", fmt.Sprintf("%v", x), "")
 }
 
+func (f *testFixtures) testConcat(tb testing.TB) {
+	first := "Ada"
+	last := "Lovelace"
+	full := first + " "
+	full = full + last
+	assertEqual(tb, "Ada Lovelace", full, "")
+
+	ok := full == "Ada Lovelace"
+	assertTrue(tb, ok, "")
+
+	diff := first != last
+	assertTrue(tb, diff, "")
+
+	var n int64
+	n = 40
+	m := n + 2
+	assertEqual(tb, "42", fmt.Sprintf("%d", m), "")
+
+	var w uint8
+	w = 255
+	z := w + 1
+	assertEqual(tb, "0", fmt.Sprintf("%d", z), "")
+
+	hit := m == 42
+	assertTrue(tb, hit, "")
+
+	missed := z != 0
+	assertEqual(tb, false, missed, "")
+}
+
 func (f *testFixtures) testRange(tb testing.TB) {
 	parts := strings.Fields("a b c")
 	buf := bytesNewBufferString("")
