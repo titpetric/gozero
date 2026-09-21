@@ -5,6 +5,16 @@ date: "2026-09-08T10:18:28+02:00"
 
 Changes to the language and the runtime after the chapters were written, newest first. Each entry records when it landed, what the syntax gained, and how it is used.
 
+## 2026-09-21 10:55 +02:00: condition and three-clause for loops
+
+`for` gains Go's other two forms, both header-scoped. A condition loop runs while a bool name, field or call holds, the operand set an `if` header already had; the three-clause header admits exactly an init assignment, one comparison, and the loop variable stepped with `++` or `--`. Neither operator is new: the comparison is the `if` header's rung and the post clause is the step statement, so statements and arguments stay operator-free and a comparison still parses nowhere but a header. `continue` still runs the post clause, `break` skips it, and the loop variable keeps its last value after the loop, one flat slot as everywhere.
+
+The loop variable is an integer, typed by the init value or, for an integer literal, by the operand it is compared with, the rule an untyped constant follows. It steps at that width and truncates, so a `uint8` counter wraps at 255 the way Go's does, identically on both tiers, because both tiers step it through the same two pieces the step statement landed. Every header rule is rejected at compile time with the rule named: a bare `for`, a constant condition, a comparison in the condition form, a clause left out, a post clause on another name, a loop variable that is not an integer, and a body that reassigns a header name at another type, which would otherwise read the new value through the old type on the next iteration.
+
+Neither form carries a data bound, so non-termination is now expressible; the per-iteration `ctx.Err()` check is the bound, and a cancelled or expired context ends a spinning loop with its error on both tiers, having run no iteration past the cancel.
+
+Measured with the pinned harness, medians of three. The new `for` fixture runs at 4416 ns/op, 168 B/op and 9 allocs/op against its handwritten mirror's 2560 ns/op, 184 B/op and 10 allocs/op: the headers themselves allocate nothing and the one-alloc win is the pooled string box the mirror pays. `BenchmarkForAliasing` prices the write count at four `any`-parameter calls: 114.5 ns, 16 B and 1 alloc from a write-once slot against 441.0 ns, 64 B and 4 allocs from a slot a loop body rewrites, which is what the Go compiler boxes at the same site. Every existing benchmark keeps its allocation count exactly; `BenchmarkCostWithoutCaching` moves 16 B/op, 1688 to 1704, the parsed statement struct growing from 192 to 200 bytes for the header pointer.
+
 ## 2026-09-21 10:09 +02:00: comparisons in the if header
 
 The `if` header gains one comparison: `==`, `!=`, `<`, `<=`, `>` or `>=` between two operands, each a name, a field path, a call, or a literal. Both sides carry identical static types, a literal side adopts the other side's type, and the comparison runs on the underlying kind, so `time.Since(t) < time.Hour` orders a named `time.Duration` like the int64 it is. The operators do not exist outside the header; every other position rejects them at parse time (comparison placement). `Runtime.BindValue` is what carries `time.Hour` into a program, and its value now reads as a comparison operand as well as a call argument.
