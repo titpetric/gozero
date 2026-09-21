@@ -5,6 +5,16 @@ date: "2026-09-08T10:18:28+02:00"
 
 Changes to the language and the runtime after the chapters were written, newest first. Each entry records when it landed, what the syntax gained, and how it is used.
 
+## 2026-09-21 10:09 +02:00: comparisons in the if header
+
+The `if` header gains one comparison: `==`, `!=`, `<`, `<=`, `>` or `>=` between two operands, each a name, a field path, a call, or a literal. Both sides carry identical static types, a literal side adopts the other side's type, and the comparison runs on the underlying kind, so `time.Since(t) < time.Hour` orders a named `time.Duration` like the int64 it is. The operators do not exist outside the header; every other position rejects them at parse time (comparison placement). `Runtime.BindValue` is what carries `time.Hour` into a program, and its value now reads as a comparison operand as well as a call argument.
+
+The operand set is closed and every rejection is named at compile time: integers, floats and strings compare and order, bool compares with `==` and `!=` only, and pointers, interfaces, structs and `nil` are out of the rung (comparable scalar). Mixed static types do not compare (identical types), two literal sides are a constant condition (constant comparison), and an operand naming nothing the program bound is rejected (comparison operand).
+
+On the direct tier a comparison compiles to one class-closed node, two loads and a machine compare, allocating nothing. Narrow signed classes canonicalize through one sign-extension step first, because the tier carries loads zero-extended while the constant path sign-extends; without it `int8(-1)` would compare above zero, and an equivalence test pins that case on both tiers. The condition shape table gains `i64_b` for an integer predicate. A call whose struct result has no layout class, `time.Now` among them, now bridges as a whole statement instead of declining the whole program to the reflect evaluator, with the call named in `Supports` output.
+
+Measured with the pinned harness, medians of three. The new `since` fixture runs at 5471 ns/op, 680 B/op and 13 allocs/op against its handwritten mirror's 2625 ns/op, 592 B/op and 8 allocs/op, where the entire 5-alloc, 88-byte delta is the two reflect bridges through `time.Time`; the comparison-free stanzas hold allocation parity. `BenchmarkCmpHeader` prices the comparison against the L1 way of writing the same guard, a bound bool predicate: 196.4 against 178.7 ns/op at the same one boxing allocation. Every existing fixture keeps identical allocation counts and identical bytes per operation.
+
 ## 2026-09-21 09:35 +02:00: range loops over slices, arrays and integers, with break and continue
 
 The language gains its first loop: `for x := range xs` over slices and arrays, and `for i := range n` over integers, with the braced statement list conditions landed. No other `for` form exists, because the three-clause and condition loops need operator expressions the AST has no tree for. `break` and `continue` work and exit the innermost loop; a label after either, and either outside a range body, is rejected by name. `return` and `var` cannot stand inside a body, each with its rule named. Maps, strings, channels and iterator funcs stay out and reject with `cannot range over <type>`.

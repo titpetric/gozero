@@ -1,9 +1,9 @@
 ---
 title: Conditions
-date: "2026-09-21T09:12:00+02:00"
+date: "2026-09-21T10:09:00+02:00"
 ---
 
-Conditions moved from research into the syntax on 2026-09-21. This document records what landed and its semantics, how the construct runs on each tier with the measured cost, and what stayed out with the reasons the research established. The original question, "what if we implemented conditions?", is answered for the restricted form: `if`, `else if` and `else` over braced statement lists, with a bool name, a bool field or a bool call as the operand.
+Conditions moved from research into the syntax on 2026-09-21, in two steps the same day: the construct first, then one comparison in its header. This document records what landed and its semantics, how the construct runs on each tier with the measured cost, and what stayed out with the reasons the research established. The original question, "what if we implemented conditions?", is answered for the restricted form: `if`, `else if` and `else` over braced statement lists, with a bool name, a bool field, a bool call or one comparison as the operand.
 
 Before it landed the language had one conditional, and it was invisible: a non-nil trailing error ends the program, so every call is an implicit `if err != nil { return }`. That contract is unchanged and still carries middleware-style guarding; the visible `if` sits beside it.
 
@@ -22,11 +22,19 @@ if ok {                                          a declared bool name
 if strings.HasPrefix(p, "/api") {                a call returning bool
 	if req.Close { return; }                     nesting, and a return
 }
+t := time.Now();
+if time.Since(t) < time.Hour {                   one comparison, two operands
+	age = "fresh";
+}
 ```
 
 The rules the research asked for, each rejected at compile time by name:
 
-- The condition is one of a declared bool name, a bool field path, or a call returning bool (condition form). There is no operator, no literal and no init clause in the header. The check is on the kind rather than the exact type, which is Go's own rule for an `if` condition, so a named bool type qualifies.
+- The condition is one of a declared bool name, a bool field path, or a call returning bool (condition form). The check is on the kind rather than the exact type, which is Go's own rule for an `if` condition, so a named bool type qualifies.
+- Or it is exactly one comparison, `==`, `!=`, `<`, `<=`, `>` or `>=` between two operands, each a name, a field path, a call, or a literal. There is no init clause, no `&&` and no nesting in the header.
+- Both sides of a comparison carry identical static types (identical types), with a literal side adopting the other side's type. The comparison runs on the underlying kind, so a named scalar type such as `time.Duration` orders like the int64 it is; integers, floats and strings compare and order, bool compares with `==` and `!=` only, and everything else is out of the rung (comparable scalar). Two literal sides are a constant condition (constant comparison), and an operand naming nothing the program bound is rejected too (comparison operand).
+- The comparison operators exist in the header and nowhere else. Every statement position that could swallow one rejects it at parse time (comparison placement), the bare form, the assignment right side and the return value among them.
+- A comparison operand reads a value binding, which is how a package constant such as `time.Hour` reaches a program: `BindValue` registers a typed value under a dotted name, and the value keeps the static type it was bound with.
 - Flat scope: `var` and `:=` cannot appear inside an arm. The slot model is flat, so a name declared there would stay visible past the closing brace with non-Go visibility; declare it before the `if` and assign with `=`. Arms share the program's slot namespace, and a skipped arm leaves the zero value Go would.
 - `else` binds only on the closing brace's line, the gofmt shape. An `else if` nests as an else arm holding a single `if`.
 - `if` and `else` join the reserved words: a name cannot shadow either.
@@ -39,32 +47,33 @@ The reflect tier runs an arm through `runStmts`, which the program's own stateme
 
 Two planner costs the research predicted are real and priced. A program with an `if` takes a structural plan that splices nothing: `findSplice` cannot prove a producer's single reader runs when a branch boundary sits between them, so the value keeps its slot. And a slot assigned inside an arm is maybe-written, so it counts as written twice and the write-once interface aliasing in stepjit_arg.go never fires for it. `BenchmarkIfWriteCount` measures the second directly: the same string reaching the same interface parameters costs one extra boxing allocation per read when a branch touches the name, and the straight-line form that aliases instead pins the frame and gives up pooling in exchange.
 
-The `if` fixture is a middleware-style guard over all three condition forms, an `else if` chain and a nested `if`. It reaches the direct tier and runs at allocation parity with its handwritten mirror, 560 B and 6 allocations on both sides; the changelog entry carries the timings. The shape table gained `SS_b`, the predicate shape a `strings.HasPrefix`-style condition calls.
+A comparison lowers to one node closed over the operands' shared layout class: two loads and a machine compare, allocating nothing. One correctness detail is worth naming, because it is invisible until it is wrong. The direct tier carries a narrow integer load zero-extended while the constant path sign-extends, so the two bit conventions have to meet before any compare; `signN` truncates to the class width and sign-extends, which is what keeps `int8(-1)` below zero. `TestCmpMatchesReflect` pins that case and the other widths against the reflect evaluator.
+
+The `if` fixture is a middleware-style guard over all three condition forms, an `else if` chain and a nested `if`. It reaches the direct tier and runs at allocation parity with its handwritten mirror, 560 B and 6 allocations on both sides; the changelog entry carries the timings. The shape table gained `SS_b`, the predicate shape a `strings.HasPrefix`-style condition calls, and `i64_b` beside it for an integer predicate.
+
+The `since` fixture prices the comparison rung, and its cost is not the comparison. `time.Now` returns a `time.Time`, a struct with no layout class, so a node cannot carry the value; rather than decline the program, the statement bridges - reflect invokes the call and sets the result into the frame slot's typed storage, with the call named in `Supports` output. The two `time.Time` crossings are the fixture's entire allocation delta against its mirror, and every comparison-free stanza in it holds parity.
 
 ## What stayed out
 
-- **Operator conditions.** `x == 5` is an expression, and the AST has no expression tree; [expressions.md](expressions.md) holds that question. Every predicate is a call, which is the boolean-production problem below.
+- **Operator conditions beyond one comparison.** `a == b && c < d` is an expression tree, and the AST has no tree; [expressions.md](expressions.md) holds that question. One comparison needs no tree, which is why it is the form that landed: two operands and an operator, read by the header and nowhere else.
+- **Arithmetic in an operand.** `if n+1 > limit` is the same expression tree by another name, and it stays out for the same reason. An operand is a name, a field path, a call, or a literal.
 - **An init clause.** `if v, err := f(); err != nil` declares inside the header, which the flat scope rule rejects for the same reason it rejects a `:=` in an arm.
 - **A returned call value from an arm.** `return f()` inside an arm declines the direct tier by name and runs on the reflect evaluator, the same rule that keeps a returned expression off that tier.
 - **Block scope.** Arms share the program's slot namespace rather than getting one of their own. Tracking scopes and shadowing reopens the polymorphic-slot problem a reassignment at a different type already trips; the flat scope rule is the cheaper half of that trade and it is enforced, not silent.
-- **`switch`.** An `else if` chain expresses it, and a switch over a value needs the comparison operator the language does not have.
+- **`switch`.** An `else if` chain expresses it. The comparison it would switch on now exists, so what stays out is the construct, not the operator: a case list is several comparisons against one operand, which is the expression tree again.
 
-## The boolean-production problem
+## The boolean-production problem, answered
 
-The operand is a harder question than the `if` itself, and landing the construct did not answer it. Real conditions are mostly comparisons, and without operators every predicate is a call:
+The operand was the harder question, and the research recorded it as open: real conditions are mostly comparisons, and without operators every predicate had to be a call.
 
 ```go
-if eq(status, 200) { ... }
-if strings.Contains(host, ":") { ... }
+if eq(status, 200) { ... }          the form the research priced
+if status == 200 { ... }            the form that landed
 ```
 
-This stays inside the design: `eq` is a binding, typed by its signature, and the AST holds a call it already knows how to compile. The cons the research recorded still stand:
+Each objection the research raised against `eq` is what the comparison removes. `eq(x, 5)` is legal Go but Go writes `x == 5`, so every comparison site read differently from the Go it mirrors; the header now spells it Go's way. A generic `eq(a, b any) bool` erased the type safety the bindings provide, boxing both sides and turning a compile-time mismatch into a runtime `false`; the header instead requires identical static types and names the rule when they differ. Typed variants restored the checking at the cost of one binding per scalar width; one class-closed node covers every width instead.
 
-- `eq(x, 5)` is legal Go, but Go writes `x == 5`; every comparison site reads differently from the Go it mirrors.
-- A generic `eq(a, b any) bool` erases the type safety the bindings provide: both sides box to `any`, scalars allocate or hit the static-cell path, and a type mismatch that `==` would reject at compile time becomes a runtime `false` from `reflect.DeepEqual`.
-- Typed variants (`eqInt`, `eqStr`, ...) restore the checking and multiply the binding surface by the scalar widths.
-
-The stdlib predicates cover more of the real surface than the list suggests: `strings.HasPrefix`, `strings.EqualFold`, `strings.Contains` and their friends are the conditions middleware actually writes, and each is one binding with a shape.
+A predicate call is still the form for everything a comparison is not, and the stdlib covers most of it: `strings.HasPrefix`, `strings.EqualFold`, `strings.Contains` and their friends are the conditions middleware actually writes, and each is one binding with a shape. What has no answer yet is the compound condition, `a && b`, which is the expression tree above.
 
 ## Alternatives, and where they still apply
 

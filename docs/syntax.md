@@ -21,7 +21,9 @@ stmt    := "var" name typeref term
          | [ name { "," name } ( ":=" | "=" ) ] rhs term
 ifstmt  := "if" cond block [ "else" ( ifstmt | block ) ] term
 forstmt := "for" [ name [ "," name ] ":=" ] "range" arg block term
-cond    := path | expr
+cond    := operand [ cmpop operand ]
+operand := path | expr | string | number
+cmpop   := "==" | "!=" | "<" | "<=" | ">" | ">="
 block   := "{" { stmt } "}"
 term    := ";" | EOL | EOF
 rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv
@@ -35,7 +37,7 @@ composite := [ "&" ] path "{" [ elem { "," elem } [ "," ] ] "}"
 elem    := [ ident ":" ] arg
 ```
 
-The channel arrow is the only operator. A value is a literal, a name, a field read, a composite literal, a receive, or the result of a call; an arithmetic expression is a Go function the host binds ([design/](design/) records why). The end of a line closes a statement; the semicolon is a delimiter between statements sharing one, so both spellings below are the same program:
+The channel arrow and the six comparison operators are the only operators, and a comparison exists only in an `if` header. A value is a literal, a name, a field read, a composite literal, a receive, or the result of a call; an arithmetic expression is a Go function the host binds ([design/](design/) records why). The end of a line closes a statement; the semicolon is a delimiter between statements sharing one, so both spellings below are the same program:
 
 ```
 u := url.Parse("https://example.com"); assert.Equal(tb, "https", u.Scheme)
@@ -394,7 +396,7 @@ done <- u.Host
 
 ## Conditions
 
-`if`, `else if` and `else` run braced statement lists. The condition is exactly one of a declared bool name, a bool field path, or a call returning bool; there is no operator, no literal and no init clause in the header, so a comparison is a bound Go function. [design/conditions.md](design/conditions.md) records what the fuller forms cost.
+`if`, `else if` and `else` run braced statement lists. The condition is a declared bool name, a bool field path, a call returning bool, or exactly one comparison: `==`, `!=`, `<`, `<=`, `>` or `>=` between two operands, each a name, a field path, a call, or a literal. There is no init clause, no `&&` and no nested comparison in the header, and the operators do not exist outside it: any other position rejects them at parse time with the rule named (comparison placement). [design/conditions.md](design/conditions.md) records what the fuller forms cost.
 
 <table>
 <tr>
@@ -438,6 +440,45 @@ if ok {
 </td>
 </tr>
 </table>
+
+A comparison types in one line: both sides carry identical static types, and a literal side adopts the other side's type. The comparison itself runs on the underlying kind - integers, floats and strings compare and order, bool compares with `==` and `!=` only - so a named scalar type works the way its kind does, which is what lets a `time.Duration` order against `time.Hour`:
+
+<table>
+<tr>
+<th>go</th>
+</tr>
+<tr>
+<td>
+
+```go
+t := time.Now()
+age := "stale"
+if time.Since(t) < time.Hour {
+	age = "fresh"
+}
+```
+
+</td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
+<td>
+
+```go
+t := time.Now()
+age := "stale"
+if time.Since(t) < time.Hour {
+	age = "fresh"
+}
+```
+
+</td>
+</tr>
+</table>
+
+`time.Hour` reaches the program through a value binding: `BindValue("time.Hour", time.Hour)` registers a typed value under a dotted name, which then reads as a comparison operand or as an argument the way a Go program reads a package constant. Everything outside the scalar kinds stays out of the rung and rejects with the rule named (comparable scalar): pointers, interfaces, structs and `nil` do not compare, mixed static types do not compare (identical types), and two literal sides are a constant condition (constant comparison).
 
 One rule keeps the arms inside the language's contracts, and it rejects at compile time with the rule named. Flat scope: `var` and `:=` cannot appear inside an arm, because the slot model has no block scope and a name declared there would stay visible past the brace; declare the name before the `if` and assign with `=`. `else` binds on the closing brace's line, as gofmt shapes it, and `if` nests inside arms.
 
