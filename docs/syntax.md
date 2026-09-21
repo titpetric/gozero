@@ -10,7 +10,10 @@ The snippets run against the fixture bindings: `http.NewRequest`, `url.Parse`, `
 ## The grammar
 
 ```
-program := { stmt }
+program := { typedecl | stmt }
+typedecl := "type" name "struct" "{" { field } "}" term
+field   := name typeref fterm
+fterm   := ";" | EOL | "}"
 stmt    := "var" name typeref term
          | "return" [ arg ] term
          | ifstmt
@@ -50,7 +53,7 @@ u := url.Parse("https://example.com")
 assert.Equal(tb, "https", u.Scheme)
 ```
 
-Strings are single- or double-quoted. A number without a decimal point is an int64 and one with is a float64, until an assignment or a parameter gives it another type. `dest`, `true`, `false`, `nil`, `var`, `return`, `if`, `else`, `for`, `range`, `break` and `continue` are reserved, and a name cannot shadow a binding: `url := ...` with `url.Parse` bound is a compile error, because the name could never be read back.
+Strings are single- or double-quoted. A number without a decimal point is an int64 and one with is a float64, until an assignment or a parameter gives it another type. `dest`, `true`, `false`, `nil`, `var`, `return`, `if`, `else`, `for`, `range`, `break`, `continue`, `type` and `struct` are reserved, and a name cannot shadow a binding or a declared type: `url := ...` with `url.Parse` bound is a compile error, because the name could never be read back.
 
 ## Declarations and assignment
 
@@ -237,6 +240,51 @@ u.Path = "/rewritten"
 </td>
 </tr>
 </table>
+
+## Type declarations
+
+`type Name struct { ... }` declares a struct the program owns, one field per line or per semicolon, each an exported name and a type the registry resolves. The compiler builds the shape with `reflect.StructOf` into a registry that lives for the one compilation, so `var`, composite literals, field access and json encoding work on a declared type the way they work on a host one, and a response DTO no longer needs a host rebuild (`testdata/typedecl.txt`):
+
+<table>
+<tr>
+<th>go</th>
+</tr>
+<tr>
+<td>
+
+```go
+type Point struct {
+	X int64
+	Y int64
+}
+p := Point{X: 3, Y: 4}
+p.X = 5
+```
+
+</td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
+<td>
+
+```go
+type Point struct {
+	X int64
+	Y int64
+}
+p := Point{X: 3, Y: 4}
+p.X = 5
+```
+
+</td>
+</tr>
+</table>
+
+Identical columns, with Go's own scoping rule relaxed in one direction: declaration order is free, so a field can name a type declared further down, resolved over as many passes as it takes. A declaration is a program-level form and cannot stand inside an `if` arm or a loop body, and the name it introduces is reserved the way a binding's is.
+
+What `reflect.StructOf` cannot build is a compile error naming the rule: an unexported field, a duplicate field, a type containing itself even through a pointer, and a name shadowing a registered type or a binding. A field holds a declared type by value only, so `*Point`, `[]Point` and `chan Point` do not resolve at this rung. Field tags, field name lists and embedded fields are parse errors. The declared name never reaches reflect: `%T` prints the unnamed struct spelling, and two structurally identical declarations are the same runtime type.
 
 ## Composite literals
 
@@ -670,4 +718,4 @@ json.NewEncoder(w).Encode(status())
 
 Middleware-style guarding works through the error contract: a bound `auth.Require(w, r)` that writes the 401 and returns an error ends the program before the next statement, the way `set -e` ends a shell script.
 
-What the syntax deliberately leaves out - closures, operator expressions and struct type declarations - and what each would cost the design is researched feature by feature in [design/](design/): [closures](design/closures.md), [expressions](design/expressions.md), [structs](design/structs.md). Channel receive and send started there and moved into the syntax, and the restricted `if` and `range` above did the same; [channels](design/channels.md), [conditions](design/conditions.md) and [loops](design/loops.md) record what landed and what stayed out.
+What the syntax deliberately leaves out - closures and operator expressions - and what each would cost the design is researched feature by feature in [design/](design/): [closures](design/closures.md), [expressions](design/expressions.md). Channel receive and send started there and moved into the syntax, and the restricted `if` and `range` above, the two other loop headers and the struct declarations did the same; [channels](design/channels.md), [conditions](design/conditions.md), [loops](design/loops.md) and [structs](design/structs.md) record what landed and what stayed out.
