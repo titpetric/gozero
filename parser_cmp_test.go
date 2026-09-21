@@ -5,17 +5,20 @@ import (
 	"testing"
 )
 
-// TestParseCmpPlacement pins the placement rule: the comparison
-// operators exist only in a condition header, and every statement
-// position rejects them by name.
+// TestParseCmpPlacement pins the placement rule: the four ordering
+// comparisons exist only in a condition header, and every other
+// position rejects them by name. == and != left this rule when the
+// operator assignment landed; TestParser_BinOp covers where they
+// stand now.
 func TestParseCmpPlacement(t *testing.T) {
 	for name, src := range map[string]string{
-		"assign rhs":  "y := x == 5\n",
-		"literal lhs": "y := 5 == x\n",
-		"bare":        "x == 5\n",
+		"assign rhs":  "y := x < 5\n",
+		"literal lhs": "y := 5 > x\n",
+		"bare":        "x <= 5\n",
 		"bare order":  "x < 5\n",
 		"bare path":   "r.n >= 5\n",
-		"return":      "ok := f()\nreturn ok == true\n",
+		"argument":    "f(x < 5)\n",
+		"return":      "ok := f()\nreturn ok >= 5\n",
 	} {
 		_, err := (&Parser{}).Parse(src)
 		if err == nil || !strings.Contains(err.Error(), "comparison placement") {

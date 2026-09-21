@@ -207,6 +207,41 @@ func (p *Parser) consumeIncDec() int64 {
 	return 0
 }
 
+// binOps is every spelling that reads as a Go binary operator between
+// two values, longest first so maximal munch keeps the two-byte forms
+// whole. The parser recognizes them all so an unsupported one is
+// rejected by name; the assignment grammar accepts only +, == and !=,
+// and the ordering four stand in a condition header.
+var binOps = []string{
+	"<<", ">>", "<=", ">=", "==", "!=", "&&", "||", "&^",
+	"+", "-", "*", "/", "%", "&", "|", "^", "<", ">",
+}
+
+// peekBinOp reports the binary operator at the current position
+// without consuming it, or "" when the next bytes are not one. The
+// scan does not cross a newline: a line end closes a statement, so an
+// operator on the next line belongs to nothing. "<-" is a send or a
+// receive, "++" and "--" are steps, and "=" is an assignment; none of
+// them read as operators.
+func (p *Parser) peekBinOp() string {
+	save, saveNL := p.pos, p.nl
+	defer func() { p.pos, p.nl = save, saveNL }()
+	p.skipSpace()
+	if p.nl || p.pos >= len(p.src) {
+		return ""
+	}
+	rest := p.src[p.pos:]
+	if strings.HasPrefix(rest, "<-") || strings.HasPrefix(rest, "++") || strings.HasPrefix(rest, "--") {
+		return ""
+	}
+	for _, op := range binOps {
+		if strings.HasPrefix(rest, op) {
+			return op
+		}
+	}
+	return ""
+}
+
 // incDecOp spells the operator a step statement was written with.
 func incDecOp(delta int64) string {
 	if delta < 0 {
