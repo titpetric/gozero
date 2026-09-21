@@ -97,6 +97,9 @@ func (c *jitCompiler) argNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 		return slotNode(cl, off), nil
 
 	case vaConst:
+		if a.funclit != nil {
+			return c.funcLitNode(a)
+		}
 		return constNode(a.val, cl)
 
 	case vaStruct:

@@ -45,6 +45,11 @@ func (c *Compiler) compileFieldSet(slots map[string]int, env map[string]reflect.
 	}
 
 	if s.lit != nil {
+		if s.lit.kind == argFuncLit {
+			// A func-typed field takes a literal through the same rules
+			// an argument does: the field's type is the signature.
+			return c.fieldSetFuncLit(slots, env, fs, t, *s.lit)
+		}
 		if s.lit.kind == argStruct {
 			sa, st, err := c.compileStructLit(slots, env, *s.lit)
 			if err != nil {

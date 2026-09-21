@@ -232,6 +232,9 @@ func TestTypeDeclErrors(t *testing.T) {
 		"assign type name":  {"type P struct { X int64 }\nP := 5; return P;", "shadows a binding or keyword"},
 		"type as keyword":   {"type := 5; return 1;", "shadows a binding or keyword"},
 		"struct as keyword": {"struct := 5; return 1;", "shadows a binding or keyword"},
+		// func opens a literal in value position, so a name spelled
+		// func could never be read back.
+		"func as keyword": {"func := 5; return 1;", "shadows a binding or keyword"},
 	} {
 		rt, _ := typeRuntime(t)
 		_, err := rt.Compile(tc.src)

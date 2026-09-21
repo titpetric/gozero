@@ -37,10 +37,11 @@ typeref := { "*" | "[]" | "chan" | "chan<-" | "<-chan" } path
 expr    := path "(" [ args ] ")" { "." ident "(" [ args ] ")" }
 path    := ident { "." ident }
 args    := arg { "," arg }
-arg     := string | number | path | expr | composite | recv | path "..."
+arg     := string | number | path | expr | composite | recv | funclit | path "..."
 recv    := "<-" ( path | expr )
 composite := [ "&" ] path "{" [ elem { "," elem } [ "," ] ] "}"
 elem    := [ ident ":" ] arg
+funclit := "func" "(" [ name { "," name } ] ")" block
 ```
 
 The channel arrow, the six comparison operators and `++`/`--` are the only operators; a comparison exists only in an `if` or three-clause `for` header, and the two step operators only as a statement or a `for` post clause. A value is a literal, a name, a field read, a composite literal, a receive, or the result of a call; an arithmetic expression is a Go function the host binds ([design/](design/) records why). The end of a line closes a statement; the semicolon is a delimiter between statements sharing one, so both spellings below are the same program:
@@ -54,7 +55,7 @@ u := url.Parse("https://example.com")
 assert.Equal(tb, "https", u.Scheme)
 ```
 
-Strings are single- or double-quoted. A number without a decimal point is an int64 and one with is a float64, until an assignment or a parameter gives it another type. `dest`, `true`, `false`, `nil`, `var`, `return`, `if`, `else`, `for`, `range`, `break`, `continue`, `type` and `struct` are reserved, and a name cannot shadow a binding or a declared type: `url := ...` with `url.Parse` bound is a compile error, because the name could never be read back.
+Strings are single- or double-quoted. A number without a decimal point is an int64 and one with is a float64, until an assignment or a parameter gives it another type. `dest`, `true`, `false`, `nil`, `var`, `return`, `if`, `else`, `for`, `range`, `break`, `continue`, `type`, `struct` and `func` are reserved, and a name cannot shadow a binding or a declared type: `url := ...` with `url.Parse` bound is a compile error, because the name could never be read back.
 
 ## Declarations and assignment
 
@@ -654,6 +655,51 @@ The two headers beside `range` are narrow, and each rule is rejected at compile 
 Scope is flat, as it is everywhere here, and the loop is where that is visible. The loop variable is one program-level slot reused per iteration, so after the loop it still holds the last value it took, and an empty loop leaves it zero. A `:=` inside a body is allowed for the same reason, and the name it declares outlives the loop. Both diverge from Go's block scoping and both hold identically on the two tiers.
 
 The termination guarantee changes with this section. A program without a loop halts structurally: n statements run at most n calls. With one it halts on the execution context, which every iteration checks on both tiers, so a cancelled `ExecContext` ends the program with `ctx.Err()` instead of running out the host's data. A `range` still has the host's data as a second bound; the condition and three-clause headers have none, so for them that check is the only one.
+
+## Func literals
+
+A func literal stands in argument position: `func(w, r) { ... }`, parameter names only, the body the same braced statement list a program is. The types of the parameters come from the func signature of the parameter the literal fills, the way every other type here comes from a binding, so there is no type syntax to write and a literal in a position with no func type to read is a compile error. [design/closures.md](design/closures.md) records what capture would cost; this rung has none.
+
+<table>
+<tr>
+<th>go</th>
+</tr>
+<tr>
+<td>
+
+```go
+mux := http.NewServeMux()
+mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(201)
+	fmt.Fprint(w, "ok")
+})
+```
+
+</td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
+<td>
+
+```go
+mux := http.NewServeMux()
+mux.HandleFunc("/health", func(w, r) {
+	w.WriteHeader(201)
+	fmt.Fprint(w, "ok")
+})
+```
+
+</td>
+</tr>
+</table>
+
+The body reads its parameters, the names its own statements define, and the bindings. Any other name is a compile error naming whether it belongs to the enclosing program or to nothing at all, and an outer literal's parameter is an enclosing name to an inner one. That is the whole capture rule: a literal captures nothing, so its value is a compile-time constant and the closure a binding keeps may outlive the run that registered it. A parameter may reuse a name the enclosing program binds, since the two scopes do not nest and each side reads its own.
+
+The rest of the rules are the signature's. The literal names exactly the signature's parameters, without repeats and without a name that shadows a binding or a keyword; the signature is not variadic; it has at most one result besides a trailing error; and the body returns a value exactly when the signature has one to fill. A literal assigned to a name, or returned, is rejected by the same rule that admits it in argument position: only a func-typed parameter says what the parameter types are.
+
+The body is a program of its own, so `var` and `return` stand in it even when the literal is written inside a loop, and `break` and `continue` do not: the loop they would exit is on the other side of the func value.
 
 ## The stack and dest
 

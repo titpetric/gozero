@@ -366,6 +366,9 @@ func (c *Compiler) compileArg(slots map[string]int, env map[string]reflect.Type,
 		sa.typ = pt
 		return sa, nil
 
+	case argFuncLit:
+		return c.compileFuncLit(slots, env, name, pos, pt, a)
+
 	case argVar:
 		if a.str == "dest" {
 			return &vmArg{kind: vaDest, name: "dest", typ: pt, iface: -1}, nil

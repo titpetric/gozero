@@ -99,6 +99,31 @@ func (r *Runtime) funcOfNames(ft reflect.Type, params []string) ([]string, error
 // own dispatch - the argument Values and the result slice - which is
 // the measured cost of this bridge.
 func materialize(ft reflect.Type, fn CompiledFunc, names []string) (reflect.Value, error) {
+	n := ft.NumIn()
+	pool := &sync.Pool{New: func() any { return make(map[string]any, n) }}
+	return materializeVia(ft, func(ctx context.Context, args []reflect.Value) (any, error) {
+		var stack map[string]any
+		if n > 0 {
+			stack = pool.Get().(map[string]any)
+			for i := range args {
+				stack[names[i]] = args[i].Interface()
+			}
+		}
+		res, err := fn(ctx, stack, nil)
+		if stack != nil {
+			clear(stack)
+			pool.Put(stack)
+		}
+		return res, err
+	})
+}
+
+// materializeVia is materialize behind any body runner: FuncOf feeds
+// the program through the pooled stack map, a func literal writes its
+// typed parameter slots. The result mapping is shared: one value
+// besides a trailing error, and without an error result a failing run
+// panics with its error.
+func materializeVia(ft reflect.Type, invoke func(context.Context, []reflect.Value) (any, error)) (reflect.Value, error) {
 	errIdx, resIdx := -1, -1
 	for i := 0; i < ft.NumOut(); i++ {
 		if ft.Out(i) == errType {
@@ -114,9 +139,8 @@ func materialize(ft reflect.Type, fn CompiledFunc, names []string) (reflect.Valu
 		resIdx = i
 	}
 
-	n := ft.NumIn()
 	ctxIdx := -1
-	for i := 0; i < n; i++ {
+	for i := 0; i < ft.NumIn(); i++ {
 		if ft.In(i) == ctxType {
 			ctxIdx = i
 			break
@@ -133,7 +157,6 @@ func materialize(ft reflect.Type, fn CompiledFunc, names []string) (reflect.Valu
 		resT = ft.Out(resIdx)
 	}
 	var rcache atomic.Pointer[assignCache]
-	pool := &sync.Pool{New: func() any { return make(map[string]any, n) }}
 
 	return reflect.MakeFunc(ft, func(args []reflect.Value) []reflect.Value {
 		ctx := context.Background()
@@ -142,18 +165,7 @@ func materialize(ft reflect.Type, fn CompiledFunc, names []string) (reflect.Valu
 				ctx = c
 			}
 		}
-		var stack map[string]any
-		if n > 0 {
-			stack = pool.Get().(map[string]any)
-			for i := range args {
-				stack[names[i]] = args[i].Interface()
-			}
-		}
-		res, err := fn(ctx, stack, nil)
-		if stack != nil {
-			clear(stack)
-			pool.Put(stack)
-		}
+		res, err := invoke(ctx, args)
 		fail := func(err error) []reflect.Value {
 			if errIdx < 0 {
 				panic(err)
