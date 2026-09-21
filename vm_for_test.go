@@ -37,9 +37,12 @@ func forRuntime(t testing.TB) (*Runtime, *[]string) {
 		"i8v": func() int8 { return 126 },
 		// boom errors from condition position.
 		"boom": func() (bool, error) { return false, errForBoom },
-		// wrap nests a struct two fields deep, which the direct
-		// tier's single-field rule declines.
+		// wrap nests a struct two fields deep, a chain of added
+		// offsets the direct tier reads.
 		"wrap": func() *forWrap { return &forWrap{} },
+		// embed promotes the same field through an embedded struct,
+		// whose two-step index the direct tier declines.
+		"embed": func() *forEmbed { return &forEmbed{} },
 	}
 	for name, fn := range bind {
 		if err := rt.Bind(name, fn); err != nil {
@@ -79,6 +82,8 @@ type forInner struct{ OK bool }
 
 type forWrap struct{ In forInner }
 
+type forEmbed struct{ forInner }
+
 // TestForCompileErrors pins the named rules of the loop headers: the
 // condition is a static bool, the loop variable an integer, the
 // comparison the same closed operand set an if header has, and a
@@ -112,22 +117,22 @@ func TestForCompileErrors(t *testing.T) {
 }
 
 // TestForReflectTier runs a header the direct tier declines, so the
-// reflect evaluator's own loop executes it: a condition two fields
-// deep, outside the single-field rule.
+// reflect evaluator's own loop executes it: a condition promoted
+// through an embedded struct, outside the single-field rule.
 func TestForReflectTier(t *testing.T) {
 	rt, seen := forRuntime(t)
 	src := `
-		w := wrap();
-		for w.In.OK {
+		w := embed();
+		for w.OK {
 			poke();
 		}
 		poke();
 	`
 	err := rt.Supports(src)
 	if err == nil {
-		t.Fatal("a two-field condition should decline the direct tier")
+		t.Fatal("a promoted condition should decline the direct tier")
 	}
-	if !strings.Contains(err.Error(), "not in the table") {
+	if !strings.Contains(err.Error(), "only a single field is in the table") {
 		t.Errorf("the reason does not name the rule: %v", err)
 	}
 	fn, err := rt.Compile(src)

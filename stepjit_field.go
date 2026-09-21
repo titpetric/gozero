@@ -105,9 +105,11 @@ func (c *jitCompiler) fieldNode(a *vmArg, pt reflect.Type, cl layout) (node, err
 // A single field per step is in the table: a deeper index reaches
 // through embedded types whose offsets do not simply add when one of
 // them is itself a pointer, so those go to the reflect evaluator. The
-// source is a pointer that is loaded and nil-checked, or a struct
-// slot in the frame, whose field sits at a fixed offset from the
-// frame pointer.
+// source is a pointer that is loaded and nil-checked, a struct slot
+// in the frame, or another field holding a struct by value, whose
+// offset adds onto its source's address; the recursion bottoms out at
+// a slot or a pointer load, so offsets only ever add within one
+// allocation.
 func (c *jitCompiler) fieldAddr(a *vmArg) (func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (unsafe.Pointer, error), reflect.StructField, error) {
 	if len(a.index) != 1 {
 		return nil, reflect.StructField{}, fmt.Errorf("only a single field is in the table")
@@ -142,6 +144,23 @@ func (c *jitCompiler) fieldAddr(a *vmArg) (func(fr unsafe.Pointer, ctx context.C
 		at := c.offs[field] + sf.Offset
 		return func(fr unsafe.Pointer, _ context.Context, _ map[string]any, _ any) (unsafe.Pointer, error) {
 			return unsafe.Add(fr, at), nil
+		}, sf, nil
+	case !a.deref && a.src.kind == vaField && srcType != nil && srcType.Kind() == reflect.Struct:
+		// A struct held by value inside another struct: the field sits
+		// at its offset from the source field's address, in the same
+		// allocation, so the step is one more add.
+		base, _, err := c.fieldAddr(a.src)
+		if err != nil {
+			return nil, reflect.StructField{}, err
+		}
+		sf := srcType.Field(a.index[0])
+		off := sf.Offset
+		return func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (unsafe.Pointer, error) {
+			at, err := base(fr, ctx, st, d)
+			if err != nil {
+				return nil, err
+			}
+			return unsafe.Add(at, off), nil
 		}, sf, nil
 	}
 	return nil, reflect.StructField{}, fmt.Errorf("this field source is not in the table")
