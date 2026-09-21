@@ -34,6 +34,15 @@ func TestFuncLitDirect(t *testing.T) {
 	if w.n != 2 {
 		t.Fatalf("the handler wrote %d bytes, want 2", w.n)
 	}
+	if raceDetector {
+		// The body takes its frame, its pack slice and its string box
+		// from pools, and the race detector's sync.Pool drops one Put
+		// in four at random: the call then measures around 0.95
+		// allocations, which AllocsPerRun's integer division reports
+		// as 0 or 1 depending on the draw. The pin holds in every
+		// other build.
+		return
+	}
 	if n := testing.AllocsPerRun(200, func() { handler(w, req) }); n != 0 {
 		t.Fatalf("the direct closure allocates %.0f per call, want 0", n)
 	}
