@@ -191,13 +191,13 @@ func blockCounters(p *vmProgram, stmts []vmStmt, nested bool, plan *jitPlan) {
 // ifNode compiles an if chain: the condition as bool bits, each arm
 // its own statement list.
 func (c *jitCompiler) ifNode(n *vmIf, jp *jitProgram) (nodeE, error) {
-	// The comparison lowering lands with the direct-tier commit; until
-	// then a header comparison declines by name and the program runs
-	// on the reflect evaluator.
+	var cond nodeN
+	var err error
 	if n.cmp != nil {
-		return nil, fmt.Errorf("a header comparison is not lowered yet")
+		cond, err = c.cmpNode(n.cmp)
+	} else {
+		cond, err = c.condNode(n.cond)
 	}
-	cond, err := c.condNode(n.cond)
 	if err != nil {
 		return nil, err
 	}
@@ -309,6 +309,18 @@ func (c *jitCompiler) returnNode(s *vmStmt, jp *jitProgram) (nodeE, error) {
 // conditions call, consulted by callNode after its own cases.
 func condShapes(key string, fptr unsafe.Pointer, a []node) (node, bool) {
 	switch key {
+	case "i64_b":
+		f, a0 := castFn[func(int64) bool](fptr), a[0].N
+		return node{class: lBool, N: func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (uint64, error) {
+			n0, err := a0(fr, ctx, st, d)
+			if err != nil {
+				return 0, err
+			}
+			if f(int64(n0)) {
+				return 1, nil
+			}
+			return 0, nil
+		}}, true
 	case "SS_b":
 		f, a0, a1 := castFn[func(string, string) bool](fptr), a[0].S, a[1].S
 		return node{class: lBool, N: func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (uint64, error) {
