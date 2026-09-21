@@ -30,6 +30,7 @@ func BenchmarkFixtures(b *testing.B) {
 		"typedecl": (*testFixtures).testTypedecl,
 		"types":    (*testFixtures).testTypes,
 		"incdec":   (*testFixtures).testIncDec,
+		"concat":   (*testFixtures).testConcat,
 		"variadic": (*testFixtures).testVariadic,
 		"channels": (*testFixtures).testChannels,
 		"funclit":  (*testFixtures).testFuncLit,
