@@ -128,6 +128,11 @@ func (p *Parser) arg() (arg, error) {
 			p.consume('{')
 			return p.composite(path, false)
 		}
+		// Go's IncDecStmt produces no value, so "x++" cannot stand in
+		// an argument, on the right of an assignment, or after return.
+		if delta := p.consumeIncDec(); delta != 0 {
+			return arg{}, fmt.Errorf("parse: %s%s is a statement, not a value", joinPath(path), incDecOp(delta))
+		}
 		if len(path) != 1 {
 			return arg{kind: argPath, path: path}, nil
 		}

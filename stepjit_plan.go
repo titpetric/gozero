@@ -81,6 +81,9 @@ type plannedStmt struct {
 	// receive's value slot is out.
 	recv *vmRecv
 	send *vmSend
+
+	// inc is a step statement, n++ or n--, from vm_inc.go.
+	inc *vmInc
 }
 
 // jitPlan is everything planInline works out for the compiler.
@@ -152,6 +155,10 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 			stmts = append(stmts, plannedStmt{send: s.send, out: -1})
 			continue
 		}
+		if s.inc != nil {
+			stmts = append(stmts, plannedStmt{inc: s.inc, out: -1})
+			continue
+		}
 		if s.lit.IsValid() {
 			out := -1
 			if len(s.out) > 0 {
@@ -200,6 +207,11 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 		if s.send != nil {
 			countArgReads(reads, s.send.ch)
 			countArgReads(reads, s.send.val)
+		}
+		// A step reads its slot before writing it, so the producer of
+		// the value it starts from is never spliced away.
+		if s.inc != nil {
+			reads[s.inc.slot]++
 		}
 	}
 
@@ -252,6 +264,16 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 			continue
 		}
 		if s.send != nil {
+			continue
+		}
+		// A step rewrites its slot on every run, so the slot is live
+		// and its write count says it can never alias an interface
+		// argument. The class rule already forbids that for scalars,
+		// and a step only compiles at a scalar, but the count keeps
+		// the bookkeeping conservative rather than coincidental.
+		if s.inc != nil {
+			live[s.inc.slot] = true
+			writes[s.inc.slot]++
 			continue
 		}
 		if s.fieldSet != nil {

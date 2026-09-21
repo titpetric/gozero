@@ -166,6 +166,14 @@ func (pc *progCompiler) compileStmts(list []stmt, dst *[]vmStmt) error {
 			*dst = append(*dst, vmStmt{send: sn})
 			continue
 		}
+		if s.incName != "" {
+			in, err := c.compileInc(slots, env, s)
+			if err != nil {
+				return err
+			}
+			*dst = append(*dst, vmStmt{inc: in})
+			continue
+		}
 		if s.lit != nil && s.lit.kind == argRecv {
 			// The ok of Go's two-value receive is implicit, like the
 			// trailing error of a call: a closed channel ends the
