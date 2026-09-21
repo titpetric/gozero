@@ -49,6 +49,12 @@ func (p *vmProgram) assignStmts(stmts []vmStmt) {
 			p.assignArg(s.rng.over)
 			p.assignStmts(s.rng.body)
 		}
+		if s.fors != nil {
+			for _, a := range s.fors.headerArgs() {
+				p.assignArg(a)
+			}
+			p.assignStmts(s.fors.body)
+		}
 	}
 }
 

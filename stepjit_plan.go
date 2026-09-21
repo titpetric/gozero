@@ -48,11 +48,25 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 	// plannedStmt loop below, plus the condition, the ranged bound
 	// and the lists themselves.
 	var walkStmts func([]vmStmt)
-	walkRange := func(r *vmRange) {
-		walkArg(r.over)
+	walkBody := func(body []vmStmt) {
 		saved := mult
 		mult = 2
-		walkStmts(r.body)
+		walkStmts(body)
+		mult = saved
+	}
+	walkRange := func(r *vmRange) {
+		walkArg(r.over)
+		walkBody(r.body)
+	}
+	walkFor := func(f *vmFor) {
+		// A header argument is read per iteration too, so it counts
+		// like a body read.
+		saved := mult
+		mult = 2
+		for _, a := range f.headerArgs() {
+			walkArg(a)
+		}
+		walkStmts(f.body)
 		mult = saved
 	}
 	walkStmts = func(stmts []vmStmt) {
@@ -84,6 +98,9 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 			if s.rng != nil {
 				walkRange(s.rng)
 			}
+			if s.fors != nil {
+				walkFor(s.fors)
+			}
 		}
 	}
 	for _, s := range plan.stmts {
@@ -112,6 +129,9 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 		}
 		if s.rng != nil {
 			walkRange(s.rng)
+		}
+		if s.fors != nil {
+			walkFor(s.fors)
 		}
 	}
 	return counts
@@ -148,7 +168,12 @@ type plannedStmt struct {
 
 	// rng is a range loop, travelling whole for rangeNode the way an
 	// if does; brk and cont raise the loop signals its step consumes.
-	rng  *vmRange
+	rng *vmRange
+
+	// fors is a condition or three-clause loop, travelling whole for
+	// forNode.
+	fors *vmFor
+
 	brk  bool
 	cont bool
 }

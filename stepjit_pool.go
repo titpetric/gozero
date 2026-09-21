@@ -171,6 +171,12 @@ func (c *jitCompiler) planPools(plan *jitPlan) {
 				walkArg(s.rng.over, s.rng.over.typ)
 				walkStmts(s.rng.body)
 			}
+			if s.fors != nil {
+				for _, a := range s.fors.headerArgs() {
+					walkArg(a, a.typ)
+				}
+				walkStmts(s.fors.body)
+			}
 		}
 	}
 	for _, s := range plan.stmts {
@@ -200,6 +206,12 @@ func (c *jitCompiler) planPools(plan *jitPlan) {
 		if s.rng != nil {
 			walkArg(s.rng.over, s.rng.over.typ)
 			walkStmts(s.rng.body)
+		}
+		if s.fors != nil {
+			for _, a := range s.fors.headerArgs() {
+				walkArg(a, a.typ)
+			}
+			walkStmts(s.fors.body)
 		}
 	}
 }

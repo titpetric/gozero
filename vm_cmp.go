@@ -1,6 +1,7 @@
 package gozero
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 )
@@ -34,6 +35,21 @@ type vmCmp struct {
 	lhs, rhs *vmArg
 	typ      reflect.Type // the shared static type of both sides
 	class    cmpClass
+}
+
+// test resolves both operands and compares them, which is the whole
+// of a header's answer: an if picks its arm with it and a
+// three-clause loop decides whether to run another iteration.
+func (c *vmCmp) test(ctx context.Context, slots, frame []reflect.Value, ifaces []ifacePair, stack map[string]any, dest any) (bool, error) {
+	lv, err := c.lhs.get(ctx, slots, frame, ifaces, stack, dest)
+	if err != nil {
+		return false, err
+	}
+	rv, err := c.rhs.get(ctx, slots, frame, ifaces, stack, dest)
+	if err != nil {
+		return false, err
+	}
+	return c.eval(lv, rv), nil
 }
 
 // eval runs the comparison over two resolved operands.
@@ -121,7 +137,7 @@ func (pc *progCompiler) compileCmp(ce *cmpExpr) (*vmCmp, error) {
 		}
 	default:
 		if lt != rt {
-			return nil, fmt.Errorf("compile: mismatched types %s and %s in an if comparison (identical types)", lt, rt)
+			return nil, fmt.Errorf("compile: mismatched types %s and %s in a header comparison (identical types)", lt, rt)
 		}
 	}
 	class, ok := cmpClassOf(lt.Kind(), ce.op)
@@ -156,7 +172,7 @@ func (pc *progCompiler) cmpOperand(a arg) (*vmArg, reflect.Type, error) {
 		if cv, ok := pc.c.consts[a.str]; ok {
 			return &vmArg{kind: vaConst, val: cv, typ: cv.Type(), iface: -1}, cv.Type(), nil
 		}
-		return nil, nil, fmt.Errorf("compile: %s in an if comparison is not a name bound by the program (comparison operand)", a.str)
+		return nil, nil, fmt.Errorf("compile: %s in a header comparison is not a name bound by the program (comparison operand)", a.str)
 	case argPath:
 		if _, ok := pc.slots[a.path[0]]; ok {
 			return pc.pathOperand(a.path)
@@ -164,14 +180,14 @@ func (pc *progCompiler) cmpOperand(a arg) (*vmArg, reflect.Type, error) {
 		if cv, ok := pc.c.consts[joinPath(a.path)]; ok {
 			return &vmArg{kind: vaConst, val: cv, typ: cv.Type(), iface: -1}, cv.Type(), nil
 		}
-		return nil, nil, fmt.Errorf("compile: %s in an if comparison is not a name bound by the program (comparison operand)", a.path[0])
+		return nil, nil, fmt.Errorf("compile: %s in a header comparison is not a name bound by the program (comparison operand)", a.path[0])
 	case argCall:
 		call, rt, err := pc.c.compileExpr(pc.slots, pc.env, a.sub)
 		if err != nil {
 			return nil, nil, err
 		}
 		if call.nres == 0 || rt == nil {
-			return nil, nil, fmt.Errorf("compile: %s in an if comparison returns no value", call.name)
+			return nil, nil, fmt.Errorf("compile: %s in a header comparison returns no value", call.name)
 		}
 		return &vmArg{kind: vaCall, sub: call, typ: rt, iface: -1}, rt, nil
 	}
@@ -205,18 +221,18 @@ func cmpLiteral(t reflect.Type, a arg) (*vmArg, error) {
 	switch {
 	case a.kind == argVar: // "true" or "false"
 		if t.Kind() != reflect.Bool {
-			return nil, fmt.Errorf("compile: cannot use %s as %s in an if comparison (identical types)", a.str, t)
+			return nil, fmt.Errorf("compile: cannot use %s as %s in a header comparison (identical types)", a.str, t)
 		}
 		v.SetBool(a.str == "true")
 	case a.kind == argString:
 		if t.Kind() != reflect.String {
-			return nil, fmt.Errorf("compile: cannot use a string as %s in an if comparison (identical types)", t)
+			return nil, fmt.Errorf("compile: cannot use a string as %s in a header comparison (identical types)", t)
 		}
 		v.SetString(a.str)
 	default:
 		lit, err := literalAs(t, a)
 		if err != nil {
-			return nil, fmt.Errorf("compile: %v in an if comparison (identical types)", err)
+			return nil, fmt.Errorf("compile: %v in a header comparison (identical types)", err)
 		}
 		v = lit
 	}

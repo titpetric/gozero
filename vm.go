@@ -176,7 +176,11 @@ type vmStmt struct {
 
 	// rng is a range loop, its body a nested statement list; brk and
 	// cont raise the two loop signals a loop consumes. In vm_range.go.
-	rng  *vmRange
+	rng *vmRange
+
+	// fors is a condition or three-clause loop, in vm_for.go.
+	fors *vmFor
+
 	brk  bool
 	cont bool
 }
@@ -271,10 +275,10 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 }
 
 // runStmts executes one statement list: the program's own, an if arm,
-// or a range body. A return raises errProgramReturn with the value
+// or a loop body. A return raises errProgramReturn with the value
 // beside it and break and continue raise their own signals, so a
 // nested list leaves through the same error return a failing call
-// uses; run consumes the first signal and runRange the other two.
+// uses; run consumes the first signal and the loops the other two.
 func (p *vmProgram) runStmts(ctx context.Context, slots, frame []reflect.Value, ifaces []ifacePair, stack map[string]any, dest any, stmts []vmStmt) (any, error) {
 	for i := range stmts {
 		s := &stmts[i]
@@ -331,6 +335,12 @@ func (p *vmProgram) runStmts(ctx context.Context, slots, frame []reflect.Value, 
 			}
 			continue
 		}
+		if s.fors != nil {
+			if err := p.runFor(ctx, s.fors, slots, frame, ifaces, stack, dest); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		if s.brk {
 			return nil, errLoopBreak
 		}
@@ -379,15 +389,11 @@ func (p *vmProgram) runStmts(ctx context.Context, slots, frame []reflect.Value, 
 func (p *vmProgram) runIf(ctx context.Context, slots, frame []reflect.Value, ifaces []ifacePair, stack map[string]any, dest any, n *vmIf) (any, error) {
 	take := false
 	if n.cmp != nil {
-		lv, err := n.cmp.lhs.get(ctx, slots, frame, ifaces, stack, dest)
+		t, err := n.cmp.test(ctx, slots, frame, ifaces, stack, dest)
 		if err != nil {
 			return nil, err
 		}
-		rv, err := n.cmp.rhs.get(ctx, slots, frame, ifaces, stack, dest)
-		if err != nil {
-			return nil, err
-		}
-		take = n.cmp.eval(lv, rv)
+		take = t
 	} else {
 		cv, err := n.cond.get(ctx, slots, frame, ifaces, stack, dest)
 		if err != nil {

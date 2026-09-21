@@ -21,6 +21,8 @@ stmt    := "var" name typeref term
          | [ name { "," name } ( ":=" | "=" ) ] rhs term
 ifstmt  := "if" cond block [ "else" ( ifstmt | block ) ] term
 forstmt := "for" [ name [ "," name ] ":=" ] "range" arg block term
+         | "for" operand block term
+         | "for" name ":=" operand ";" cond ";" name ( "++" | "--" ) block term
 cond    := operand [ cmpop operand ]
 operand := path | expr | string | number
 cmpop   := "==" | "!=" | "<" | "<=" | ">" | ">="
@@ -37,7 +39,7 @@ composite := [ "&" ] path "{" [ elem { "," elem } [ "," ] ] "}"
 elem    := [ ident ":" ] arg
 ```
 
-The channel arrow and the six comparison operators are the only operators, and a comparison exists only in an `if` header. A value is a literal, a name, a field read, a composite literal, a receive, or the result of a call; an arithmetic expression is a Go function the host binds ([design/](design/) records why). The end of a line closes a statement; the semicolon is a delimiter between statements sharing one, so both spellings below are the same program:
+The channel arrow, the six comparison operators and `++`/`--` are the only operators; a comparison exists only in an `if` or three-clause `for` header, and the two step operators only as a statement or a `for` post clause. A value is a literal, a name, a field read, a composite literal, a receive, or the result of a call; an arithmetic expression is a Go function the host binds ([design/](design/) records why). The end of a line closes a statement; the semicolon is a delimiter between statements sharing one, so both spellings below are the same program:
 
 ```
 u := url.Parse("https://example.com"); assert.Equal(tb, "https", u.Scheme)
@@ -486,7 +488,7 @@ One rule keeps the arms inside the language's contracts, and it rejects at compi
 
 ## Loops
 
-`for` has one form: `range`. The three-clause and condition loops need operator expressions, so they are not in the grammar at all. What ranges is a slice, an array, or an integer, in Go's own spellings, and the body is the same braced statement list an `if` arm is. [design/loops.md](design/loops.md) records what the other range sources cost.
+`for` has Go's three forms. `range` iterates a slice, an array or an integer, in Go's own spellings; `for cond` runs while a bool name, field or call holds; and the three-clause header counts, with exactly an init assignment, one comparison, and the loop variable stepped by one. The body of all three is the same braced statement list an `if` arm is. [design/loops.md](design/loops.md) records what the range sources still outside cost.
 
 <table>
 <tr>
@@ -505,6 +507,15 @@ for _, s := range parts {
 c := counter()
 for i := range 4 {
 	c.Add(i)
+}
+
+q := queue("a", "b", "c")
+for q.More() {
+	buf.WriteString(q.Next())
+}
+
+for j := 3; j > 0; j-- {
+	c.Add(j)
 }
 ```
 
@@ -527,17 +538,28 @@ c := counter()
 for i := range 4 {
 	c.Add(i)
 }
+
+q := queue("a", "b", "c")
+for q.More() {
+	buf.WriteString(q.Next())
+}
+
+for j := 3; j > 0; j-- {
+	c.Add(j)
+}
 ```
 
 </td>
 </tr>
 </table>
 
-`break` and `continue` work and exit the innermost loop; a label after either is rejected by name. Both are only allowed inside a range body, which is what keeps their signals from reaching a caller. `return` and `var` are the other way round and are rejected inside a body, each with its rule named: a loop's exits are `break`, an error and the execution context, and a name a body declares has nowhere to go but the program's own scope.
+The two headers beside `range` are narrow, and each rule is rejected at compile time with the rule named. A condition is a bool name, a bool field or a call returning bool, the same operand set an `if` header takes; a bare `for` and a constant condition are rejected, because a loop nothing can change has no bound but the context. The three-clause header takes all three clauses, an init that declares exactly one name with `:=`, one comparison, and `++` or `--` on that same name; a form with a clause omitted is not in the language. The loop variable is an integer, the comparison's two sides carry identical static types with an integer literal adopting the other side's, and the variable steps at its own width, so a `uint8` counter wraps at 255 the way Go's does. A body may reassign a header name but not at another type, which is a compile error rather than a failure per iteration.
+
+`break` and `continue` work and exit the innermost loop; a label after either is rejected by name. Both are only allowed inside a loop body, which is what keeps their signals from reaching a caller. `continue` still runs the post clause and `break` skips it, as in Go. `return` and `var` are the other way round and are rejected inside a body, each with its rule named: a loop's exits are `break`, an error and the execution context, and a name a body declares has nowhere to go but the program's own scope.
 
 Scope is flat, as it is everywhere here, and the loop is where that is visible. The loop variable is one program-level slot reused per iteration, so after the loop it still holds the last value it took, and an empty loop leaves it zero. A `:=` inside a body is allowed for the same reason, and the name it declares outlives the loop. Both diverge from Go's block scoping and both hold identically on the two tiers.
 
-The termination guarantee changes with this section. A program without a loop halts structurally: n statements run at most n calls. With one it halts on the execution context, which every iteration checks on both tiers, so a cancelled `ExecContext` ends the program with `ctx.Err()` instead of running out the host's data.
+The termination guarantee changes with this section. A program without a loop halts structurally: n statements run at most n calls. With one it halts on the execution context, which every iteration checks on both tiers, so a cancelled `ExecContext` ends the program with `ctx.Err()` instead of running out the host's data. A `range` still has the host's data as a second bound; the condition and three-clause headers have none, so for them that check is the only one.
 
 ## The stack and dest
 

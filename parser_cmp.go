@@ -5,9 +5,9 @@ import (
 )
 
 // Comparisons: ==, !=, <, <=, > and >= between two operands. The
-// operators exist in one place, a condition header, and nowhere
-// else; every statement position that could swallow one rejects it
-// by name (comparison placement).
+// operators exist in one place, a condition header, an if's or a
+// three-clause for's, and nowhere else; every statement position
+// that could swallow one rejects it by name (comparison placement).
 //
 //	cond    := operand [ cmpop operand ]
 //	operand := path | expr | string | number
@@ -28,8 +28,8 @@ type cmpExpr struct {
 // condOperand reads one condition operand: a literal, a call, or a
 // dotted path. It is not p.arg on purpose: a path followed by '{'
 // must open the block rather than a composite literal, Go's own rule
-// for an if header. lit reports a literal, which cannot stand alone
-// as the condition.
+// for a header. lit reports a literal, which cannot stand alone as
+// the condition.
 func (p *Parser) condOperand() (a arg, lit bool, err error) {
 	if c := p.peek(); c == '-' || c == '"' || c == '\'' || (c >= '0' && c <= '9') {
 		a, err = p.arg()
@@ -91,7 +91,7 @@ func (p *Parser) cmpOp() (string, bool) {
 func (p *Parser) rejectCmp() error {
 	save, saveNL := p.pos, p.nl
 	if _, ok := p.cmpOp(); ok {
-		return fmt.Errorf("parse: a comparison is only legal in an if header (comparison placement) at offset %d", save)
+		return fmt.Errorf("parse: a comparison is only legal in an if or for header (comparison placement) at offset %d", save)
 	}
 	p.pos, p.nl = save, saveNL
 	return nil

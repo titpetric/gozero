@@ -73,8 +73,44 @@ func fixtureRuntime(t *testing.T) *Runtime {
 	if err := rt.Bind("counter", counterNew); err != nil {
 		t.Fatal(err)
 	}
+	// The for fixture's sources: a fresh drainable queue per run, and
+	// a length the language cannot take itself.
+	for name, fn := range map[string]any{
+		"queue":  queueOf,
+		"strlen": strLen,
+	} {
+		if err := rt.Bind(name, fn); err != nil {
+			t.Fatal(err)
+		}
+	}
 	return rt
 }
+
+// fixtureQueue is the condition source of the for fixture: More
+// reports whether an element remains and Next pops one, so a
+// condition loop drains it in order and terminates.
+type fixtureQueue struct{ items []string }
+
+// More reports whether Next has an element to pop.
+func (q *fixtureQueue) More() bool { return len(q.items) > 0 }
+
+// Next pops the front element.
+func (q *fixtureQueue) Next() string {
+	v := q.items[0]
+	q.items = q.items[1:]
+	return v
+}
+
+// queueOf builds a fresh queue per run. The variadic pack is borrowed
+// memory, so the slice is copied.
+func queueOf(vs ...string) *fixtureQueue {
+	return &fixtureQueue{items: append([]string(nil), vs...)}
+}
+
+// strLen is the three-clause header's computed bound: len is not a
+// binding and the language has no operators, so the count comes from
+// the host.
+func strLen(s string) int64 { return int64(len(s)) }
 
 // chanOf builds the buffered channel the channels fixture receives
 // from and sends into.

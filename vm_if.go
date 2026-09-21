@@ -18,7 +18,7 @@ func (pc *progCompiler) compileIf(is *ifStmt, dst *[]vmStmt) error {
 		}
 		node.cmp = cmp
 	} else {
-		cond, err := pc.compileCond(is.cond)
+		cond, err := pc.compileCond(is.cond, "if condition")
 		if err != nil {
 			return err
 		}
@@ -38,36 +38,38 @@ func (pc *progCompiler) compileIf(is *ifStmt, dst *[]vmStmt) error {
 	return nil
 }
 
-// compileCond compiles the condition operand. Three forms are
-// admitted, all of kind bool: a name bound by the program, a field
-// path on one, and a call. The check is on the kind rather than the
-// exact type, which is Go's own rule for an if condition.
-func (pc *progCompiler) compileCond(a arg) (*vmArg, error) {
+// compileCond compiles the condition operand of a header, an if's or
+// a loop's, which is what the what parameter names in its errors.
+// Three forms are admitted, all of kind bool: a name bound by the
+// program, a field path on one, and a call. The check is on the kind
+// rather than the exact type, which is Go's own rule for a
+// condition.
+func (pc *progCompiler) compileCond(a arg, what string) (*vmArg, error) {
 	switch a.kind {
 	case argVar:
 		if a.str == "true" || a.str == "false" {
-			return nil, fmt.Errorf("compile: a constant if condition is not allowed (condition form), use a bool name, a bool field, or a call returning bool")
+			return nil, fmt.Errorf("compile: a constant %s is not allowed (condition form), use a bool name, a bool field, or a call returning bool", what)
 		}
 		slot, ok := pc.slots[a.str]
 		if !ok {
-			return nil, fmt.Errorf("compile: the if condition %s is not a name bound by the program (condition form)", a.str)
+			return nil, fmt.Errorf("compile: the %s %s is not a name bound by the program (condition form)", what, a.str)
 		}
 		t := pc.env[a.str]
 		if t == nil || t.Kind() != reflect.Bool {
-			return nil, fmt.Errorf("compile: the if condition must be bool, %s is %s", a.str, t)
+			return nil, fmt.Errorf("compile: the %s must be bool, %s is %s", what, a.str, t)
 		}
 		return &vmArg{kind: vaSlot, slot: slot, name: a.str, typ: t, iface: -1}, nil
 
 	case argPath:
 		if _, ok := pc.slots[a.path[0]]; !ok {
-			return nil, fmt.Errorf("compile: the if condition %s is not a name bound by the program (condition form)", a.path[0])
+			return nil, fmt.Errorf("compile: the %s %s is not a name bound by the program (condition form)", what, a.path[0])
 		}
 		cur, curType, err := pc.pathOperand(a.path)
 		if err != nil {
 			return nil, err
 		}
 		if curType.Kind() != reflect.Bool {
-			return nil, fmt.Errorf("compile: the if condition must be bool, %s is %s", joinPath(a.path), curType)
+			return nil, fmt.Errorf("compile: the %s must be bool, %s is %s", what, joinPath(a.path), curType)
 		}
 		return cur, nil
 
@@ -77,12 +79,12 @@ func (pc *progCompiler) compileCond(a arg) (*vmArg, error) {
 			return nil, err
 		}
 		if call.nres == 0 || rt == nil {
-			return nil, fmt.Errorf("compile: the if condition %s returns no value", call.name)
+			return nil, fmt.Errorf("compile: the %s %s returns no value", what, call.name)
 		}
 		if rt.Kind() != reflect.Bool {
-			return nil, fmt.Errorf("compile: the if condition must be bool, %s returns %s", call.name, rt)
+			return nil, fmt.Errorf("compile: the %s must be bool, %s returns %s", what, call.name, rt)
 		}
 		return &vmArg{kind: vaCall, sub: call, typ: rt, iface: -1}, nil
 	}
-	return nil, fmt.Errorf("compile: the if condition is a bool name, a bool field, or a call returning bool (condition form)")
+	return nil, fmt.Errorf("compile: the %s is a bool name, a bool field, or a call returning bool (condition form)", what)
 }
