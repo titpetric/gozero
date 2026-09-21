@@ -24,6 +24,7 @@ func BenchmarkFixtures(b *testing.B) {
 		"url":      (*testFixtures).testURL,
 		"json":     (*testFixtures).testJSON,
 		"fmt":      (*testFixtures).testFmt,
+		"reply":    (*testFixtures).testReply,
 		"structs":  (*testFixtures).testStructs,
 		"typedecl": (*testFixtures).testTypedecl,
 		"types":    (*testFixtures).testTypes,

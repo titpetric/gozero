@@ -197,6 +197,41 @@ func (f *testFixtures) testTypedecl(tb testing.TB) {
 	assertEqual(tb, "{\"X\":1,\"Y\":2}\n", buf.String(), "")
 }
 
+func (f *testFixtures) testReply(tb testing.TB) {
+	// Go resolves local types in order; the fixture declares Reply
+	// first to prove declaration order stays free with tags.
+	type Status struct {
+		Code int64  `json:"code"`
+		Text string `json:"text"`
+	}
+	type Reply struct {
+		Status Status `json:"status"`
+		Count  int64  `json:"count"`
+		Note   string `json:"note,omitempty"`
+		Skip   string `json:"-"`
+	}
+	r := Reply{Status: Status{Code: 200, Text: "ok"}, Count: 2, Skip: "never"}
+	assertEqual(tb, int64(200), r.Status.Code, "")
+	assertEqual(tb, "ok", r.Status.Text, "")
+
+	buf := bytesNewBufferString("")
+	if err := json.NewEncoder(buf).Encode(r); err != nil {
+		tb.Fatal(err)
+	}
+	assertEqual(tb, "{\"status\":{\"code\":200,\"text\":\"ok\"},\"count\":2}\n", buf.String(), "")
+
+	n := Reply{Status: Status{Code: 404, Text: "gone"}, Note: "retry"}
+	buf2 := bytesNewBufferString("")
+	if err := json.NewEncoder(buf2).Encode(n); err != nil {
+		tb.Fatal(err)
+	}
+	assertEqual(tb, "{\"status\":{\"code\":404,\"text\":\"gone\"},\"count\":0,\"note\":\"retry\"}\n", buf2.String(), "")
+
+	var d Reply
+	d.Note = "later"
+	assertEqual(tb, "later", d.Note, "")
+}
+
 func (f *testFixtures) testIncDec(tb testing.TB) {
 	var n int64
 	n = 7

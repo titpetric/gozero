@@ -1,0 +1,32 @@
+// reply: field tags shape the json output byte for byte: keys renamed
+// by tag, an empty field omitted, a "-" field never emitted, a tagged
+// declared struct nested in another. Reply names Status before it is
+// declared, so dependency order is exercised too.
+type Reply struct {
+	Status Status `json:"status"`
+	Count  int64  `json:"count"`
+	Note   string `json:"note,omitempty"`
+	Skip   string `json:"-"`
+}
+type Status struct {
+	Code int64  `json:"code"`
+	Text string `json:"text"`
+}
+r := Reply{Status: Status{Code: 200, Text: "ok"}, Count: 2, Skip: "never"};
+assert.Equal(tb, 200, r.Status.Code);
+assert.Equal(tb, "ok", r.Status.Text);
+
+buf := bytes.NewBufferString("");
+json.NewEncoder(buf).Encode(r);
+assert.Equal(tb, "{\"status\":{\"code\":200,\"text\":\"ok\"},\"count\":2}\n", buf.String());
+
+// omitempty admits the note once it is set.
+n := Reply{Status: Status{Code: 404, Text: "gone"}, Note: "retry"};
+buf2 := bytes.NewBufferString("");
+json.NewEncoder(buf2).Encode(n);
+assert.Equal(tb, "{\"status\":{\"code\":404,\"text\":\"gone\"},\"count\":0,\"note\":\"retry\"}\n", buf2.String());
+
+// A declared name is a var typeref; a field write fills it in place.
+var d Reply;
+d.Note = "later";
+assert.Equal(tb, "later", d.Note);
