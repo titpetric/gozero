@@ -243,13 +243,22 @@ func TestRuntime_BindValue(t *testing.T) {
 			t.Errorf("%s: err = %v, want the named type rejected as int64", src, err)
 		}
 	}
+	// The same binding reads as a comparison operand, which is the
+	// position time.Hour exists for.
+	got, err := rt.Eval[string](`s := "low"; if 3 < limits.Max { s = itoa(limits.Max); }; return s;`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "10" {
+		t.Errorf("comparison got %q, want 10", got)
+	}
 	if _, err := rt.Eval[string](`limits := "x"; return limits;`, nil); err == nil {
 		t.Error("expected the value root to reject shadowing")
 	}
 	if err := rt.BindValue("limits.Max", int64(12)); err != nil {
 		t.Fatal(err)
 	}
-	got, err := rt.Eval[string](`v := itoa(limits.Max); return v;`, nil)
+	got, err = rt.Eval[string](`v := itoa(limits.Max); return v;`, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

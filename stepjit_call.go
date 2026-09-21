@@ -164,23 +164,21 @@ func (c *jitCompiler) packNode(call *vmCall, st reflect.Type, elems []*vmArg) (n
 	return node{}, fmt.Errorf("packing []%s is not in the table", et)
 }
 
-// bridgeNode compiles a call to one reflect.Value.Call, its arguments
-// resolved against the same frame the direct calls use. A slot argument
-// is read in place through reflect.NewAt, so the bridge shares state
-// with its JIT'd neighbours rather than needing the reflect
-// evaluator's slot array.
-func (c *jitCompiler) bridgeNode(call *vmCall) (node, error) {
+// bridgeInvoke builds the reflect.Value.Call closure a bridged call
+// runs: arguments resolved against the same frame the direct calls
+// use, the trailing error checked on the way out.
+func (c *jitCompiler) bridgeInvoke(call *vmCall) (func(unsafe.Pointer, context.Context, map[string]any, any) ([]reflect.Value, error), error) {
 	getters := make([]func(unsafe.Pointer, context.Context, map[string]any, any) (reflect.Value, error), len(call.args))
 	for i, a := range call.args {
 		g, err := c.bridgeArg(a)
 		if err != nil {
-			return node{}, err
+			return nil, err
 		}
 		getters[i] = g
 	}
 
-	fn, name, errIdx, spread := call.fn, call.name, call.errIdx, call.spread
-	invoke := func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) ([]reflect.Value, error) {
+	fn, errIdx, spread := call.fn, call.errIdx, call.spread
+	return func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) ([]reflect.Value, error) {
 		args := make([]reflect.Value, len(getters))
 		for i, g := range getters {
 			v, err := g(fr, ctx, st, d)
@@ -201,8 +199,19 @@ func (c *jitCompiler) bridgeNode(call *vmCall) (node, error) {
 			}
 		}
 		return out, nil
+	}, nil
+}
+
+// bridgeNode compiles a call to one reflect.Value.Call, its arguments
+// resolved against the same frame the direct calls use. A slot argument
+// is read in place through reflect.NewAt, so the bridge shares state
+// with its JIT'd neighbours rather than needing the reflect
+// evaluator's slot array.
+func (c *jitCompiler) bridgeNode(call *vmCall) (node, error) {
+	invoke, err := c.bridgeInvoke(call)
+	if err != nil {
+		return node{}, err
 	}
-	_ = name
 
 	if call.nres == 0 {
 		return node{class: lNone, E: func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) error {

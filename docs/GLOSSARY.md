@@ -82,7 +82,7 @@ The handwritten Go function that performs the same work as one fixture, used as 
 
 ## reflect bridge
 
-The middle execution tier. A call whose signature has no shape-table entry compiles to one `reflect.Value.Call`, while the calls around it stay on the direct-call tier. The bridge costs reflection for that one call only.
+The middle execution tier. A call whose signature has no shape-table entry compiles to one `reflect.Value.Call`, while the calls around it stay on the direct-call tier. The bridge costs reflection for that one call only. A call whose result has no layout class bridges as a whole statement instead, writing the result into the frame slot's typed storage, because a node cannot carry that value between calls.
 
 ## reflect evaluator
 
@@ -91,6 +91,10 @@ The slowest and most general execution tier, and the reference implementation th
 ## shape table
 
 The table of function signatures, keyed by layout class, that the direct-call tier supports. One entry covers every bound function with the same class signature: one entry calls every function taking two strings and returning a pointer and an error. A signature outside the table sends that call to the reflect bridge.
+
+## sign extension
+
+Widening a signed integer while keeping its value, by copying the sign bit into the new high bits: `int8(-1)` is `0xFF` in eight bits and `0xFFFFFFFFFFFFFFFF` in sixty-four. The direct-call tier carries a narrow load zero-extended, so a comparison canonicalizes both operands through `signN` before comparing; without it `int8(-1)` would order above zero.
 
 ## slot
 
@@ -107,6 +111,10 @@ The `map[string]any` a host passes to `Exec`. Names a program never binds resolv
 ## tier
 
 One of the three execution paths a compiled call lands on: the direct-call tier, the reflect bridge, or the reflect evaluator. `Runtime.Supports` reports which calls of a program leave the direct-call tier and why.
+
+## value binding
+
+A Go value the host registers in a Runtime under a dotted name, for example `rt.BindValue("time.Hour", time.Hour)`, the way a program would read a package constant. The value is captured once, at bind time, keeps the static type it was bound with, and compiles to a constant wherever an argument or a comparison operand reads the name. A func belongs in a binding instead.
 
 ## zero value
 

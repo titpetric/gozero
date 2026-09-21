@@ -85,9 +85,9 @@ func (r *Runtime) Bind(name string, fn any) error {
 
 // BindValue registers a Go value under a name, the way a program
 // reads a package constant: after BindValue("time.Hour", time.Hour)
-// the name compiles to that value wherever an argument reads a
-// dotted path. The value is captured once, at bind time; a func
-// belongs in Bind.
+// the name compiles to that value wherever an argument or an
+// if-header comparison operand reads it. The value is captured once,
+// at bind time; a func belongs in Bind.
 func (r *Runtime) BindValue(name string, v any) error {
 	if v == nil {
 		return fmt.Errorf("bind: %s is nil, a value binding needs a typed value", name)

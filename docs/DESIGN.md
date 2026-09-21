@@ -7,7 +7,7 @@ gozero executes imperative programs against bound Go functions. A program is tex
 
 ## The imperative principle
 
-The language has statements and nothing else: a call, a name bound to a call's results, a var declaration, a field read or write, a channel receive or send, a step, a condition, a range loop, a return. The language has no operators beyond the channel arrow, no expressions of its own and no standard library. The two constructs with a braced body take their operand from a call, not an expression: an `if` condition is a bool a binding produced, and a `range` iterates a value one handed back. Everything a program can do, it does by calling a Go function the host bound:
+The language has statements and nothing else: a call, a name bound to a call's results, a var declaration, a field read or write, a channel receive or send, a step, a condition, a range loop, a return. The language has no operators beyond the channel arrow and the six comparisons an `if` header reads, no expressions of its own and no standard library. The two constructs with a braced body take their operand from a call or a comparison, never an expression tree: an `if` condition is a bool a binding produced or one comparison between two operands, and a `range` iterates a value a binding handed back. Everything a program can do, it does by calling a Go function the host bound:
 
 ```go
 rt := gozero.NewRuntime()
