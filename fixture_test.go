@@ -34,7 +34,7 @@ func fixtureRuntime(t *testing.T) *Runtime {
 		"json":    {"NewEncoder": json.NewEncoder},
 		"bytes":   {"NewBufferString": bytes.NewBufferString},
 		"fmt":     {"Sprintf": fmt.Sprintf, "Sprint": fmt.Sprint},
-		"strings": {"Fields": strings.Fields},
+		"strings": {"Fields": strings.Fields, "HasPrefix": strings.HasPrefix},
 		"path":    {"Join": path.Join},
 		// Equal has no variadic tail, (tb, want, got, message): every
 		// parameter has a shape, so an assertion is a direct call. The
