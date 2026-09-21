@@ -14,9 +14,13 @@ program := { stmt }
 stmt    := "var" name typeref term
          | "return" [ arg ] term
          | ifstmt
+         | forstmt
+         | "break" term
+         | "continue" term
          | path "<-" arg term
          | [ name { "," name } ( ":=" | "=" ) ] rhs term
 ifstmt  := "if" cond block [ "else" ( ifstmt | block ) ] term
+forstmt := "for" [ name [ "," name ] ":=" ] "range" arg block term
 cond    := path | expr
 block   := "{" { stmt } "}"
 term    := ";" | EOL | EOF
@@ -31,7 +35,7 @@ composite := [ "&" ] path "{" [ elem { "," elem } [ "," ] ] "}"
 elem    := [ ident ":" ] arg
 ```
 
-The channel arrow is the only operator. A value is a literal, a name, a field read, a composite literal, a receive, or the result of a call; a loop or an arithmetic expression is a Go function the host binds ([design/](design/) records why). The end of a line closes a statement; the semicolon is a delimiter between statements sharing one, so both spellings below are the same program:
+The channel arrow is the only operator. A value is a literal, a name, a field read, a composite literal, a receive, or the result of a call; an arithmetic expression is a Go function the host binds ([design/](design/) records why). The end of a line closes a statement; the semicolon is a delimiter between statements sharing one, so both spellings below are the same program:
 
 ```
 u := url.Parse("https://example.com"); assert.Equal(tb, "https", u.Scheme)
@@ -42,7 +46,7 @@ u := url.Parse("https://example.com")
 assert.Equal(tb, "https", u.Scheme)
 ```
 
-Strings are single- or double-quoted. A number without a decimal point is an int64 and one with is a float64, until an assignment or a parameter gives it another type. `dest`, `true`, `false`, `nil`, `var`, `return`, `if` and `else` are reserved, and a name cannot shadow a binding: `url := ...` with `url.Parse` bound is a compile error, because the name could never be read back.
+Strings are single- or double-quoted. A number without a decimal point is an int64 and one with is a float64, until an assignment or a parameter gives it another type. `dest`, `true`, `false`, `nil`, `var`, `return`, `if`, `else`, `for`, `range`, `break` and `continue` are reserved, and a name cannot shadow a binding: `url := ...` with `url.Parse` bound is a compile error, because the name could never be read back.
 
 ## Declarations and assignment
 
@@ -439,6 +443,61 @@ One rule keeps the arms inside the language's contracts, and it rejects at compi
 
 `return` inside an arm works and ends the program there, with or without a value. It travels a signal on the error return every statement already has, which both tiers consume at the top of the program, so the statements after it never run and the nil-error path of a program without one is untouched.
 
+## Loops
+
+`for` has one form: `range`. The three-clause and condition loops need operator expressions, so they are not in the grammar at all. What ranges is a slice, an array, or an integer, in Go's own spellings, and the body is the same braced statement list an `if` arm is. [design/loops.md](design/loops.md) records what the other range sources cost.
+
+<table>
+<tr>
+<th>go</th>
+</tr>
+<tr>
+<td>
+
+```go
+parts := strings.Fields("a b c")
+buf := bytes.NewBufferString("")
+for _, s := range parts {
+	buf.WriteString(s)
+}
+
+c := counter()
+for i := range 4 {
+	c.Add(i)
+}
+```
+
+</td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
+<td>
+
+```go
+parts := strings.Fields("a b c")
+buf := bytes.NewBufferString("")
+for _, s := range parts {
+	buf.WriteString(s)
+}
+
+c := counter()
+for i := range 4 {
+	c.Add(i)
+}
+```
+
+</td>
+</tr>
+</table>
+
+`break` and `continue` work and exit the innermost loop; a label after either is rejected by name. Both are only allowed inside a range body, which is what keeps their signals from reaching a caller. `return` and `var` are the other way round and are rejected inside a body, each with its rule named: a loop's exits are `break`, an error and the execution context, and a name a body declares has nowhere to go but the program's own scope.
+
+Scope is flat, as it is everywhere here, and the loop is where that is visible. The loop variable is one program-level slot reused per iteration, so after the loop it still holds the last value it took, and an empty loop leaves it zero. A `:=` inside a body is allowed for the same reason, and the name it declares outlives the loop. Both diverge from Go's block scoping and both hold identically on the two tiers.
+
+The termination guarantee changes with this section. A program without a loop halts structurally: n statements run at most n calls. With one it halts on the execution context, which every iteration checks on both tiers, so a cancelled `ExecContext` ends the program with `ctx.Err()` instead of running out the host's data.
+
 ## The stack and dest
 
 Names the program never binds resolve against the stack map the host passes to `Exec`; an unset or nil entry reads as the parameter's zero value, and a set entry is type-checked when it is read, because only then is its type known. `dest` is reserved for the pointer `Scan` was handed, so a program writes its output into a variable the host owns:
@@ -548,4 +607,4 @@ json.NewEncoder(w).Encode(status())
 
 Middleware-style guarding works through the error contract: a bound `auth.Require(w, r)` that writes the 401 and returns an error ends the program before the next statement, the way `set -e` ends a shell script.
 
-What the syntax deliberately leaves out - loops, closures, operator expressions and struct type declarations - and what each would cost the design is researched feature by feature in [design/](design/): [conditions](design/conditions.md), [loops](design/loops.md), [closures](design/closures.md), [expressions](design/expressions.md), [structs](design/structs.md). Channel receive and send started there and moved into the syntax, and the restricted `if` above did the same; [channels](design/channels.md) and [conditions](design/conditions.md) record what landed and what stayed out.
+What the syntax deliberately leaves out - closures, operator expressions and struct type declarations - and what each would cost the design is researched feature by feature in [design/](design/): [closures](design/closures.md), [expressions](design/expressions.md), [structs](design/structs.md). Channel receive and send started there and moved into the syntax, and the restricted `if` and `range` above did the same; [channels](design/channels.md), [conditions](design/conditions.md) and [loops](design/loops.md) record what landed and what stayed out.
