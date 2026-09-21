@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 var bytesNewBufferString = bytes.NewBufferString
@@ -256,6 +257,51 @@ func (f *testFixtures) testIf(tb testing.TB) {
 	assertEqual(tb, "api-alive", label, "")
 }
 
+func (f *testFixtures) testSince(tb testing.TB) {
+	t := time.Now()
+	req, err := http.NewRequest("GET", "https://example.com/api/users", nil)
+	if err != nil {
+		tb.Fatal(err)
+	}
+
+	status := 200
+	class := ""
+	if status == 200 {
+		class = "ok"
+	} else {
+		class = "error"
+	}
+	assertEqual(tb, "ok", class, "")
+
+	grade := ""
+	if status >= 500 {
+		grade = "5xx"
+	} else if status >= 400 {
+		grade = "4xx"
+	} else {
+		grade = "routine"
+	}
+	assertEqual(tb, "routine", grade, "")
+
+	method := ""
+	if req.Method == "GET" {
+		method = "read"
+	}
+	assertEqual(tb, "read", method, "")
+
+	kind := "load"
+	if req.Method != "GET" {
+		kind = "store"
+	}
+	assertEqual(tb, "load", kind, "")
+
+	age := "stale"
+	if time.Since(t) < time.Hour {
+		age = "fresh"
+	}
+	assertEqual(tb, "fresh", age, "")
+}
+
 func (f *testFixtures) testChannels(tb testing.TB) {
 	c := chanOf("a", "b")
 	v := <-c
@@ -291,6 +337,7 @@ func BenchmarkFixtures(b *testing.B) {
 		"channels": (*testFixtures).testChannels,
 		"if":       (*testFixtures).testIf,
 		"range":    (*testFixtures).testRange,
+		"since":    (*testFixtures).testSince,
 	}
 
 	files, err := filepath.Glob(filepath.Join("testdata", "*.txt"))
@@ -353,6 +400,7 @@ func newBenchFixtureRuntime(b *testing.B) *Runtime {
 		"fmt":     {"Sprintf": fmt.Sprintf, "Sprint": fmt.Sprint},
 		"strings": {"Fields": strings.Fields, "HasPrefix": strings.HasPrefix},
 		"path":    {"Join": path.Join},
+		"time":    {"Now": time.Now, "Since": time.Since},
 		// Equal has no variadic tail, (tb, want, got, message): every
 		// parameter has a shape, so an assertion is a direct call. The
 		// message is optional the way every trailing argument is,
@@ -365,6 +413,11 @@ func newBenchFixtureRuntime(b *testing.B) *Runtime {
 		if err := rt.BindScope(scope, fns); err != nil {
 			b.Fatal(err)
 		}
+	}
+	// time.Hour is a value, not a func: the duration unit the since
+	// fixture compares against.
+	if err := rt.BindValue("time.Hour", time.Hour); err != nil {
+		b.Fatal(err)
 	}
 	if err := rt.Bind("ctxValue", func(ctx context.Context) string {
 		v, _ := ctx.Value(fixtureCtxKey{}).(string)
