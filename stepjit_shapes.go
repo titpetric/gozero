@@ -11,6 +11,9 @@ func callNode(key string, fptr unsafe.Pointer, a []node) (node, bool) {
 	if n, ok := scalarFamilyCall(key, fptr, a); ok {
 		return n, true
 	}
+	if n, ok := httpShapeCall(key, fptr, a); ok {
+		return n, true
+	}
 	switch key {
 	case "_P":
 		f := castFn[func() unsafe.Pointer](fptr)

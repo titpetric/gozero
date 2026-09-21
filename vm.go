@@ -97,6 +97,11 @@ type vmArg struct {
 	styp  reflect.Type
 	addr  bool
 	elems []vmElem
+
+	// funclit is set on a vaConst holding a materialized func literal.
+	// val carries the reflect.MakeFunc value the reflect tier passes;
+	// the step JIT reads funclit to build the direct closure instead.
+	funclit *vmFuncLit
 }
 
 // vmElem is one element of a compiled composite literal: the field it
@@ -243,11 +248,23 @@ type vmProgram struct {
 	// statement so a name reads as its type's zero value even when
 	// nothing assigned it.
 	inits []slotInit
+
+	// params are the slots a func literal body's parameters occupy, in
+	// signature order. Empty for a top-level program; runWith fills
+	// them before the first statement.
+	params []int
 }
 
 // run executes the program. Slots are allocated per execution, so
 // concurrent runs of the same compiled program do not share state.
 func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (any, error) {
+	return p.runWith(ctx, nil, stack, dest)
+}
+
+// runWith is run with the values of a func literal body's parameters,
+// stored into their slots before the first statement. A top-level
+// program has no parameter slots and passes nil.
+func (p *vmProgram) runWith(ctx context.Context, args []reflect.Value, stack map[string]any, dest any) (any, error) {
 	// One allocation per run for both the named slots and every call's
 	// argument window. Each call owns a disjoint range, so a nested
 	// call never overwrites the arguments its parent is still filling.
@@ -261,6 +278,11 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 		// New rather than Zero, so a field of a var-declared struct is
 		// settable in place.
 		slots[in.slot] = reflect.New(in.zero.Type()).Elem()
+	}
+	for i, slot := range p.params {
+		if i < len(args) {
+			p.setSlot(slots, args[i], slot)
+		}
 	}
 	v, err := p.runStmts(ctx, slots, frame, ifaces, stack, dest, p.stmts)
 	if err != nil {

@@ -32,6 +32,13 @@ import (
 // it is used and a method must exist on the type of the name it is
 // called on.
 func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
+	return c.compileProgramWith(nil, prog)
+}
+
+// compileProgramWith is compileProgram with the parameters of a func
+// literal body pre-declared as typed slots, so the body reads them
+// the way it reads any program-bound name.
+func (c *Compiler) compileProgramWith(params []vmParam, prog *program) (*vmProgram, error) {
 	// Declared types are built first, on a copy: the copy scopes the
 	// program-local names to this compilation, and the shared Compiler,
 	// which concurrent compilations read, stays as it was.
@@ -50,6 +57,13 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 		env:   map[string]reflect.Type{},
 	}
 
+	// A func literal's parameters take the first slots, typed by the
+	// target signature; declareParams applies their naming rules.
+	paramName, err := pc.declareParams(params)
+	if err != nil {
+		return nil, err
+	}
+
 	// A name declared with var fixes its type before anything else is
 	// compiled, so a literal assigned to it converts to that type. The
 	// map is lazy: most programs declare nothing and skip the
@@ -58,6 +72,9 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 		if s := prog.stmts[si]; s.varType != "" {
 			if err := pc.checkName(s.varName); err != nil {
 				return nil, err
+			}
+			if paramName[s.varName] {
+				return nil, fmt.Errorf("compile: func literal: var %s redeclares a parameter", s.varName)
 			}
 			t, ok := c.lookupType(s.varType)
 			if !ok {
@@ -271,6 +288,11 @@ func (pc *progCompiler) compileStmts(list []stmt, dst *[]vmStmt) error {
 				if err := checkNew(s.lhs); err != nil {
 					return err
 				}
+			}
+			// h := func(...) {...} has no parameter to take its types
+			// from: a func literal fills only a func-typed parameter.
+			if s.lit.kind == argFuncLit {
+				return fmt.Errorf("compile: %s: a func literal fills only a func-typed parameter of a call and cannot be assigned to a name", name)
 			}
 			// u = url.URL{...} binds the name to the literal's own type,
 			// built fresh on every run.

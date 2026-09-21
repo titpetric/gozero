@@ -87,6 +87,12 @@ func planBlocks(p *vmProgram) (*jitPlan, error) {
 		plan.live[in.slot] = true
 		plan.writes[in.slot]++
 	}
+	// A func literal body's parameters are written at entry, the
+	// same one write planInline counts for them.
+	for _, slot := range p.params {
+		plan.live[slot] = true
+		plan.writes[slot]++
+	}
 	blockCounters(p, p.stmts, false, plan)
 	return plan, nil
 }

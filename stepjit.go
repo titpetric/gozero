@@ -135,6 +135,11 @@ type jitProgram struct {
 	retType reflect.Type
 	retOff  uintptr
 
+	// paramOffs are the frame offsets of a func literal body's
+	// parameters, in signature order. The closure built over the body
+	// stores the incoming words here before the first statement.
+	paramOffs []uintptr
+
 	// retSignal says a return inside an if arm can raise
 	// errProgramReturn; retSigOff is the hidden any field it boxes
 	// the value into. A program without one never allocates the
@@ -358,6 +363,16 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 		// Before any node compiles: returnNode reads the offset when
 		// it builds the raise.
 		jp.retSignal, jp.retSigOff = true, c.offs[retSigField]
+	}
+
+	// A parameter slot is always live, so the lookup cannot miss; the
+	// closure over the body writes through these offsets.
+	for _, slot := range p.params {
+		field, ok := c.slotOf[slot]
+		if !ok {
+			return nil, fmt.Errorf("a parameter has no slot")
+		}
+		jp.paramOffs = append(jp.paramOffs, c.offs[field])
 	}
 
 	for _, name := range hoisted {
