@@ -133,6 +133,36 @@ func (c *jitCompiler) planPools(plan *jitPlan) {
 			walkArg(a, pt)
 		}
 	}
+	// walkStmts covers an if's arms, whose statements are still
+	// vmStmt: the same sites as the plannedStmt loop below, so a call
+	// inside an arm pools its pack and boxes like one outside.
+	var walkStmts func([]vmStmt)
+	walkStmts = func(stmts []vmStmt) {
+		for i := range stmts {
+			s := &stmts[i]
+			if s.call != nil {
+				walkCall(s.call)
+			}
+			if s.assign != nil {
+				walkArg(s.assign, s.assign.typ)
+			}
+			if s.fieldSet != nil {
+				walkArg(s.fieldSet.val, s.fieldSet.val.typ)
+			}
+			if s.recv != nil {
+				walkArg(s.recv.ch, s.recv.ch.typ)
+			}
+			if s.send != nil {
+				walkArg(s.send.ch, s.send.ch.typ)
+				walkArg(s.send.val, s.send.val.typ)
+			}
+			if s.ifs != nil {
+				walkArg(s.ifs.cond, s.ifs.cond.typ)
+				walkStmts(s.ifs.then)
+				walkStmts(s.ifs.els)
+			}
+		}
+	}
 	for _, s := range plan.stmts {
 		if s.call != nil {
 			walkCall(s.call)
@@ -149,6 +179,11 @@ func (c *jitCompiler) planPools(plan *jitPlan) {
 		if s.send != nil {
 			walkArg(s.send.ch, s.send.ch.typ)
 			walkArg(s.send.val, s.send.val.typ)
+		}
+		if s.ifs != nil {
+			walkArg(s.ifs.cond, s.ifs.cond.typ)
+			walkStmts(s.ifs.then)
+			walkStmts(s.ifs.els)
 		}
 	}
 }

@@ -134,6 +134,14 @@ type jitProgram struct {
 	// value, which is the common case: the output goes through dest.
 	retType reflect.Type
 	retOff  uintptr
+
+	// retSignal says a return inside an if arm can raise
+	// errProgramReturn; retSigOff is the hidden any field it boxes
+	// the value into. A program without one never allocates the
+	// field and never compares against the sentinel, because no node
+	// of it can raise one.
+	retSignal bool
+	retSigOff uintptr
 }
 
 func (p *jitProgram) run(ctx context.Context, stack map[string]any, dest any) (any, error) {
@@ -143,6 +151,17 @@ func (p *jitProgram) run(ctx context.Context, stack map[string]any, dest any) (a
 	}
 	for _, stmt := range p.stmts {
 		if err := stmt(f, ctx, stack, dest); err != nil {
+			if err == errProgramReturn {
+				// A return inside an arm. Its value is already boxed
+				// in the signal field, so reading it copies an
+				// interface header and the frame stays dead.
+				var v any
+				if p.retSignal {
+					v = *(*any)(unsafe.Add(f, p.retSigOff))
+				}
+				p.finish(f)
+				return v, nil
+			}
 			p.finish(f)
 			return nil, err
 		}
@@ -257,7 +276,15 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 		return nil, fmt.Errorf("a name is reassigned at a different type")
 	}
 
-	plan, err := planInline(p)
+	// A program with an if takes the structural plan: statements keep
+	// their nesting and nothing splices, because a branch boundary
+	// makes a producer's single reader conditional. Everything else
+	// keeps the straight-line plan and its splicing.
+	planOf := planInline
+	if hasIf(p.stmts) {
+		planOf = planIf
+	}
+	plan, err := planOf(p)
 	if err != nil {
 		return nil, err
 	}
@@ -300,6 +327,16 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 		c.types = append(c.types, reflect.TypeFor[any]())
 	}
 
+	// A return inside an if arm leaves its value in a hidden any
+	// field, which run reads back when the signal arrives. Only a
+	// program that has one pays for the field, so a straight line
+	// keeps the frame it had.
+	retSigField := -1
+	if plan.retSignal {
+		retSigField = len(c.types)
+		c.types = append(c.types, reflect.TypeFor[any]())
+	}
+
 	// The argument pools claim their scratch
 	// fields before the frame is laid out.
 	c.planPools(plan)
@@ -316,6 +353,11 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 		for i := range c.types {
 			c.offs[i] = jp.frameType.Field(i).Offset
 		}
+	}
+	if retSigField >= 0 {
+		// Before any node compiles: returnNode reads the offset when
+		// it builds the raise.
+		jp.retSignal, jp.retSigOff = true, c.offs[retSigField]
 	}
 
 	for _, name := range hoisted {

@@ -169,6 +169,21 @@ type vmStmt struct {
 
 	// inc is a step statement, n++ or n--, in vm_inc.go.
 	inc *vmInc
+
+	// ifs is an if statement: the arm the condition picks runs. In
+	// vm_if.go.
+	ifs *vmIf
+}
+
+// vmIf is a compiled if chain: the bool condition and the two arms.
+// An else-if nests as an els list holding a single if statement. An
+// arm holds no declarations, which the compiler rejects, so the slot
+// namespace is the program's own; a return inside one raises
+// errProgramReturn and the top of the program consumes it.
+type vmIf struct {
+	cond *vmArg
+	then []vmStmt
+	els  []vmStmt
 }
 
 // slotInit is the zero value a var statement puts in scope before the
@@ -223,8 +238,25 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 		// settable in place.
 		slots[in.slot] = reflect.New(in.zero.Type()).Elem()
 	}
-	for i := range p.stmts {
-		s := &p.stmts[i]
+	v, err := p.runStmts(ctx, slots, frame, ifaces, stack, dest, p.stmts)
+	if err != nil {
+		if err == errProgramReturn {
+			// The program returned, from the top level or from inside
+			// an arm; the signal stops here.
+			return v, nil
+		}
+		return nil, err
+	}
+	return nil, nil
+}
+
+// runStmts executes one statement list: the program's own, or an if
+// arm. A return raises errProgramReturn with the value beside it, so
+// an arm leaves through the same error return a failing call uses and
+// run is the only place that consumes the signal.
+func (p *vmProgram) runStmts(ctx context.Context, slots, frame []reflect.Value, ifaces []ifacePair, stack map[string]any, dest any, stmts []vmStmt) (any, error) {
+	for i := range stmts {
+		s := &stmts[i]
 		if s.lit.IsValid() {
 			p.setSlot(slots, s.lit, s.out[0])
 			continue
@@ -265,18 +297,25 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 			}
 			continue
 		}
+		if s.ifs != nil {
+			v, err := p.runIf(ctx, slots, frame, ifaces, stack, dest, s.ifs)
+			if err != nil {
+				return v, err
+			}
+			continue
+		}
 		if s.retArg != nil {
 			v, err := s.retArg.get(ctx, slots, frame, ifaces, stack, dest)
 			if err != nil {
 				return nil, err
 			}
 			if !v.IsValid() {
-				return nil, nil
+				return nil, errProgramReturn
 			}
-			return v.Interface(), nil
+			return v.Interface(), errProgramReturn
 		}
 		if s.call == nil {
-			return nil, nil
+			return nil, errProgramReturn
 		}
 		out, err := s.call.invoke(ctx, slots, frame, ifaces, stack, dest)
 		if err != nil {
@@ -294,12 +333,26 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 		}
 		if s.ret {
 			if s.call.nres == 0 {
-				return nil, nil
+				return nil, errProgramReturn
 			}
-			return firstNonErr(out, s.call.errIdx).Interface(), nil
+			return firstNonErr(out, s.call.errIdx).Interface(), errProgramReturn
 		}
 	}
 	return nil, nil
+}
+
+// runIf evaluates the condition and runs the arm it picks. A missing
+// else is an empty list, which runs as nothing.
+func (p *vmProgram) runIf(ctx context.Context, slots, frame []reflect.Value, ifaces []ifacePair, stack map[string]any, dest any, n *vmIf) (any, error) {
+	cv, err := n.cond.get(ctx, slots, frame, ifaces, stack, dest)
+	if err != nil {
+		return nil, err
+	}
+	arm := n.els
+	if cv.IsValid() && cv.Bool() {
+		arm = n.then
+	}
+	return p.runStmts(ctx, slots, frame, ifaces, stack, dest, arm)
 }
 
 // setSlot stores v into a slot. An address-taken slot holds an

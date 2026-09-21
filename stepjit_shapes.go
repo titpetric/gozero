@@ -428,5 +428,6 @@ func callNode(key string, fptr unsafe.Pointer, a []node) (node, bool) {
 			return asError(f(s0, s1))
 		}}, true
 	}
-	return node{}, false
+	// The predicate shapes conditions call, stepjit_if.go.
+	return condShapes(key, fptr, a)
 }

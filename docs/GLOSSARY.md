@@ -36,6 +36,10 @@ Boxing appears in benchmark output as one allocation per boxed value. gozero avo
 
 The binding contract: a call's arguments are valid for the duration of the call, and a binding that keeps one copies it first. The runtime relies on the contract to recycle the memory behind arguments - the pack slice, the boxed values, the literal blocks - once the call returns. A type assertion copies a value out of its box; a plain interface assignment copies only the box's address and is not a copy in this sense. String and scalar parameters carry their values directly and need no copy.
 
+## control signal
+
+An unexported sentinel error that carries control flow out of a nested statement list. Every statement on both tiers already returns an error, so a signal needs no second return value and no flag to check: a statement raises it, the construct that owns the exit compares against it and consumes it, and a run whose statements all return nil never makes the comparison. `errProgramReturn` is the one the language has today, raised by a `return` inside an `if` arm and consumed at the top of the program. A binding cannot produce a signal, because the values are unexported.
+
 ## direct-call tier
 
 The fastest of the three execution tiers. A bound function whose signature matches an entry in the shape table is called as a plain Go call, with no reflection. The other two tiers are the reflect bridge and the reflect evaluator.

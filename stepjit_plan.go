@@ -40,6 +40,36 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 			walkArg(a)
 		}
 	}
+	// walkStmts covers an if's arms, whose statements are still
+	// vmStmt: the same edges as the plannedStmt loop below, plus the
+	// condition and the nested arms.
+	var walkStmts func([]vmStmt)
+	walkStmts = func(stmts []vmStmt) {
+		for i := range stmts {
+			s := &stmts[i]
+			if s.call != nil {
+				walkCall(s.call)
+			}
+			if s.assign != nil {
+				walkArg(s.assign)
+			}
+			if s.fieldSet != nil {
+				walkArg(s.fieldSet.val)
+			}
+			if s.recv != nil {
+				walkArg(s.recv.ch)
+			}
+			if s.send != nil {
+				walkArg(s.send.ch)
+				walkArg(s.send.val)
+			}
+			if s.ifs != nil {
+				walkArg(s.ifs.cond)
+				walkStmts(s.ifs.then)
+				walkStmts(s.ifs.els)
+			}
+		}
+	}
 	for _, s := range plan.stmts {
 		if s.call != nil {
 			walkCall(s.call)
@@ -56,6 +86,11 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 		if s.send != nil {
 			walkArg(s.send.ch)
 			walkArg(s.send.val)
+		}
+		if s.ifs != nil {
+			walkArg(s.ifs.cond)
+			walkStmts(s.ifs.then)
+			walkStmts(s.ifs.els)
 		}
 	}
 	return counts
@@ -84,6 +119,11 @@ type plannedStmt struct {
 
 	// inc is a step statement, n++ or n--, from vm_inc.go.
 	inc *vmInc
+
+	// ifs is an if statement, travelling whole for ifNode; its arms
+	// convert when the node builder reaches them. Only the structural
+	// plan in stepjit_if.go produces one.
+	ifs *vmIf
 }
 
 // jitPlan is everything planInline works out for the compiler.
@@ -95,6 +135,9 @@ type jitPlan struct {
 	// retSlot is the slot a "return name;" reads, -1 when the program
 	// returns through a trailing call or not at all.
 	retSlot int
+	// retSignal says some arm returns, so the frame needs the hidden
+	// field that carries the value out with errProgramReturn.
+	retSignal bool
 }
 
 // planInline drops a statement whose single result is read exactly once
