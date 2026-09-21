@@ -117,6 +117,16 @@ func (p *Parser) arg() (arg, error) {
 		return p.composite(path, true)
 	default:
 		save := p.pos
+		// A func keyword in value position starts a literal. The word
+		// alone is not enough: keyword matching already stops at ident
+		// characters, so funcX still parses as a name.
+		if p.keyword("func") {
+			p.skipSpace()
+			if p.pos < len(p.src) && p.src[p.pos] == '(' {
+				return p.funcLit(save)
+			}
+			return arg{}, fmt.Errorf("parse: func starts a literal and needs a parameter list at offset %d", p.pos)
+		}
 		path, err := p.path()
 		if err != nil {
 			return arg{}, err
