@@ -275,14 +275,15 @@ func TestForSupports(t *testing.T) {
 		"three-clause": `for i := 0; i < 3; i++ { touch(i) }`,
 		"cond method":  `b := mk(); for b.More() { poke() }`,
 		"cond field":   `g := gated(); for g.Open { g.Tick() }`,
+		"cond chain":   `w := wrap(); for w.In.OK { poke() }`,
 	} {
 		if err := rt.Supports(src); err != nil {
 			t.Errorf("%s should be direct: %v", name, err)
 		}
 	}
-	if err := rt.Supports(`w := wrap(); for w.In.OK { poke() }`); err == nil {
-		t.Error("a two-field condition should decline the direct tier")
-	} else if !strings.Contains(err.Error(), "not in the table") {
+	if err := rt.Supports(`w := embed(); for w.OK { poke() }`); err == nil {
+		t.Error("a promoted condition should decline the direct tier")
+	} else if !strings.Contains(err.Error(), "only a single field is in the table") {
 		t.Errorf("the reason does not name the rule: %v", err)
 	}
 }

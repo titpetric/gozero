@@ -8,7 +8,10 @@ import (
 // statement is a call, and every value is a literal, a name, or the
 // result of another call.
 //
-//	program := { stmt }
+//	program := { typedecl | stmt }
+//	typedecl := "type" name "struct" "{" { field } "}" term
+//	field   := name typeref fterm
+//	fterm   := ";" | EOL | "}"
 //	stmt    := "var" name typeref term
 //	         | "return" [ arg ] term
 //	         | ifstmt
@@ -205,6 +208,10 @@ type stmt struct {
 // program is a parsed source unit.
 type program struct {
 	stmts []stmt
+	// types are the struct types the program declares. They are not
+	// statements: the compiler builds them before anything else, so a
+	// declaration can sit after its first use, as in Go.
+	types []typeDecl
 }
 
 // flatCall reports the single call of a one-statement program whose
@@ -212,7 +219,7 @@ type program struct {
 // This is the form the JIT shape table matches, and the form every
 // statement had before programs grew past one line.
 func (p *program) flatCall() (*callExpr, bool) {
-	if len(p.stmts) != 1 {
+	if len(p.stmts) != 1 || len(p.types) != 0 {
 		return nil, false
 	}
 	s := p.stmts[0]
@@ -236,6 +243,14 @@ func (p *Parser) Parse(src string) (*program, error) {
 		p.skipSpace()
 		if p.pos >= len(p.src) {
 			break
+		}
+		td, ok, err := p.typeDecl()
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			prog.types = append(prog.types, td)
+			continue
 		}
 		s, err := p.stmt()
 		if err != nil {

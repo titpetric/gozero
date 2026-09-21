@@ -104,6 +104,9 @@ func (p *Parser) block() ([]stmt, error) {
 		if p.pos >= len(p.src) {
 			return nil, fmt.Errorf("parse: unterminated block at offset %d", p.pos)
 		}
+		if err := p.rejectBlockDecl(); err != nil {
+			return nil, err
+		}
 		s, err := p.stmt()
 		if err != nil {
 			return nil, err

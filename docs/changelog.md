@@ -5,6 +5,16 @@ date: "2026-09-08T10:18:28+02:00"
 
 Changes to the language and the runtime after the chapters were written, newest first. Each entry records when it landed, what the syntax gained, and how it is used.
 
+## 2026-09-21 11:22 +02:00: struct type declarations
+
+A program can declare its own struct types with the grammar's first declaration form: `type Name struct { ... }`, one field per line or per semicolon, each an exported name and a typeref resolving through the registry. The compiler builds every shape once per source string with `reflect.StructOf` into a per-compilation registry consulted by `lookupType`, so `var` statements, composite literals, field access and json encoding work on a declared type unchanged. Declarations resolve in dependency order over as many passes as it takes, so a struct can hold one declared after it, by value only. The registry lives on a copy of the compiler, so concurrent compilations under the read lock never see another program's names.
+
+Every `reflect.StructOf` ceiling is a compile error naming the rule: unexported fields, duplicate fields, recursion even through a pointer, and shadowing a registered type or binding. Tags, field name lists and embedded fields are parse errors until a later rung, a declaration inside an `if` arm or a loop body is a parse error too, and pointer, slice and chan spellings of a declared type do not resolve. `type` and `struct` join the reserved words. The declared name never reaches reflect: `%T` prints the unnamed struct spelling, and two structurally identical declarations are one runtime type.
+
+The direct tier gains one field-table case for the composition declarations make common: a read through a struct held by value inside another struct compiles to added offsets, bottoming out at a frame slot or a nil-checked pointer load. A write through the same chain, and a whole struct written into a field, stay on the reflect evaluator, each declined by name.
+
+Measured with the pinned harness, medians of three. The new typedecl fixture runs at 4866 ns/op, 240 B/op and 6 allocs/op against its handwritten mirror's 3785 ns/op, 240 B/op and 6 allocs/op: byte-for-byte and allocation-for-allocation parity, because a declared struct costs what a composite literal of a host type costs. Every existing benchmark keeps its allocation count and its bytes exactly, with one exception: `BenchmarkCostWithoutCaching` moves 24 B/op, 1704 to 1728, the parsed program struct growing by the slice header the declarations are collected in.
+
 ## 2026-09-21 10:55 +02:00: condition and three-clause for loops
 
 `for` gains Go's other two forms, both header-scoped. A condition loop runs while a bool name, field or call holds, the operand set an `if` header already had; the three-clause header admits exactly an init assignment, one comparison, and the loop variable stepped with `++` or `--`. Neither operator is new: the comparison is the `if` header's rung and the post clause is the step statement, so statements and arguments stay operator-free and a comparison still parses nowhere but a header. `continue` still runs the post clause, `break` skips it, and the loop variable keeps its last value after the loop, one flat slot as everywhere.
