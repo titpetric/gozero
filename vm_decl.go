@@ -87,7 +87,10 @@ func (c *Compiler) buildStructType(td *typeDecl) (reflect.Type, bool, error) {
 		if !ok {
 			return nil, false, nil
 		}
-		fields = append(fields, reflect.StructField{Name: fd.name, Type: t})
+		// The tag passes through as written; it is part of the type's
+		// identity, so two declarations differing only in tags mint two
+		// runtime types.
+		fields = append(fields, reflect.StructField{Name: fd.name, Type: t, Tag: reflect.StructTag(fd.tag)})
 	}
 	return reflect.StructOf(fields), true, nil
 }

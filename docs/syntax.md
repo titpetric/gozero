@@ -12,7 +12,8 @@ The snippets run against the fixture bindings: `http.NewRequest`, `url.Parse`, `
 ```
 program := { typedecl | stmt }
 typedecl := "type" name "struct" "{" { field } "}" term
-field   := name typeref fterm
+field   := name typeref [ tag ] fterm
+tag     := rawstring | string
 fterm   := ";" | EOL | "}"
 stmt    := "var" name typeref term
          | "return" [ arg ] term
@@ -284,7 +285,52 @@ p.X = 5
 
 Identical columns, with Go's own scoping rule relaxed in one direction: declaration order is free, so a field can name a type declared further down, resolved over as many passes as it takes. A declaration is a program-level form and cannot stand inside an `if` arm or a loop body, and the name it introduces is reserved the way a binding's is.
 
-What `reflect.StructOf` cannot build is a compile error naming the rule: an unexported field, a duplicate field, a type containing itself even through a pointer, and a name shadowing a registered type or a binding. A field holds a declared type by value only, so `*Point`, `[]Point` and `chan Point` do not resolve at this rung. Field tags, field name lists and embedded fields are parse errors. The declared name never reaches reflect: `%T` prints the unnamed struct spelling, and two structurally identical declarations are the same runtime type.
+What `reflect.StructOf` cannot build is a compile error naming the rule: an unexported field, a duplicate field, a type containing itself even through a pointer, and a name shadowing a registered type or a binding. A field holds a declared type by value only, so `*Point`, `[]Point` and `chan Point` do not resolve at this rung. Field name lists and embedded fields are parse errors. The declared name never reaches reflect: `%T` prints the unnamed struct spelling, and two structurally identical declarations with the same tags are the same runtime type.
+
+## Field tags
+
+A field carries a Go tag on its own line, written raw between backquotes or as a double-quoted string, and it reaches `reflect.StructField.Tag` exactly as written. That is what shapes the json output: keys renamed, a field omitted when empty, a `"-"` field never emitted (`testdata/reply.txt`):
+
+<table>
+<tr>
+<th>go</th>
+</tr>
+<tr>
+<td>
+
+```go
+type Reply struct {
+	Status string `json:"status"`
+	Count  int64  `json:"count,omitempty"`
+	Skip   string `json:"-"`
+}
+json.NewEncoder(dest).Encode(Reply{Status: "ok"})
+```
+
+</td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
+<td>
+
+```go
+type Reply struct {
+	Status string `json:"status"`
+	Count  int64  `json:"count,omitempty"`
+	Skip   string `json:"-"`
+}
+json.NewEncoder(dest).Encode(Reply{Status: "ok"})
+```
+
+</td>
+</tr>
+</table>
+
+Both write `{"status":"ok"}`. The tag is part of the type's identity, as it is in Go: two declarations with the same fields and the same tags are one runtime type, two differing only in a tag are two.
+
+A raw string is admitted nowhere else in the grammar; outside a tag position the backquote is not a token. A single-quoted tag is a parse error naming the two legal spellings, because single quotes spell a string everywhere else. A tag ends the field line, so an embedded field carrying one is rejected as embedded rather than misread as a type.
 
 ## Composite literals
 
