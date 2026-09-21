@@ -300,22 +300,12 @@ func (p *Parser) stmt() (stmt, error) {
 			return s, nil
 		}
 		// A func literal in return position reads as a value, so the
-		// compiler rejects it with the rule's own message rather than
-		// a parse error about the body's brace. Without the sniff the
-		// call form wins: "func" is an ident followed by '(' and
-		// parses as a call to a name.
+		// compiler names the rule that rejects it; without the sniff
+		// the call form wins, "func" being an ident before a '('.
 		save := p.pos
 		if p.keyword("func") {
 			p.pos = save
-			a, err := p.arg()
-			if err != nil {
-				return s, err
-			}
-			s.retVal = &a
-			if !p.terminated() {
-				return s, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
-			}
-			return s, nil
+			return p.retFuncLit(s)
 		}
 		p.pos = save
 		// The call form is tried first so "return f(x);" parses its

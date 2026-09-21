@@ -22,6 +22,22 @@ type funcLit struct {
 	pos    int
 }
 
+// retFuncLit reads a func literal in return position as the return
+// statement's value. It parses rather than rejects, so the rule that
+// a literal fills only a func-typed parameter is named by the
+// compiler, where every other position of a literal is decided.
+func (p *Parser) retFuncLit(s stmt) (stmt, error) {
+	a, err := p.arg()
+	if err != nil {
+		return s, err
+	}
+	s.retVal = &a
+	if !p.terminated() {
+		return s, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
+	}
+	return s, nil
+}
+
 // funcLit reads a literal from just after the func keyword; the caller
 // has already seen the '(' that starts the parameter list. pos is
 // where the keyword began.
