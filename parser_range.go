@@ -4,10 +4,9 @@ import (
 	"fmt"
 )
 
-// Loops: one form, "for" over "range", with the braced statement list
-// parser_if.go already reads. The three-clause and condition loops
-// need operator expressions, which the grammar does not have, so they
-// are not written here at all.
+// The range loop, "for" over "range", with the braced statement list
+// parser_if.go already reads. The condition and three-clause headers
+// are parser_for.go, which is also what dispatches to this reader.
 //
 //	forstmt := "for" [ name [ "," name ] ":=" ] "range" arg block term
 //	block   := "{" { stmt } "}"
@@ -29,13 +28,14 @@ type rangeStmt struct {
 	body []stmt
 }
 
-// forRange reads a range loop after the for keyword.
+// forRange reads a range loop, once forLoop has sniffed the range
+// keyword in the header.
 func (p *Parser) forRange() (stmt, error) {
 	r := &rangeStmt{}
 	if !p.keyword("range") {
 		lhs, define, ok := p.assignList()
 		if !ok {
-			return stmt{}, fmt.Errorf("parse: for supports only the range form at offset %d", p.pos)
+			return stmt{}, fmt.Errorf("parse: for takes a range, a condition or three clauses at offset %d", p.pos)
 		}
 		if !define {
 			return stmt{}, fmt.Errorf("parse: a range loop declares its names with := at offset %d", p.pos)
@@ -44,7 +44,7 @@ func (p *Parser) forRange() (stmt, error) {
 			return stmt{}, fmt.Errorf("parse: a range loop binds at most two names at offset %d", p.pos)
 		}
 		if !p.keyword("range") {
-			return stmt{}, fmt.Errorf("parse: for supports only the range form at offset %d", p.pos)
+			return stmt{}, fmt.Errorf("parse: for takes a range, a condition or three clauses at offset %d", p.pos)
 		}
 		r.key = lhs[0]
 		if len(lhs) == 2 {
@@ -81,11 +81,11 @@ func (p *Parser) forRange() (stmt, error) {
 }
 
 // loopExit reads the rest of a break or continue statement: nothing.
-// Both must stand inside a range body, both exit the innermost loop
+// Both must stand inside a loop body, both exit the innermost loop
 // only, and a label is rejected by name rather than as a stray token.
 func (p *Parser) loopExit(kw string, s stmt) (stmt, error) {
 	if p.depth == 0 {
-		return stmt{}, fmt.Errorf("parse: %s is only allowed inside a range body (offset %d)", kw, p.pos)
+		return stmt{}, fmt.Errorf("parse: %s is only allowed inside a loop body (offset %d)", kw, p.pos)
 	}
 	if p.terminated() {
 		return s, nil

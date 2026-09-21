@@ -46,7 +46,7 @@ func TestParseRange(t *testing.T) {
 }
 
 // TestParseLoopExit pins break and continue: both parse only inside a
-// range body, close like any statement, and take no label.
+// loop body, close like any statement, and take no label.
 func TestParseLoopExit(t *testing.T) {
 	for name, src := range map[string]string{
 		"break":              `for range xs { break }`,
@@ -63,16 +63,15 @@ func TestParseLoopExit(t *testing.T) {
 	}
 
 	for name, tc := range map[string]struct{ src, want string }{
-		"break at top":      {`break`, "only allowed inside a range body"},
-		"continue at top":   {`continue`, "only allowed inside a range body"},
+		"break at top":      {`break`, "only allowed inside a loop body"},
+		"continue at top":   {`continue`, "only allowed inside a loop body"},
 		"break label":       {`for range xs { break out }`, "a label after break is not in the language"},
 		"continue label":    {`for range xs { continue out }`, "a label after continue is not in the language"},
-		"break after loop":  {`for range xs { poke() }; break`, "only allowed inside a range body"},
-		"break in an arm":   {`if ok { break }`, "only allowed inside a range body"},
-		"return in a body":  {`for range xs { return }`, "return cannot stand inside a range body"},
-		"var in a body":     {`for range xs { var u url.URL }`, "var declaration cannot stand inside a range body"},
-		"return in an arm":  {`for range xs { if ok { return } }`, "return cannot stand inside a range body"},
-		"not the range form": {`for poke() { }`, "only the range form"},
+		"break after loop":  {`for range xs { poke() }; break`, "only allowed inside a loop body"},
+		"break in an arm":   {`if ok { break }`, "only allowed inside a loop body"},
+		"return in a body":  {`for range xs { return }`, "return cannot stand inside a loop body"},
+		"var in a body":     {`for range xs { var u url.URL }`, "var declaration cannot stand inside a loop body"},
+		"return in an arm":  {`for range xs { if ok { return } }`, "return cannot stand inside a loop body"},
 		"assign form":        {`for i = range xs { poke() }`, "declares its names with :="},
 		"three names":        {`for a, b, c := range xs { poke() }`, "at most two names"},
 		"literal source":     {`for s := range "ab" { poke() }`, "cannot range over this expression"},
