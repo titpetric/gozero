@@ -11,10 +11,14 @@ import (
 //	stmt    := "var" name typeref term
 //	         | "return" [ arg ] term
 //	         | ifstmt
+//	         | forstmt
+//	         | "break" term
+//	         | "continue" term
 //	         | path "<-" arg term
 //	         | name ( "++" | "--" ) term
 //	         | [ name { "," name } ( ":=" | "=" ) ] rhs term
 //	ifstmt  := "if" cond block [ "else" ( ifstmt | block ) ] term
+//	forstmt := "for" [ name [ "," name ] ":=" ] "range" arg block term
 //	cond    := path | expr
 //	block   := "{" { stmt } "}"
 //	term    := ";" | EOL | EOF
@@ -42,6 +46,13 @@ type Parser struct {
 	// last token byte was consumed, which is what lets the end of a
 	// line close a statement the way a semicolon does.
 	nl bool
+	// hdr marks a range header, where a brace opens the body rather
+	// than a composite literal; parentheses lift the restriction.
+	hdr bool
+	// depth counts enclosing range bodies, so a statement kind a body
+	// cannot hold, and the two a body alone may hold, are decided
+	// where they are written.
+	depth int
 }
 
 // terminated consumes a statement end. The semicolon is a delimiter
@@ -171,6 +182,14 @@ type stmt struct {
 
 	// ifs is an if statement with its else chain, parser_if.go.
 	ifs *ifStmt
+
+	// rng is a range loop, "for x := range xs { ... }", and brk and
+	// cont are its two exits. All three are in parser_range.go; break
+	// and continue only stand inside a body, which is what keeps
+	// their control signals from escaping a loop.
+	rng  *rangeStmt
+	brk  bool
+	cont bool
 }
 
 // program is a parsed source unit.
@@ -222,6 +241,9 @@ func (p *Parser) Parse(src string) (*program, error) {
 
 func (p *Parser) stmt() (stmt, error) {
 	if p.keyword("var") {
+		if p.depth > 0 {
+			return stmt{}, fmt.Errorf("parse: a var declaration cannot stand inside a range body, declare the name before the loop (offset %d)", p.pos)
+		}
 		name := p.ident()
 		if name == "" {
 			return stmt{}, fmt.Errorf("parse: expected a name after var at offset %d", p.pos)
@@ -236,6 +258,9 @@ func (p *Parser) stmt() (stmt, error) {
 		return stmt{varName: name, varType: typ}, nil
 	}
 	if p.keyword("return") {
+		if p.depth > 0 {
+			return stmt{}, fmt.Errorf("parse: return cannot stand inside a range body, a loop's exits are break, an error and the execution context (offset %d)", p.pos)
+		}
 		s := stmt{ret: true}
 		p.skipSpace()
 		if p.terminated() {
@@ -269,6 +294,19 @@ func (p *Parser) stmt() (stmt, error) {
 	}
 	if p.keyword("else") {
 		return stmt{}, fmt.Errorf("parse: else without if at offset %d", p.pos)
+	}
+
+	if p.keyword("for") {
+		return p.forRange()
+	}
+	// break and continue only stand inside a range body, which is the
+	// guarantee that lets their signals travel the error return: a
+	// loop always encloses them, so a signal never reaches a caller.
+	if p.keyword("break") {
+		return p.loopExit("break", stmt{brk: true})
+	}
+	if p.keyword("continue") {
+		return p.loopExit("continue", stmt{cont: true})
 	}
 
 	// A name followed by "++" or "--" on the same line is a step
