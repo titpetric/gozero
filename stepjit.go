@@ -257,6 +257,15 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 		return nil, fmt.Errorf("a name is reassigned at a different type")
 	}
 
+	// An if statement declines by name until the structured node
+	// lands; without this the straight-line plan would silently drop
+	// the statement.
+	for i := range p.stmts {
+		if p.stmts[i].ifs != nil {
+			return nil, fmt.Errorf("an if statement is not in the table yet")
+		}
+	}
+
 	plan, err := planInline(p)
 	if err != nil {
 		return nil, err

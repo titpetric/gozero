@@ -3,6 +3,7 @@ package gozero
 import (
 	"fmt"
 	"reflect"
+	"strings"
 )
 
 // The multi-statement VM. A program is a list of calls whose results
@@ -77,6 +78,12 @@ type progCompiler struct {
 	slots    map[string]int
 	env      map[string]reflect.Type
 	declared map[string]reflect.Type
+	// branch counts enclosing if arms. Declarations are rejected
+	// inside one: the slot model is flat, so a := would leak its name
+	// past the closing brace with non-Go visibility. A return is
+	// allowed and raises errProgramReturn. See
+	// docs/design/conditions.md.
+	branch int
 }
 
 // checkName rejects a name that collides with a keyword or with a
@@ -84,7 +91,7 @@ type progCompiler struct {
 // could never be read back.
 func (pc *progCompiler) checkName(name string) error {
 	switch name {
-	case "dest", "true", "false", "nil", "var", "return":
+	case "dest", "true", "false", "nil", "var", "return", "if", "else":
 		return fmt.Errorf("compile: %s shadows a binding or keyword and cannot be assigned", name)
 	}
 	if pc.c.roots[name] {
@@ -135,13 +142,33 @@ func (pc *progCompiler) newSlot(name string, t reflect.Type) int {
 
 // compileStmts compiles one statement list into dst. The receiver
 // carries the shared slot and type state, so a nested statement list
-// compiles through exactly the code the top level does.
+// compiles through exactly the code the top level does; the branch
+// counter is what restricts an if arm.
 func (pc *progCompiler) compileStmts(list []stmt, dst *[]vmStmt) error {
 	c, p, slots, env := pc.c, pc.p, pc.slots, pc.env
 	checkName, checkDecl, checkNew, newSlot := pc.checkName, pc.checkDecl, pc.checkNew, pc.newSlot
 	prog := pc.prog
 	for si := range list {
 		s := list[si]
+
+		if pc.branch > 0 {
+			// Flat scope, the arm rule: a declaration inside an arm
+			// would leak its name past the brace, so every name an arm
+			// writes is declared before the if.
+			if s.varType != "" {
+				return fmt.Errorf("compile: a var inside an if arm is not allowed (flat scope), declare %s before the if", s.varName)
+			}
+			if s.define {
+				return fmt.Errorf("compile: := inside an if arm would leak %s past the brace (flat scope), declare it before the if and assign with =", strings.Join(s.lhs, ", "))
+			}
+		}
+
+		if s.ifs != nil {
+			if err := pc.compileIf(s.ifs, dst); err != nil {
+				return err
+			}
+			continue
+		}
 
 		if s.varType != "" {
 			t := pc.declared[s.varName]
@@ -341,8 +368,9 @@ func (pc *progCompiler) compileStmts(list []stmt, dst *[]vmStmt) error {
 	return nil
 }
 
-// assignStmts walks a statement list for the frame post-pass, so a
-// call anywhere in the list gets its window.
+// assignStmts walks a statement list for the frame post-pass. An if
+// statement descends into its condition and both arms, so a call
+// anywhere in the tree gets its window.
 func (p *vmProgram) assignStmts(stmts []vmStmt) {
 	for i := range stmts {
 		s := &stmts[i]
@@ -364,6 +392,11 @@ func (p *vmProgram) assignStmts(stmts []vmStmt) {
 		if s.send != nil {
 			p.assignArg(s.send.ch)
 			p.assignArg(s.send.val)
+		}
+		if s.ifs != nil {
+			p.assignArg(s.ifs.cond)
+			p.assignStmts(s.ifs.then)
+			p.assignStmts(s.ifs.els)
 		}
 	}
 }
