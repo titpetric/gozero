@@ -94,7 +94,7 @@ func newBenchFixtureRuntime(b *testing.B) *Runtime {
 		},
 		"json":    {"NewEncoder": json.NewEncoder},
 		"bytes":   {"NewBufferString": bytesNewBufferString},
-		"fmt":     {"Sprintf": fmt.Sprintf, "Sprint": fmt.Sprint},
+		"fmt":     {"Sprintf": fmt.Sprintf, "Sprint": fmt.Sprint, "Fprint": fmt.Fprint},
 		"strings": {"Fields": strings.Fields, "HasPrefix": strings.HasPrefix},
 		"path":    {"Join": path.Join},
 		"time":    {"Now": time.Now, "Since": time.Since},
