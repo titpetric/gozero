@@ -326,9 +326,49 @@ func (c *Compiler) compileArg(slots map[string]int, env map[string]reflect.Type,
 			return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, st, pt)
 		}
 		return &vmArg{kind: vaCall, sub: sub, typ: pt, iface: -1}, nil
+	case argAddr:
+		va, vt, err := c.addrArg(slots, env, a.path)
+		if err != nil {
+			return nil, fmt.Errorf("compile: %s argument %d: %w", name, pos+1, err)
+		}
+		if !vt.AssignableTo(pt) {
+			return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, vt, pt)
+		}
+		va.typ = pt
+		return va, nil
+
+	case argDeref:
+		src, st, err := c.pathValue(slots, env, a.path)
+		if err != nil {
+			return nil, fmt.Errorf("compile: %s argument %d: %w", name, pos+1, err)
+		}
+		da, dt, err := derefArg(src, st, joinPath(a.path))
+		if err != nil {
+			return nil, fmt.Errorf("compile: %s argument %d: %w", name, pos+1, err)
+		}
+		if !dt.AssignableTo(pt) {
+			return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, dt, pt)
+		}
+		da.typ = pt
+		return da, nil
+
 	case argPath:
 		slot, ok := slots[a.path[0]]
 		if !ok {
+			// Not a program name: the path may still name a value
+			// binding, which owns the whole dotted prefix the way a
+			// func binding does.
+			va, vt, found, err := c.varArg(a.path, false)
+			if err != nil {
+				return nil, fmt.Errorf("compile: %s argument %d: %w", name, pos+1, err)
+			}
+			if found {
+				if !vt.AssignableTo(pt) {
+					return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, vt, pt)
+				}
+				va.typ = pt
+				return va, nil
+			}
 			return nil, fmt.Errorf("compile: %s argument %d: %s is not a name bound by the program, so its fields are unknown", name, pos+1, a.path[0])
 		}
 		cur := &vmArg{kind: vaSlot, slot: slot, name: a.path[0], typ: env[a.path[0]], iface: -1}
@@ -361,6 +401,16 @@ func (c *Compiler) compileArg(slots map[string]int, env map[string]reflect.Type,
 	case argVar:
 		if a.str == "dest" {
 			return &vmArg{kind: vaDest, name: "dest", typ: pt, iface: -1}, nil
+		}
+		if va, vt, found, err := c.varArg([]string{a.str}, false); found || err != nil {
+			if err != nil {
+				return nil, fmt.Errorf("compile: %s argument %d: %w", name, pos+1, err)
+			}
+			if !vt.AssignableTo(pt) {
+				return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, vt, pt)
+			}
+			va.typ = pt
+			return va, nil
 		}
 		if slot, ok := slots[a.str]; ok {
 			st := env[a.str]

@@ -41,12 +41,21 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 	// bound compiles and then silently resolves the other way. Shadowing
 	// is rejected instead.
 	reserved := map[string]bool{"dest": true, "true": true, "false": true, "nil": true, "var": true, "return": true}
-	for name := range c.bindings {
+	reserve := func(name string) {
 		if i := strings.IndexByte(name, '.'); i > 0 {
 			reserved[name[:i]] = true
 		} else {
 			reserved[name] = true
 		}
+	}
+	for name := range c.bindings {
+		reserve(name)
+	}
+	// Value bindings share the namespace with funcs: a program name
+	// that shadowed os.Args could never read it back, the same reason
+	// a func binding reserves its root.
+	for name := range c.vars {
+		reserve(name)
 	}
 	checkName := func(name string) error {
 		if reserved[name] {
@@ -118,13 +127,48 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			continue
 		}
 
+		if s.derefLhs != nil {
+			vs, err := c.compileDerefSet(slots, env, s.derefLhs, s)
+			if err != nil {
+				return nil, err
+			}
+			p.stmts = append(p.stmts, vmStmt{varSet: vs})
+			continue
+		}
+
 		if s.fieldLhs != nil {
+			// A dotted target is a value binding when a prefix of it
+			// names one, and a field of a program name otherwise. The
+			// binding wins, the same precedence path resolution uses
+			// everywhere else.
+			if _, _, ok := c.varOf(s.fieldLhs); ok {
+				vs, err := c.compileVarSet(slots, env, s.fieldLhs, s)
+				if err != nil {
+					return nil, err
+				}
+				p.stmts = append(p.stmts, vmStmt{varSet: vs})
+				continue
+			}
 			fs, err := c.compileFieldSet(slots, env, s)
 			if err != nil {
 				return nil, err
 			}
 			p.stmts = append(p.stmts, vmStmt{fieldSet: fs})
 			continue
+		}
+
+		// A bare name on the left of "=" is a value binding when one
+		// is registered under it; every other bare name is a program
+		// slot and falls through.
+		if len(s.lhs) == 1 && !s.define {
+			if _, ok := c.vars[s.lhs[0]]; ok {
+				vs, err := c.compileVarSet(slots, env, s.lhs[:1], s)
+				if err != nil {
+					return nil, err
+				}
+				p.stmts = append(p.stmts, vmStmt{varSet: vs})
+				continue
+			}
 		}
 		if s.sendCh != nil {
 			sn, err := c.compileSend(slots, env, s)
@@ -310,6 +354,12 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 		if s.fieldSet != nil {
 			p.assignArg(s.fieldSet.val)
 		}
+		if s.varSet != nil {
+			p.assignArg(s.varSet.val)
+			if s.varSet.via != nil {
+				p.assignArg(s.varSet.via)
+			}
+		}
 		if s.retArg != nil {
 			p.assignArg(s.retArg)
 		}
@@ -352,7 +402,7 @@ func (p *vmProgram) assignArg(a *vmArg) {
 			p.addrTaken[root.slot] = true
 		}
 	}
-	for a.kind == vaField {
+	for a.kind == vaField || a.kind == vaDeref {
 		a = a.src
 	}
 	switch a.kind {
@@ -396,33 +446,11 @@ func (c *Compiler) compileFieldSet(slots map[string]int, env map[string]reflect.
 		t = f.Type
 	}
 
-	if s.lit != nil {
-		if s.lit.kind == argStruct {
-			sa, st, err := c.compileStructLit(slots, env, *s.lit)
-			if err != nil {
-				return nil, fmt.Errorf("compile: %s: %w", fs.field, err)
-			}
-			if !st.AssignableTo(t) {
-				return nil, fmt.Errorf("compile: %s: cannot assign %s to %s", fs.field, st, t)
-			}
-			fs.val = sa
-			return fs, nil
-		}
-		v, err := literalValue(t, *s.lit)
-		if err != nil {
-			return nil, fmt.Errorf("compile: %s: %w", fs.field, err)
-		}
-		fs.val = &vmArg{kind: vaConst, val: v, typ: t, iface: -1}
-		return fs, nil
-	}
-	call, rt, err := c.compileExpr(slots, env, s.call)
+	val, err := c.assignedValue(slots, env, fs.field, t, s)
 	if err != nil {
 		return nil, err
 	}
-	if rt == nil || !rt.AssignableTo(t) {
-		return nil, fmt.Errorf("compile: %s: cannot assign %s to %s", fs.field, rt, t)
-	}
-	fs.val = &vmArg{kind: vaCall, sub: call, typ: t, iface: -1}
+	fs.val = val
 	return fs, nil
 }
 

@@ -33,14 +33,16 @@ import (
 type vmArgKind int
 
 const (
-	vaConst vmArgKind = iota // a literal, or an omitted argument's zero value
-	vaSlot                   // a name bound earlier in the program
-	vaStack                  // a name read from the caller's stack map
-	vaDest                   // the pointer Scan was handed
-	vaCall                   // a nested call
-	vaField                  // a struct field read off another value
-	vaCtx                    // the execution context, auto-filled
-	vaStruct                 // a composite literal, built fresh per evaluation
+	vaConst  vmArgKind = iota // a literal, or an omitted argument's zero value
+	vaSlot                    // a name bound earlier in the program
+	vaStack                   // a name read from the caller's stack map
+	vaDest                    // the pointer Scan was handed
+	vaCall                    // a nested call
+	vaField                   // a struct field read off another value
+	vaCtx                     // the execution context, auto-filled
+	vaStruct                  // a composite literal, built fresh per evaluation
+	vaVar                     // a value binding registered with BindVar
+	vaDeref                   // the value behind a pointer, *p
 )
 
 var ctxType = reflect.TypeFor[context.Context]()
@@ -88,6 +90,15 @@ type vmArg struct {
 	// addressable, matching Go's rule that a variable has an address
 	// and the result of a call does not.
 	addrOf bool
+
+	// vaVar: varv is the bound value, settable when the host passed a
+	// pointer to BindVar. mutable carries that through to the
+	// statement compiler, which is the only place it changes an
+	// answer. A vaVar read copies out of varv the way any argument
+	// copies, so a callee never receives the address of the host's
+	// variable unless the program wrote &.
+	varv    reflect.Value
+	mutable bool
 
 	// vaStruct: styp is the struct type the literal builds, addr marks
 	// the &T{} form, and elems are the field writes. The value is built
@@ -161,6 +172,10 @@ type vmStmt struct {
 
 	// fieldSet writes a value through a field: req.Method = "POST".
 	fieldSet *vmFieldSet
+
+	// varSet writes a value binding, "os.Args = xs", or writes
+	// through a pointer, "*p = v".
+	varSet *vmVarSet
 
 	// recv is a channel receive, its value and ok slots in out; send
 	// is a channel send. Both in vm_chan.go.
@@ -279,6 +294,12 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 		}
 		if s.fieldSet != nil {
 			if err := s.fieldSet.apply(ctx, slots, frame, ifaces, stack, dest); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if s.varSet != nil {
+			if err := s.varSet.apply(ctx, slots, frame, ifaces, stack, dest); err != nil {
 				return nil, err
 			}
 			continue
@@ -445,6 +466,29 @@ func (a *vmArg) get(ctx context.Context, slots, frame []reflect.Value, ifaces []
 			return pv, nil
 		}
 		return sv, nil
+	case vaVar:
+		if a.addrOf {
+			// Settability was proved when the program compiled, so
+			// reaching here with a value binding is a compiler bug
+			// rather than a program error.
+			if !a.varv.CanAddr() {
+				return reflect.Value{}, fmt.Errorf("exec: %s is not addressable", a.name)
+			}
+			return a.varv.Addr(), nil
+		}
+		return a.varv, nil
+	case vaDeref:
+		v, err := a.src.get(ctx, slots, frame, ifaces, stack, dest)
+		if err != nil {
+			return reflect.Value{}, err
+		}
+		if v.Kind() != reflect.Pointer {
+			return reflect.Value{}, fmt.Errorf("exec: cannot dereference %s", v.Type())
+		}
+		if v.IsNil() {
+			return reflect.Value{}, fmt.Errorf("exec: nil pointer dereference reading *%s", a.name)
+		}
+		return v.Elem(), nil
 	case vaDest:
 		if dest == nil {
 			return reflect.Zero(a.typ), fmt.Errorf("exec: dest is only set by Scan")

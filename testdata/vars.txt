@@ -1,0 +1,28 @@
+// Value bindings. A name BindVar registered reads like any other, and
+// is writable only when the host bound it through Mutable.
+
+// Reading an immutable binding: a constant and a sentinel.
+assert.Equal(tb, "3600", fmt.Sprintf("%d", seconds(time.Hour)))
+assert.Equal(tb, "EOF", message(io.EOF))
+
+// Reading a mutable binding. The name is the variable, not a pointer
+// to it, so this is a []string.
+assert.Equal(tb, "prog", first(os.Args))
+assert.Equal(tb, "2", fmt.Sprintf("%d", argc(os.Args)))
+
+// & produces the pointer a *T parameter wants. Go's rule, spelled the
+// way Go spells it: nothing auto-references an argument.
+replace(&os.Args, "rewritten")
+assert.Equal(tb, "rewritten", first(os.Args))
+assert.Equal(tb, "1", fmt.Sprintf("%d", argc(os.Args)))
+
+// Assignment writes the host's variable directly.
+cursor = 41
+bump(&cursor)
+assert.Equal(tb, "42", fmt.Sprintf("%d", cursor))
+
+// * reads through a pointer held by a program name.
+p := ptrTo(7)
+assert.Equal(tb, "7", fmt.Sprintf("%d", *p))
+*p = 8
+assert.Equal(tb, "8", fmt.Sprintf("%d", *p))

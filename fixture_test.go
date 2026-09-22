@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fixtureCtxKey struct{}
@@ -61,6 +63,36 @@ func fixtureRuntime(t *testing.T) *Runtime {
 	// with headroom, so the fixture's sends never block.
 	if err := rt.Bind("chanOf", chanOf); err != nil {
 		t.Fatal(err)
+	}
+	// The value bindings the vars fixture reads and writes. argv and
+	// cursor are per-runtime, so the fixture's writes are visible to it
+	// and to nothing else; time.Hour and io.EOF are the immutable
+	// case, a constant and a sentinel that a program may read and not
+	// replace.
+	argv := []string{"prog", "-v"}
+	cursor := 0
+	for name, v := range map[string]any{
+		"os.Args":   Mutable(&argv),
+		"cursor":    Mutable(&cursor),
+		"time.Hour": time.Hour,
+		"io.EOF":    io.EOF,
+	} {
+		if err := rt.BindVar(name, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, fn := range map[string]any{
+		"first":   func(v []string) string { return v[0] },
+		"argc":    func(v []string) int { return len(v) },
+		"replace": func(p *[]string, s string) { *p = []string{s} },
+		"bump":    func(p *int) { *p++ },
+		"ptrTo":   func(n int) *int { return &n },
+		"seconds": func(d time.Duration) int64 { return int64(d / time.Second) },
+		"message": func(e error) string { return e.Error() },
+	} {
+		if err := rt.Bind(name, fn); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return rt
 }

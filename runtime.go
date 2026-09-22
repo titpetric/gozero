@@ -45,10 +45,25 @@ func (r *Runtime) SetLogger(l *slog.Logger) {
 func NewRuntime() *Runtime {
 	types := predeclared()
 	return &Runtime{
-		compiler: Compiler{bindings: map[string]binding{}, types: types},
-		cache:    map[string]CompiledFunc{},
-		types:    types,
+		compiler: Compiler{
+			bindings: map[string]binding{},
+			vars:     map[string]varBinding{},
+			types:    types,
+		},
+		cache: map[string]CompiledFunc{},
+		types: types,
 	}
+}
+
+// sortedNames returns a map's keys in order, so a failure part way
+// through a scope reports the same entry on every run.
+func sortedNames[V any](m map[string]V) []string {
+	names := make([]string, 0, len(m))
+	for name := range m {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // Bind registers a Go function under a name, e.g.
@@ -88,12 +103,7 @@ func (r *Runtime) Bind(name string, fn any) error {
 // on every run. The first failure stops the loop; entries already bound
 // stay bound.
 func (r *Runtime) BindScope(prefix string, fns map[string]any) error {
-	names := make([]string, 0, len(fns))
-	for name := range fns {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
+	for _, name := range sortedNames(fns) {
 		if err := r.Bind(prefix+"."+name, fns[name]); err != nil {
 			return err
 		}

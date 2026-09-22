@@ -99,17 +99,33 @@ func (p *Parser) arg() (arg, error) {
 	case c == '-' || (c >= '0' && c <= '9'):
 		return p.numberLit()
 	case c == '&':
-		// & only prefixes a composite literal: there are no other
-		// addressable expressions in the grammar.
+		// & prefixes a composite literal, or takes the address of a
+		// name, a field of one, or a value binding. Which one it is
+		// shows at the brace.
 		p.pos++
+		p.nl = false
 		path, err := p.path()
 		if err != nil {
 			return arg{}, err
 		}
-		if !p.consume('{') {
-			return arg{}, fmt.Errorf("parse: expected a composite literal after '&' at offset %d", p.pos)
+		if p.consume('{') {
+			return p.composite(path, true)
 		}
-		return p.composite(path, true)
+		return arg{kind: argAddr, path: path}, nil
+	case c == '*':
+		// *p reads through a pointer. The operand is a name or a
+		// field of one; *f() is out because a call's result has no
+		// address and nothing in the grammar needs it.
+		p.pos++
+		p.nl = false
+		path, err := p.path()
+		if err != nil {
+			return arg{}, fmt.Errorf("parse: expected a name after '*' at offset %d", p.pos)
+		}
+		if p.peek() == '(' {
+			return arg{}, fmt.Errorf("parse: cannot dereference a call result at offset %d", p.pos)
+		}
+		return arg{kind: argDeref, path: path}, nil
 	default:
 		save := p.pos
 		path, err := p.path()
