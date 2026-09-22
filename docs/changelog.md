@@ -7,6 +7,54 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-09-22 00:00 +02:00: value bindings, and the two reference operators
+
+`Bind` carries funcs, so data had no way into a program except as a
+literal or through a nullary getter, at the cost of a call per read.
+`Runtime.BindVar` registers a value under a name, read in argument
+position like any other and type-checked against the parameter when
+the program compiles: after `BindVar("time.Hour", time.Hour)` a
+binding taking a `time.Duration` accepts it and one taking `int64`
+rejects it.
+
+Whether a program may write the binding is stated at the call site.
+`BindVar("os.Args", os.Args)` is a snapshot and assigning to it is a
+compile error; `BindVar("os.Args", Mutable(&os.Args))` aliases the
+host's variable and `os.Args = xs` lands in it. `Mutable` takes the
+address rather than the value because an address is the only thing
+that can alias, and it returns a `Ref` marker rather than a plain
+pointer because an `any` erases the interface it came from:
+`reflect.ValueOf(io.EOF)` is a `*errors.errorString`, so reading
+pointerness as intent would have bound `io.EOF` as a mutable
+`errors.errorString`. `Ptr` is the generic address-of helper for
+making a fresh cell to bind.
+
+The shallow copy is Go's. An immutable binding of a slice or a map
+copies the header, so the elements behind it stay shared and a
+binding that writes them writes host memory; only rebinding the name
+is blocked.
+
+With data in the language, the two reference operators follow.
+`&name` takes the address of a program name, a field of one, or a
+mutable value binding, and `*p` reads through a pointer; `*p = v`
+writes through one. Both follow Go's addressability rule rather than
+softening it: an immutable binding has no address, a value never
+fills a `*T` parameter and a pointer never fills a `T` one. Nothing
+auto-references an argument, which is also Go - the one implicit
+address gozero takes is still the receiver of a pointer-method call.
+
+`gozero.Delete(m, key)` removes a key from a map held in an `any`,
+which the builtin cannot do once the map has been through an
+interface. The common key shapes are type-asserted and the rest goes
+through reflect; a missing key and a nil map are no-ops, as in Go.
+
+Reading a value binding reaches the direct tier as one load from the
+binding's fixed address, with no frame slot and no boxing. Writing
+one does not yet: `planInline` refuses the statement so the program
+falls back to the reflect evaluator whole, rather than dropping the
+write. `testdata/vars.txt` runs the surface end to end and
+`bindvar_test.go` pins the rules.
+
 ## 2026-09-10 16:58 +02:00: argument pooling under the binding contract
 
 Arguments are borrowed. A binding receives values that are valid for

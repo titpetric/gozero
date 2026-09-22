@@ -22,22 +22,26 @@ program := { stmt }
 stmt    := "var" name typeref term
          | "return" [ arg ] term
          | path "<-" arg term
+         | "*" path "=" rhs term
          | [ name { "," name } ( ":=" | "=" ) ] rhs term
 term    := ";" | EOL | EOF
-rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv
+rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv | addr | deref
 typeref := { "*" | "[]" | "chan" | "chan<-" | "<-chan" } path
 expr    := path "(" [ args ] ")" { "." ident "(" [ args ] ")" }
 path    := ident { "." ident }
 args    := arg { "," arg }
-arg     := string | number | path | expr | composite | recv | path "..."
+arg     := string | number | path | expr | composite | recv | addr | deref | path "..."
+addr    := "&" path
+deref   := "*" path
 recv    := "<-" ( path | expr )
 composite := [ "&" ] path "{" [ elem { "," elem } [ "," ] ] "}"
 elem    := [ ident ":" ] arg
 ```
 
-The channel arrow is the only operator. A value is a literal, a
-name, a field read, a composite literal, a receive, or the result of
-a call; a condition, a loop or an arithmetic expression is a Go
+The channel arrow and the two reference operators are the only
+operators. A value is a literal, a name, a field read, a composite
+literal, a receive, an address, a pointer read, or the result of a
+call; a condition, a loop or an arithmetic expression is a Go
 function the host binds ([design/](design/) records why). The end of
 a line closes a statement; the semicolon is a delimiter between
 statements sharing one, so both spellings below are the same
@@ -465,6 +469,82 @@ done <- u.Host
 `select`, `range` over a channel and `go` remain outside the
 language; [design/channels.md](design/channels.md) records why they
 decompose onto conditions, loops and closures.
+
+## Value bindings and references
+
+`Bind` registers funcs; `BindVar` registers data. A value binding is
+read in argument position like any other name and carries the static
+type it was bound with, so the parameter check happens when the
+program compiles:
+
+```go
+rt.BindVar("time.Hour", time.Hour)
+rt.BindVar("io.EOF", io.EOF)
+rt.BindVar("os.Args", gozero.Mutable(&os.Args))
+```
+
+`Mutable` is what makes a binding writable, and it takes the address
+because an address is the only thing that can alias:
+`Mutable(os.Args)` would hand over a copy, and a write to the copy
+reaches nothing the host reads. A binding registered without it is a
+snapshot, and both assigning to it and taking its address are
+compile errors, because each would write a copy nobody reads. The
+shallow copy is Go's: a slice or a map bound by value still shares
+its elements with the host.
+
+<table>
+<tr>
+<th>go</th>
+</tr>
+<tr>
+<td>
+
+```go
+first := os.Args[0]
+os.Args = []string{"rewritten"}
+sort.Strings(os.Args)
+```
+
+</td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
+<td>
+
+```go
+first := head(os.Args)
+os.Args = rewritten()
+sort.Strings(os.Args)
+```
+
+</td>
+</tr>
+</table>
+
+`&` and `*` are Go's, with Go's rules and no softening of them.
+`&name` takes the address of a program name, a field of one, or a
+mutable value binding; `*p` reads through a pointer and `*p = v`
+writes through one. A value never fills a `*T` parameter and a
+pointer never fills a `T` one, so a binding that means to mutate its
+argument is called the way it is in Go:
+
+```go
+replace(&os.Args, "rewritten")
+p := ptrTo(7)
+n := *p
+*p = 8
+```
+
+Nothing auto-references an argument. The one address the compiler
+takes implicitly is the receiver of a pointer-method call, which is
+the only place Go takes one too: `o := f(); o.Bump()` addresses `o`,
+and `Mutate(o)` against a `*T` parameter is a compile error until it
+is written `Mutate(&o)`.
+
+The program in [`testdata/vars.txt`](../testdata/vars.txt) runs the
+whole surface.
 
 ## The stack and dest
 

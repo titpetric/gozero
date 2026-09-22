@@ -65,6 +65,24 @@ box; a plain interface assignment copies only the box's address and
 is not a copy in this sense. String and scalar parameters carry
 their values directly and need no copy.
 
+## value binding
+
+Data the host registers under a name with `BindVar`, as opposed to
+the func a `binding` holds. A program reads it in argument position
+and it carries the static type it was bound with, so the parameter
+check happens when the program compiles. A value binding is
+immutable unless the host wrapped its address in `Mutable`.
+
+## mutable binding
+
+A value binding the host registered as `Mutable(&v)`, which stores
+the host's variable as settable storage rather than a copy. A
+program may assign to it and take its address; an immutable binding
+rejects both at compile time, because writing a copy nobody reads is
+a silent wrong answer rather than an error. The distinction is about
+the variable itself: a slice or a map bound by value still shares
+its elements with the host, the same shallow copy Go makes anywhere.
+
 ## direct-call tier
 
 The fastest of the three execution tiers. A bound function whose
