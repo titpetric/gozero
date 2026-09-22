@@ -46,9 +46,13 @@ func (r *Runtime) SetLogger(l *slog.Logger) {
 func NewRuntime() *Runtime {
 	types := predeclared()
 	return &Runtime{
-		compiler: Compiler{bindings: map[string]binding{}, types: types},
-		cache:    map[string]CompiledFunc{},
-		types:    types,
+		compiler: Compiler{
+			bindings: map[string]binding{},
+			vars:     map[string]varBinding{},
+			types:    types,
+		},
+		cache: map[string]CompiledFunc{},
+		types: types,
 	}
 }
 

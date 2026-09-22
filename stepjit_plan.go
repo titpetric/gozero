@@ -122,6 +122,13 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 			stmts = append(stmts, plannedStmt{fieldSet: s.fieldSet, out: -1})
 			continue
 		}
+		if s.varSet != nil {
+			// A write to a value binding has no node yet. Refusing the
+			// program sends it to the reflect evaluator whole, which
+			// is the fallback; falling through here would drop the
+			// statement and lose the write silently.
+			return nil, fmt.Errorf("a write to a value binding is not in the table")
+		}
 		if s.lit.IsValid() {
 			out := -1
 			if len(s.out) > 0 {
