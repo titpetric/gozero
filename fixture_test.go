@@ -18,6 +18,15 @@ import (
 
 type fixtureCtxKey struct{}
 
+// fixtureCounter and fixtureCfg are the receivers the vars fixture
+// calls: a pointer-receiver method on a bound value, and a func-typed
+// field called through.
+type fixtureCounter struct{ N int }
+
+func (c *fixtureCounter) Bump() { c.N++ }
+
+type fixtureCfg struct{ Fn func() string }
+
 // fixtureRuntime binds the standard library surface the fixtures use,
 // plus the assert bindings. tb travels on the stack, so a fixture
 // makes its own test assertions: assert.Equal(tb, want, got).
@@ -78,6 +87,8 @@ func fixtureRuntime(t *testing.T) *Runtime {
 		"time.Hour": time.Hour,
 		"io.EOF":    io.EOF,
 		"frozen":    []string{"kept"},
+		"counter":   fixtureCounter{N: 1},
+		"cfg":       fixtureCfg{Fn: func() string { return "from a field" }},
 		"append":    Append,
 		"first":     func(v []string) string { return v[0] },
 		"second":    func(v []string) string { return v[1] },

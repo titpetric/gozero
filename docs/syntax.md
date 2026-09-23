@@ -484,9 +484,21 @@ rt.Bind("io.EOF", io.EOF)         // a value
 rt.Bind("os.Args", &os.Args)      // an address
 ```
 
-A value binding is also a receiver: it owns the longest dotted
-prefix of a path the way a func binding does, so `Bind("u", u)` with
-a `*url.URL` makes `u.Path` and `u.String()` both compile.
+A value binding is also a receiver, with Go's method sets in full:
+it owns the longest dotted prefix of a path the way a func binding
+does, so `Bind("u", u)` with a `*url.URL` makes `u.Path` and
+`u.String()` both compile, and a pointer-receiver method is callable
+on a bound value because a bound name is addressable. The address is
+the per-run cell, so the mutation is the program's.
+
+A callee can be a value too: a func-typed name, a func-typed field,
+or a func bound under a name.
+
+```go
+f := getFn()
+s := f()
+t := cfg.Fn()
+```
 
 Whether a program reaches the host is Go's rule, and the `&` at the
 `Bind` call site is the whole of the opt-in. A value is copied in,

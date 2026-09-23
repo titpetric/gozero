@@ -17,11 +17,23 @@ A host could not expose `time.Hour`, `io.EOF` or `os.Args` at all.
 read in argument position like any other name and type-checked
 against the parameter when the program compiles, so after
 `Bind("time.Hour", time.Hour)` a binding taking a `time.Duration`
-accepts it and one taking `int64` rejects it. A value binding is
-also a receiver: it owns the longest dotted prefix of a path the way
-a func binding does, so `Bind("u", u)` with a `*url.URL` makes both
-`u.Path` and `u.String()` compile. `BindScope` carries values for
-free, since it is `Bind` in a loop.
+accepts it and one taking `int64` rejects it. `BindScope` carries
+values for free, since it is `Bind` in a loop.
+
+A value binding is also a receiver, with Go's method sets in full.
+It owns the longest dotted prefix of a path the way a func binding
+does, so `Bind("u", u)` with a `*url.URL` makes both `u.Path` and
+`u.String()` compile; a pointer-receiver method is callable on a
+bound value, because a bound name is addressable the way a Go
+variable is. The address is the per-run cell, so the mutation is the
+program's and not the host's.
+
+A callee can be a value rather than a binding: a func-typed name, a
+func-typed field of one, or a func bound under a name. `f := getFn()`
+then `f()` compiles, and so does `cfg.Fn()`. The signature is static
+either way, so the arguments are checked when the program compiles
+and only the func value is read per run. The call bridges, because
+there is no funcval to cast at compile time.
 
 Whether a program reaches the host is Go's rule and needs no API for
 it. A value is copied in, so the name is the program's own for the

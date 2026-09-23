@@ -23,7 +23,12 @@ func (c *jitCompiler) exprNode(call *vmCall) (node, error) {
 
 // directNode is the in-table compilation.
 func (c *jitCompiler) directNode(call *vmCall) (node, error) {
-	ft := call.fn.Type()
+	if !call.fn.IsValid() {
+		// The callee is a value the program reads per run, so there
+		// is no funcval to cast at compile time.
+		return node{}, fmt.Errorf("%s: the callee is a value, not a binding", call.name)
+	}
+	ft := call.ft
 	// A variadic function is ABI-identical to the same signature with
 	// the variadic parameter as a plain slice: the callee receives the
 	// slice header either way, verified in TestVariadicSliceABI. A
@@ -78,92 +83,6 @@ func (c *jitCompiler) directNode(call *vmCall) (node, error) {
 	return n, nil
 }
 
-// packNode builds the variadic slice from the element nodes, for the
-// element types worth special-casing: []any and []string cover the
-// printf and assert families. Anything else bridges. The slice is
-// allocated per call because the callee may keep it, which is the same
-// escape the Go compiler assumes at a call site whose arguments escape.
-func (c *jitCompiler) packNode(call *vmCall, st reflect.Type, elems []*vmArg) (node, error) {
-	et := st.Elem()
-	cl := layoutOf(et)
-	if cl == lBad {
-		return node{}, fmt.Errorf("a variadic element of type %s has no layout class", et)
-	}
-	nodes := make([]node, len(elems))
-	for i, a := range elems {
-		n, err := c.argNode(a, et, cl)
-		if err != nil {
-			return node{}, err
-		}
-		nodes[i] = n
-	}
-	// The binding contract lets the pack reuse a pooled backing
-	// array instead of allocating one per call; the slice the callee
-	// receives is dead when the call returns, and finish repools it.
-	// takeBacking is nil for an ordinary call, and the pack allocates
-	// fresh.
-	var takeBacking func(fr unsafe.Pointer) unsafe.Pointer
-	if site, ok := c.packOf[call]; ok && len(nodes) > 0 {
-		off := c.offs[site.field]
-		takeBacking = func(fr unsafe.Pointer) unsafe.Pointer {
-			block := site.take()
-			*(*unsafe.Pointer)(unsafe.Add(fr, off)) = block
-			return block
-		}
-	}
-	switch {
-	case et.Kind() == reflect.Interface && et.NumMethod() == 0:
-		getters := make([]nodeI, len(nodes))
-		for i, n := range nodes {
-			getters[i] = n.I
-		}
-		take := takeBacking
-		return node{class: lSlice, L: func(fr unsafe.Pointer, ctx context.Context, stk map[string]any, d any) (sliceHdr, error) {
-			var out []any
-			if take != nil {
-				h := sliceHdr{ptr: take(fr), len: len(getters), cap: len(getters)}
-				out = *(*[]any)(unsafe.Pointer(&h))
-			} else {
-				out = make([]any, len(getters))
-			}
-			for i, g := range getters {
-				pair, err := g(fr, ctx, stk, d)
-				if err != nil {
-					return sliceHdr{}, err
-				}
-				// A typed pointer store into the slice element keeps
-				// the write barrier.
-				*(*ifacePair)(unsafe.Pointer(&out[i])) = pair
-			}
-			return *(*sliceHdr)(unsafe.Pointer(&out)), nil
-		}}, nil
-	case et.Kind() == reflect.String:
-		getters := make([]nodeS, len(nodes))
-		for i, n := range nodes {
-			getters[i] = n.S
-		}
-		take := takeBacking
-		return node{class: lSlice, L: func(fr unsafe.Pointer, ctx context.Context, stk map[string]any, d any) (sliceHdr, error) {
-			var out []string
-			if take != nil {
-				h := sliceHdr{ptr: take(fr), len: len(getters), cap: len(getters)}
-				out = *(*[]string)(unsafe.Pointer(&h))
-			} else {
-				out = make([]string, len(getters))
-			}
-			for i, g := range getters {
-				v, err := g(fr, ctx, stk, d)
-				if err != nil {
-					return sliceHdr{}, err
-				}
-				out[i] = v
-			}
-			return *(*sliceHdr)(unsafe.Pointer(&out)), nil
-		}}, nil
-	}
-	return node{}, fmt.Errorf("packing []%s is not in the table", et)
-}
-
 // bridgeNode compiles a call to one reflect.Value.Call, its arguments
 // resolved against the same frame the direct calls use. A slot argument
 // is read in place through reflect.NewAt, so the bridge shares state
@@ -180,6 +99,15 @@ func (c *jitCompiler) bridgeNode(call *vmCall) (node, error) {
 	}
 
 	fn, name, errIdx, spread := call.fn, call.name, call.errIdx, call.spread
+	// A dynamic callee is read like any other argument.
+	var calleeOf func(unsafe.Pointer, context.Context, map[string]any, any) (reflect.Value, error)
+	if call.fnArg != nil {
+		g, err := c.bridgeArg(call.fnArg)
+		if err != nil {
+			return node{}, err
+		}
+		calleeOf = g
+	}
 	invoke := func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) ([]reflect.Value, error) {
 		args := make([]reflect.Value, len(getters))
 		for i, g := range getters {
@@ -188,6 +116,20 @@ func (c *jitCompiler) bridgeNode(call *vmCall) (node, error) {
 				return nil, err
 			}
 			args[i] = v
+		}
+		fn := fn
+		if calleeOf != nil {
+			v, err := calleeOf(fr, ctx, st, d)
+			if err != nil {
+				return nil, err
+			}
+			if v.Kind() != reflect.Func {
+				return nil, fmt.Errorf("exec: %s: %s is not a func", name, v.Type())
+			}
+			if v.IsNil() {
+				return nil, fmt.Errorf("exec: %s: the func is nil", name)
+			}
+			fn = v
 		}
 		var out []reflect.Value
 		if spread {

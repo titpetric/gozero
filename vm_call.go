@@ -62,9 +62,6 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 			if !found {
 				return nil, nil, fmt.Errorf("compile: unknown binding %q", joinPath(e.path))
 			}
-			if len(rest) == 0 && len(e.chain) == 0 {
-				return nil, nil, fmt.Errorf("compile: %s is a value, not a call", joinPath(e.path))
-			}
 			base := len(e.path) - len(rest)
 			recv = &vmArg{
 				kind: vaVar, name: joinPath(e.path[:base]), varv: vb.val,
@@ -72,13 +69,28 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 			}
 			currType = vb.val.Type()
 			methods = rest
+			if len(rest) == 0 && len(e.chain) == 0 {
+				// The name itself is the callee: a func bound as a
+				// value, reached through the value registry rather
+				// than the func one.
+				call, err := c.callThrough(slots, env, recv, currType, joinPath(e.path), e.args)
+				if err != nil {
+					return nil, nil, err
+				}
+				return call, c.resultType(call, 0), nil
+			}
 			break
 		}
-		recv = &vmArg{kind: vaSlot, slot: slot, typ: env[e.path[0]], iface: -1}
+		recv = &vmArg{kind: vaSlot, slot: slot, name: e.path[0], typ: env[e.path[0]], iface: -1}
 		currType = env[e.path[0]]
 		methods = e.path[1:]
 		if len(methods) == 0 && len(e.chain) == 0 {
-			return nil, nil, fmt.Errorf("compile: %s is a value, not a call", e.path[0])
+			// "f()" where f is a name holding a func.
+			call, err := c.callThrough(slots, env, recv, currType, e.path[0], e.args)
+			if err != nil {
+				return nil, nil, err
+			}
+			return call, c.resultType(call, 0), nil
 		}
 	}
 
@@ -154,6 +166,22 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 		if !ok {
 			return nil, nil, fmt.Errorf("compile: %s has no method or field %s", currType, l.name)
 		}
+		if f.Type.Kind() == reflect.Func && last(links, l) {
+			// A func-typed field is a callee, not a receiver: the
+			// value is read out of the struct and called through.
+			fv := &vmArg{kind: vaField, src: recv, index: f.Index, deref: deref, typ: f.Type, iface: -1}
+			call, err := c.callThrough(slots, env, fv, f.Type, currType.String()+"."+l.name, l.args)
+			if err != nil {
+				return nil, nil, err
+			}
+			curr, currType = call, c.resultType(call, 0)
+			continue
+		}
+		if last(links, l) {
+			// The source wrote parentheses, so a field that is not a
+			// func is the mistake rather than the chain being short.
+			return nil, nil, fmt.Errorf("compile: %s.%s is a %s field, not a method", currType, l.name, f.Type)
+		}
 		if len(l.args) > 0 {
 			return nil, nil, fmt.Errorf("compile: %s.%s is a field, not a method", currType, l.name)
 		}
@@ -170,22 +198,47 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 	return curr, currType, nil
 }
 
-// addrOf turns a receiver into the address of the value it names. Only
-// a name or a field chain rooted in one qualifies: those are variables
-// and have an address, where a call's result does not, which is Go's
-// addressability rule for pointer-receiver calls.
+// last reports whether l is the final link, which is the only one the
+// source wrote arguments for and so the only one a func-typed value
+// is called through rather than read as a receiver.
+func last(links []link, l link) bool {
+	return len(links) > 0 && links[len(links)-1].name == l.name
+}
+
+// callThrough compiles a call whose callee is a value rather than a
+// binding: a func-typed name, value binding, or field. The signature
+// is static, so the arguments are checked exactly as a call to a
+// binding checks them; only the func value itself is read per run.
+func (c *Compiler) callThrough(slots map[string]int, env map[string]reflect.Type, fv *vmArg, ft reflect.Type, name string, src []arg) (*vmCall, error) {
+	if ft == nil || ft.Kind() != reflect.Func {
+		return nil, fmt.Errorf("compile: %s is a value, not a call", name)
+	}
+	if ft.IsVariadic() {
+		return nil, fmt.Errorf("compile: %s: a variadic func value is not callable yet", name)
+	}
+	return c.compileCallOf(slots, env, reflect.Value{}, fv, ft, name, nil, src)
+}
+
+// addrOf turns a receiver into the address of the value it names. A
+// name, a value binding, or a field chain rooted in either qualifies:
+// those are variables and have an address, where a call's result does
+// not, which is Go's addressability rule for pointer-receiver calls.
+//
+// A value binding's address is the address of the program's per-run
+// cell, so a pointer method mutates the copy and not the host, the
+// same storage "&name" and "name = v" reach.
 func addrOf(t reflect.Type, a *vmArg) (*vmArg, error) {
 	root := a
 	for root.kind == vaField {
 		root = root.src
 	}
-	if root.kind != vaSlot {
+	if root.kind != vaSlot && root.kind != vaVar {
 		return nil, fmt.Errorf("the value is not addressable, bind it to a name first")
 	}
 	// Built fresh rather than copied: vmArg carries an atomic cache
 	// that must not be copied.
 	return &vmArg{
-		kind: a.kind, slot: a.slot, name: a.name,
+		kind: a.kind, slot: a.slot, name: a.name, varv: a.varv,
 		src: a.src, index: a.index, deref: a.deref,
 		addrOf: true, typ: reflect.PointerTo(t), iface: -1,
 	}, nil
@@ -225,9 +278,15 @@ func ifaceMethodFunc(t reflect.Type, m reflect.Method) reflect.Value {
 // receiver for a method call and fills parameter 0; src holds the
 // arguments written in the source, which fill the parameters after it.
 func (c *Compiler) compileCall(slots map[string]int, env map[string]reflect.Type, fn reflect.Value, name string, recv *vmArg, src []arg) (*vmCall, error) {
-	ft := fn.Type()
+	return c.compileCallOf(slots, env, fn, nil, fn.Type(), name, recv, src)
+}
 
-	call := &vmCall{fn: fn, name: name, errIdx: -1}
+// compileCallOf is compileCall with the callee split from its
+// signature, so a call through a func value checks its arguments the
+// same way a call to a binding does. Exactly one of fn and fnArg is
+// set; ft is the signature either way.
+func (c *Compiler) compileCallOf(slots map[string]int, env map[string]reflect.Type, fn reflect.Value, fnArg *vmArg, ft reflect.Type, name string, recv *vmArg, src []arg) (*vmCall, error) {
+	call := &vmCall{fn: fn, fnArg: fnArg, ft: ft, name: name, errIdx: -1}
 	if recv != nil {
 		if !recv.typ.AssignableTo(ft.In(0)) {
 			return nil, fmt.Errorf("compile: %s: receiver is %s, want %s", name, recv.typ, ft.In(0))

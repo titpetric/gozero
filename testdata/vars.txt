@@ -46,6 +46,18 @@ assert.Equal(tb, "7", fmt.Sprintf("%d", *p))
 *p = 8
 assert.Equal(tb, "8", fmt.Sprintf("%d", *p))
 
+// A value binding is a receiver: Go's method sets in full, so a
+// pointer-receiver method is callable on a bound value because a
+// bound name is addressable. The address is the run's cell, so the
+// mutation does not reach the host.
+assert.Equal(tb, "1", fmt.Sprintf("%d", counter.N))
+counter.Bump()
+counter.Bump()
+assert.Equal(tb, "3", fmt.Sprintf("%d", counter.N))
+
+// A func-typed field is a callee, not a receiver.
+assert.Equal(tb, "from a field", cfg.Fn())
+
 // A slice literal is a value like any other: it fills an argument,
 // binds a name, and is built fresh on every run.
 xs := []string{"a", "b"}

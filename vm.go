@@ -135,8 +135,15 @@ func (a *vmArg) assignable(rt reflect.Type) bool {
 // the receiver as args[0], because reflect.Method.Func takes the
 // receiver as its first parameter.
 type vmCall struct {
-	fn     reflect.Value
-	name   string // for diagnostics
+	fn reflect.Value
+	// fnArg produces the func value per run, for a call through a
+	// value rather than a binding: a func-typed name, or a func-typed
+	// field of one. fn is then invalid and ft carries the signature,
+	// which is static either way and is what the arguments were
+	// checked against.
+	fnArg *vmArg
+	ft    reflect.Type
+	name  string // for diagnostics
 	args   []*vmArg
 	errIdx int // index of the trailing error result, -1 when there is none
 	nres   int // results excluding that error
@@ -403,11 +410,25 @@ func (c *vmCall) invoke(ctx context.Context, slots, frame []reflect.Value, iface
 		}
 		args[i] = v
 	}
+	fn := c.fn
+	if c.fnArg != nil {
+		v, err := c.fnArg.get(ctx, slots, frame, ifaces, stack, dest)
+		if err != nil {
+			return nil, err
+		}
+		if v.Kind() != reflect.Func {
+			return nil, fmt.Errorf("exec: %s: %s is not a func", c.name, v.Type())
+		}
+		if v.IsNil() {
+			return nil, fmt.Errorf("exec: %s: the func is nil", c.name)
+		}
+		fn = v
+	}
 	var out []reflect.Value
 	if c.spread {
-		out = c.fn.CallSlice(args)
+		out = fn.CallSlice(args)
 	} else {
-		out = c.fn.Call(args)
+		out = fn.Call(args)
 	}
 	if c.errIdx >= 0 {
 		if e := out[c.errIdx]; !e.IsNil() {
