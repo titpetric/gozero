@@ -22,22 +22,27 @@ program := { stmt }
 stmt    := "var" name typeref term
          | "return" [ arg ] term
          | path "<-" arg term
+         | "*" path "=" rhs term
          | [ name { "," name } ( ":=" | "=" ) ] rhs term
 term    := ";" | EOL | EOF
-rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv
+rhs     := expr | string | number | "true" | "false" | "nil" | composite | slicelit | recv | addr | deref
 typeref := { "*" | "[]" | "chan" | "chan<-" | "<-chan" } path
 expr    := path "(" [ args ] ")" { "." ident "(" [ args ] ")" }
 path    := ident { "." ident }
 args    := arg { "," arg }
-arg     := string | number | path | expr | composite | recv | path "..."
+arg     := string | number | path | expr | composite | slicelit | recv | addr | deref | path "..."
+addr    := "&" path
+deref   := "*" path
 recv    := "<-" ( path | expr )
 composite := [ "&" ] path "{" [ elem { "," elem } [ "," ] ] "}"
+slicelit  := "[]" typeref "{" [ arg { "," arg } [ "," ] ] "}"
 elem    := [ ident ":" ] arg
 ```
 
-The channel arrow is the only operator. A value is a literal, a
-name, a field read, a composite literal, a receive, or the result of
-a call; a condition, a loop or an arithmetic expression is a Go
+The channel arrow and the two reference operators are the only
+operators. A value is a literal, a name, a field read, a composite
+literal, a receive, an address, a pointer read, or the result of a
+call; a condition, a loop or an arithmetic expression is a Go
 function the host binds ([design/](design/) records why). The end of
 a line closes a statement; the semicolon is a delimiter between
 statements sharing one, so both spellings below are the same
@@ -465,6 +470,112 @@ done <- u.Host
 `select`, `range` over a channel and `go` remain outside the
 language; [design/channels.md](design/channels.md) records why they
 decompose onto conditions, loops and closures.
+
+## Values and references
+
+`Bind` takes a func or a value. A func is called; anything else is a
+value, read in argument position like any other name and carrying
+the static type it was bound with:
+
+```go
+rt.Bind("url.Parse", url.Parse)   // a func
+rt.Bind("time.Hour", time.Hour)   // a value
+rt.Bind("io.EOF", io.EOF)         // a value
+rt.Bind("os.Args", &os.Args)      // an address
+```
+
+A value binding is also a receiver: it owns the longest dotted
+prefix of a path the way a func binding does, so `Bind("u", u)` with
+a `*url.URL` makes `u.Path` and `u.String()` both compile.
+
+Whether a program reaches the host is Go's rule, and the `&` at the
+`Bind` call site is the whole of the opt-in. A value is copied in,
+so the name is the program's own for the run; an address makes the
+name a `*T`, and the program writes through it:
+
+<table>
+<tr>
+<th>go</th>
+</tr>
+<tr>
+<td>
+
+```go
+frozen := []string{"kept"}
+frozen = []string{"replaced"}
+frozen = append(frozen, "added")
+
+os.Args = []string{"1", "2", "3"}
+sort.Strings(os.Args)
+```
+
+</td>
+</tr>
+<tr>
+<th>gozero</th>
+</tr>
+<tr>
+<td>
+
+```go
+// Bind("frozen", []string{"kept"})
+frozen = []string{"replaced"}
+append(&frozen, "added")
+
+// Bind("os.Args", &os.Args)
+*os.Args = []string{"1", "2", "3"}
+sort.Strings(*os.Args)
+```
+
+</td>
+</tr>
+</table>
+
+The copy is per run: the next run starts from the bound value again,
+and two concurrent `Exec`s cannot see each other. One cell per name
+per program, so a write, an `&` and every read reach the same
+storage. The shallow copy is Go's, so a slice or a map bound by
+value still shares its elements with the host.
+
+`&` and `*` are the only operators besides the channel arrow.
+`&name` takes the address of a program name, a field of one, or a
+value binding; `*p` reads through a pointer and `*p = v` writes
+through one. A value never fills a `*T` parameter and a pointer
+never fills a `T` one:
+
+```go
+p := ptrTo(7)
+n := *p
+*p = 8
+```
+
+Nothing auto-references an argument. The one address the compiler
+takes implicitly is the receiver of a pointer-method call, which is
+the only place Go takes one too: `o := f(); o.Bump()` addresses `o`,
+and `Mutate(o)` against a `*T` parameter is a compile error until it
+is written `Mutate(&o)`.
+
+## Slice literals
+
+`[]T{a, b}` builds a slice per evaluation, the way a Go composite
+literal allocates each time the expression runs. It stands anywhere
+a value stands - an argument, a name, the right of an assignment -
+and each element is checked against `T` the way an argument of that
+type is:
+
+```go
+xs := []string{"a", "b"}
+assert.Equal(tb, "a/b", path.Join(xs...))
+*os.Args = []string{"1", "2", "3"}
+```
+
+Elements are unkeyed: an index key would need the compiler to size
+the slice, and nothing in the language needs one. The type is
+spelled the way a `var` statement spells one, so it must name a type
+discovery registered.
+
+The program in [`testdata/vars.txt`](../testdata/vars.txt) runs the
+whole surface.
 
 ## The stack and dest
 

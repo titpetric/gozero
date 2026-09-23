@@ -294,6 +294,12 @@ func (c *jitCompiler) bridgeArg(a *vmArg) (func(unsafe.Pointer, context.Context,
 			return reflect.ValueOf(ctx), nil
 		}, nil
 
+	case vaVar, vaDeref:
+		return c.bridgeRef(a)
+
+	case vaSlice:
+		return c.bridgeSlice(a)
+
 	case vaSlot:
 		if producer := c.splices[a]; producer != nil {
 			sub, err := c.exprNode(producer)
@@ -309,8 +315,10 @@ func (c *jitCompiler) bridgeArg(a *vmArg) (func(unsafe.Pointer, context.Context,
 		off, st := c.offs[field], c.types[field]
 		if a.addrOf {
 			// NewAt of the frame slot is the address the receiver
-			// wants, already typed *T.
-			if reflect.PointerTo(st) != a.typ {
+			// wants, already typed *T. Assignability rather than
+			// identity, because the parameter may be an interface the
+			// pointer satisfies: an append binding takes an any.
+			if !reflect.PointerTo(st).AssignableTo(a.typ) {
 				return nil, fmt.Errorf("cannot use *%s as %s", st, a.typ)
 			}
 			c.frameEscapes = true

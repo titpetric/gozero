@@ -32,14 +32,21 @@ func (c *jitCompiler) argNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 			if !ok {
 				return node{}, fmt.Errorf("an addressed name has no slot")
 			}
-			if cl != lPtr {
+			if cl != lPtr && cl != lIface {
 				return node{}, fmt.Errorf("an address cannot fill a %s parameter", cl)
 			}
 			c.frameEscapes = true
 			off := c.offs[field]
-			return node{class: lPtr, P: func(fr unsafe.Pointer, _ context.Context, _ map[string]any, _ any) (unsafe.Pointer, error) {
+			at := node{class: lPtr, P: func(fr unsafe.Pointer, _ context.Context, _ map[string]any, _ any) (unsafe.Pointer, error) {
 				return unsafe.Add(fr, off), nil
-			}}, nil
+			}}
+			if cl == lPtr {
+				return at, nil
+			}
+			// An address filling an interface parameter is the same
+			// pointer with an itab in front of it, and the itab for
+			// (*T, I) is fixed at compile time like any other.
+			return c.toIface(reflect.PointerTo(c.types[field]), pt, at)
 		}
 		if producer := c.splices[a]; producer != nil {
 			sub, err := c.exprNode(producer)
@@ -98,6 +105,9 @@ func (c *jitCompiler) argNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 
 	case vaStruct:
 		return c.structArgNode(a, pt, cl)
+
+	case vaVar:
+		return c.varNode(a, pt, cl)
 
 	case vaCtx:
 		// The execution context is already the exact interface type the

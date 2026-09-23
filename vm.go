@@ -33,14 +33,17 @@ import (
 type vmArgKind int
 
 const (
-	vaConst vmArgKind = iota // a literal, or an omitted argument's zero value
-	vaSlot                   // a name bound earlier in the program
-	vaStack                  // a name read from the caller's stack map
-	vaDest                   // the pointer Scan was handed
-	vaCall                   // a nested call
-	vaField                  // a struct field read off another value
-	vaCtx                    // the execution context, auto-filled
-	vaStruct                 // a composite literal, built fresh per evaluation
+	vaConst  vmArgKind = iota // a literal, or an omitted argument's zero value
+	vaSlot                    // a name bound earlier in the program
+	vaStack                   // a name read from the caller's stack map
+	vaDest                    // the pointer Scan was handed
+	vaCall                    // a nested call
+	vaField                   // a struct field read off another value
+	vaCtx                     // the execution context, auto-filled
+	vaStruct                  // a composite literal, built fresh per evaluation
+	vaVar                     // a value binding registered with Bind
+	vaDeref                   // the value behind a pointer, *p
+	vaSlice                   // a slice literal, built fresh per evaluation
 )
 
 var ctxType = reflect.TypeFor[context.Context]()
@@ -88,6 +91,11 @@ type vmArg struct {
 	// addressable, matching Go's rule that a variable has an address
 	// and the result of a call does not.
 	addrOf bool
+
+	// vaVar: varv is the value Bind registered under the name. It is
+	// read-only storage: a program that writes the name writes a
+	// per-run cell instead, which materializeVarCells creates.
+	varv reflect.Value
 
 	// vaStruct: styp is the struct type the literal builds, addr marks
 	// the &T{} form, and elems are the field writes. The value is built
@@ -162,6 +170,10 @@ type vmStmt struct {
 	// fieldSet writes a value through a field: req.Method = "POST".
 	fieldSet *vmFieldSet
 
+	// varSet writes a value binding, "os.Args = xs", or writes
+	// through a pointer, "*p = v".
+	varSet *vmVarSet
+
 	// recv is a channel receive, its value and ok slots in out; send
 	// is a channel send. Both in vm_chan.go.
 	recv *vmRecv
@@ -183,11 +195,16 @@ type vmFieldSet struct {
 	field string // for diagnostics
 }
 
-// slotInit is the zero value a var statement puts in scope before the
-// program runs.
+// slotInit is the value a slot starts each run from: the zero value a
+// var statement puts in scope, or the bound value an addressed
+// immutable binding is copied from.
 type slotInit struct {
 	slot int
 	zero reflect.Value
+	// seed marks an init that copies zero in rather than relying on
+	// fresh storage already being zero. A var declaration does not
+	// need it; a value binding's per-run copy does.
+	seed bool
 }
 
 // vmProgram is a compiled program. It holds no per-call state: the
@@ -216,6 +233,12 @@ type vmProgram struct {
 	// statement so a name reads as its type's zero value even when
 	// nothing assigned it.
 	inits []slotInit
+
+	// varCells names the immutable value bindings the program
+	// addresses, and varSlots the per-run cell each one got. Both are
+	// filled while the program is assembled; see materializeVarCells.
+	varCells map[string]bool
+	varSlots map[string]int
 }
 
 // apply writes the value through the field chain. Addressability comes
@@ -261,7 +284,11 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 	for _, in := range p.inits {
 		// New rather than Zero, so a field of a var-declared struct is
 		// settable in place.
-		slots[in.slot] = reflect.New(in.zero.Type()).Elem()
+		cell := reflect.New(in.zero.Type()).Elem()
+		if in.seed {
+			cell.Set(in.zero)
+		}
+		slots[in.slot] = cell
 	}
 	for i := range p.stmts {
 		s := &p.stmts[i]
@@ -279,6 +306,12 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 		}
 		if s.fieldSet != nil {
 			if err := s.fieldSet.apply(ctx, slots, frame, ifaces, stack, dest); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if s.varSet != nil {
+			if err := s.varSet.apply(ctx, slots, frame, ifaces, stack, dest); err != nil {
 				return nil, err
 			}
 			continue
@@ -445,6 +478,24 @@ func (a *vmArg) get(ctx context.Context, slots, frame []reflect.Value, ifaces []
 			return pv, nil
 		}
 		return sv, nil
+	case vaSlice:
+		return a.buildSlice(ctx, slots, frame, ifaces, stack, dest)
+	case vaVar:
+		// An addressed occurrence became a slot when the program was
+		// assembled, so what is left here is a plain read.
+		return a.varv, nil
+	case vaDeref:
+		v, err := a.src.get(ctx, slots, frame, ifaces, stack, dest)
+		if err != nil {
+			return reflect.Value{}, err
+		}
+		if v.Kind() != reflect.Pointer {
+			return reflect.Value{}, fmt.Errorf("exec: cannot dereference %s", v.Type())
+		}
+		if v.IsNil() {
+			return reflect.Value{}, fmt.Errorf("exec: nil pointer dereference reading *%s", a.name)
+		}
+		return v.Elem(), nil
 	case vaDest:
 		if dest == nil {
 			return reflect.Zero(a.typ), fmt.Errorf("exec: dest is only set by Scan")

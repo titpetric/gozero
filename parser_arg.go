@@ -99,17 +99,45 @@ func (p *Parser) arg() (arg, error) {
 	case c == '-' || (c >= '0' && c <= '9'):
 		return p.numberLit()
 	case c == '&':
-		// & only prefixes a composite literal: there are no other
-		// addressable expressions in the grammar.
+		// & prefixes a composite literal, or takes the address of a
+		// name, a field of one, or a value binding. Which one it is
+		// shows at the brace.
 		p.pos++
+		p.nl = false
 		path, err := p.path()
 		if err != nil {
 			return arg{}, err
 		}
-		if !p.consume('{') {
-			return arg{}, fmt.Errorf("parse: expected a composite literal after '&' at offset %d", p.pos)
+		if p.consume('{') {
+			return p.composite(path, true)
 		}
-		return p.composite(path, true)
+		return arg{kind: argAddr, path: path}, nil
+	case c == '[' && p.pos+1 < len(p.src) && p.src[p.pos+1] == ']':
+		// A slice literal. The type is read the way a var statement
+		// reads one, so []string and [][]byte spell the same here as
+		// they do there.
+		typ, err := p.typeRef()
+		if err != nil {
+			return arg{}, err
+		}
+		if !p.consume('{') {
+			return arg{}, fmt.Errorf("parse: expected '{' after %s at offset %d", typ, p.pos)
+		}
+		return p.sliceLit(typ)
+	case c == '*':
+		// *p reads through a pointer. The operand is a name or a
+		// field of one; *f() is out because a call's result has no
+		// address and nothing in the grammar needs it.
+		p.pos++
+		p.nl = false
+		path, err := p.path()
+		if err != nil {
+			return arg{}, fmt.Errorf("parse: expected a name after '*' at offset %d", p.pos)
+		}
+		if p.peek() == '(' {
+			return arg{}, fmt.Errorf("parse: cannot dereference a call result at offset %d", p.pos)
+		}
+		return arg{kind: argDeref, path: path}, nil
 	default:
 		save := p.pos
 		path, err := p.path()
@@ -143,6 +171,30 @@ func (p *Parser) arg() (arg, error) {
 			return arg{kind: argNil}, nil
 		}
 		return arg{kind: argVar, str: path[0]}, nil
+	}
+}
+
+// sliceLit reads the elements of a slice literal after the opening
+// brace. Elements are unkeyed: an index key would need the compiler
+// to size the slice, and nothing in the language needs one.
+func (p *Parser) sliceLit(typ string) (arg, error) {
+	a := arg{kind: argSlice, typ: typ}
+	for {
+		p.skipSpace()
+		if p.consume('}') {
+			return a, nil
+		}
+		if len(a.elems) > 0 && !p.consume(',') {
+			return arg{}, fmt.Errorf("parse: expected ',' or '}' at offset %d", p.pos)
+		}
+		if p.consume('}') {
+			return a, nil
+		}
+		v, err := p.arg()
+		if err != nil {
+			return arg{}, err
+		}
+		a.elems = append(a.elems, structElem{val: v})
 	}
 }
 

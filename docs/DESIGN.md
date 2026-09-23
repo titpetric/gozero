@@ -36,6 +36,12 @@ to maintain, and the host controls exactly what a program can reach:
 the binding set is the sandbox boundary. A program cannot open a file
 unless a function that opens files was bound.
 
+`Bind` takes data as readily as funcs, and the boundary holds there
+too. A value is copied in, so a program writing the name writes its
+own storage; an address is the host saying the variable is the
+program's to write, and the program does it through `*name = v`.
+[syntax.md](syntax.md) has the rules.
+
 Methods extend the reach without extending the bindings. `Cookies` and
 `Encode` are not bound; they are resolved on the static result types
 of the two calls when the program compiles, so an unknown method is a
@@ -211,7 +217,9 @@ recompile only when it calls an API nothing has bound yet.
 
 ```go
 rt := gozero.NewRuntime()
-err := rt.Bind("NewRequest", http.NewRequest)
+err := rt.Bind("NewRequest", http.NewRequest)   // a func, called
+err = rt.Bind("time.Hour", time.Hour)           // a value, read
+err = rt.Bind("os.Args", &os.Args)              // an address, written through
 err = rt.BindScope("json", map[string]any{"NewEncoder": json.NewEncoder})
 err = rt.BindType("io.Closer", (*io.Closer)(nil))
 rt.SetLogger(logger) // discovery reports at debug level

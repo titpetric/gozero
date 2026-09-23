@@ -23,9 +23,26 @@ type binding struct {
 // execution time, when their value is known.
 type Compiler struct {
 	bindings map[string]binding
+	// vars are the value bindings BindVar registers. They share the
+	// namespace with bindings and are resolved the same way, by
+	// longest dotted prefix, so os.Args is one name rather than a
+	// field of os.
+	vars map[string]varBinding
 	// types is the Runtime's registry, shared by reference so a Bind
 	// after a Compile is visible.
 	types map[string]reflect.Type
+}
+
+// varOf resolves the longest prefix of path that names a value
+// binding, returning it with the selectors left over. ok is false when
+// no prefix names one.
+func (c *Compiler) varOf(path []string) (vb varBinding, rest []string, ok bool) {
+	for i := len(path); i >= 1; i-- {
+		if vb, ok = c.vars[joinPath(path[:i])]; ok {
+			return vb, path[i:], true
+		}
+	}
+	return varBinding{}, nil, false
 }
 
 // Compile validates a program and builds the constructed func.

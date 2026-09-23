@@ -4,23 +4,30 @@ import (
 	"fmt"
 )
 
-// The grammar has no operators: a statement is a call, and every value
-// is a literal, a name, or the result of another call.
+// The grammar has no binary operators: a statement is a call, and
+// every value is a literal, a name, or the result of another call.
+// The two unary forms it does carry are Go's reference operators, &
+// and *, which exist because a value binding and a *T parameter are
+// only reachable through them.
 //
 //	program := { stmt }
 //	stmt    := "var" name typeref term
 //	         | "return" [ arg ] term
 //	         | path "<-" arg term
+//	         | "*" path "=" rhs term
 //	         | [ name { "," name } ( ":=" | "=" ) ] rhs term
 //	term    := ";" | EOL | EOF
-//	rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv
+//	rhs     := expr | string | number | "true" | "false" | "nil" | composite | slicelit | recv | addr | deref
 //	typeref := { "*" | "[]" | "chan" | "chan<-" | "<-chan" } path
 //	expr    := path "(" [ args ] ")" { "." ident "(" [ args ] ")" }
 //	path    := ident { "." ident }
 //	args    := arg { "," arg }
-//	arg     := string | number | path | expr | composite | recv
+//	arg     := string | number | path | expr | composite | slicelit | recv | addr | deref
+//	addr    := "&" path
+//	deref   := "*" path
 //	recv    := "<-" ( path | expr )
 //	composite := [ "&" ] path "{" [ elem { "," elem } [ "," ] ] "}"
+//	slicelit  := "[]" typeref "{" [ arg { "," arg } [ "," ] ] "}"
 //	elem    := [ ident ":" ] arg
 
 // Parser turns a program into a list of statements. A path is resolved
@@ -71,9 +78,20 @@ const (
 	// &http.Request{}. The path names the type; the compiler resolves
 	// it, because only it holds the registry.
 	argStruct
+	// argSlice is a slice literal, []string{"a", "b"}. typ is the
+	// type as typeRef spells it and elems are the values, unkeyed.
+	argSlice
 	// argRecv is a channel receive, <-c. The source is a name, a
 	// field, or a call; the compiler types it.
 	argRecv
+	// argAddr is "&x": the address of a name, a field of one, or a
+	// value binding. path holds the operand, and the &T{} form stays
+	// with argStruct because the parser can tell them apart at the
+	// brace.
+	argAddr
+	// argDeref is "*p": the value a pointer name, field or value
+	// binding points at.
+	argDeref
 )
 
 // structElem is one element of a composite literal: the field name
@@ -102,6 +120,8 @@ type arg struct {
 	addr  bool
 	// argRecv: the channel the receive reads.
 	recv *arg
+	// argSlice: the written type, "[]string".
+	typ string
 }
 
 // link is one ".Method(args)" step chained onto a call.
@@ -150,6 +170,10 @@ type stmt struct {
 	// names the channel the way fieldLhs names a field target.
 	sendCh  []string
 	sendVal *arg
+
+	// derefLhs is the target of a write through a pointer,
+	// "*p = v". The path names the pointer.
+	derefLhs []string
 }
 
 // program is a parsed source unit.
@@ -243,6 +267,33 @@ func (p *Parser) stmt() (stmt, error) {
 		return s, nil
 	}
 
+	// "*p = v" writes through a pointer. It is sniffed before
+	// everything else because nothing else in the grammar starts a
+	// statement with '*'.
+	if p.peek() == '*' {
+		derefSave := p.pos
+		p.pos++
+		path, err := p.path()
+		if err == nil {
+			p.skipSpace()
+			if p.pos < len(p.src) && p.src[p.pos] == '=' && (p.pos+1 >= len(p.src) || p.src[p.pos+1] != '=') {
+				p.pos++
+				a, err := p.arg()
+				if err != nil {
+					return stmt{}, err
+				}
+				if !p.terminated() {
+					return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
+				}
+				if a.kind == argCall {
+					return stmt{derefLhs: path, call: a.sub}, nil
+				}
+				return stmt{derefLhs: path, lit: &a}, nil
+			}
+		}
+		p.pos = derefSave
+	}
+
 	// A dotted path followed by a single "=" is a field assignment.
 	// It is sniffed before the assignment list, which only reads bare
 	// names; a path followed by "(" is a call and rewinds.
@@ -258,9 +309,10 @@ func (p *Parser) stmt() (stmt, error) {
 				if err != nil {
 					return stmt{}, err
 				}
-				if a.kind == argVar || a.kind == argPath {
-					return stmt{}, fmt.Errorf("parse: cannot assign a name to a field at offset %d", p.pos)
-				}
+				// A name on the right is legal for a value binding
+				// ("os.Args = xs") and not for a field; only the
+				// compiler knows which the path is, so the rejection
+				// moved to compileFieldSet.
 				if !p.terminated() {
 					return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
 				}

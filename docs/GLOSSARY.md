@@ -28,7 +28,8 @@ aliased slot cannot be rewritten.
 A Go function the host registers in a Runtime under a name, for
 example `rt.Bind("url.Parse", url.Parse)`. The set of bindings is
 the complete surface a program can call: gozero programs have no
-standard library of their own.
+standard library of their own. `Bind` also takes data, which is a
+value binding.
 
 ## boxed value
 
@@ -64,6 +65,25 @@ once the call returns. A type assertion copies a value out of its
 box; a plain interface assignment copies only the box's address and
 is not a copy in this sense. String and scalar parameters carry
 their values directly and need no copy.
+
+## value binding
+
+Data the host registers with `Bind`, as opposed to the func a
+`binding` holds: `Bind` takes either and what it is decides what the
+name does. A program reads a value binding in argument position, it
+carries the static type it was bound with, and it can be the
+receiver of a field read or a method call.
+
+## per-run cell
+
+The storage a program gets when it writes or addresses a value
+binding. A value is copied into the runtime, so the name is the
+program's own for the run: `name = v` and `&name` reach the cell,
+and the host's variable is untouched. The cell is seeded from the
+bound value at the start of every run and there is one per name per
+program, so two `&name` address the same storage the way two `&x` do
+in Go. A host that wants a program to write its own storage binds an
+address instead, and the program writes through it with `*name = v`.
 
 ## direct-call tier
 
