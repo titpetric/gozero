@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestCompiler checks the compile-time validation the type promises: a
@@ -281,6 +283,61 @@ func (f *testFixtures) testVariadic(tb testing.TB) {
 	assertEqual(tb, "a/b/c", joined, "path.Join over spread fields")
 }
 
+// testVars mirrors the vars fixture. Every name the program reads is a
+// local here, which is what a value binding is on the other side: a
+// copy the run owns, seeded from the value the host bound.
+func (f *testFixtures) testVars(tb testing.TB) {
+	argv := []string{"prog", "-v"}
+	cursor := 0
+	frozen := []string{"kept"}
+	counter := fixtureCounter{N: 1}
+	cfg := fixtureCfg{Fn: func() string { return "from a field" }}
+
+	assertEqual(tb, "3600", fmt.Sprintf("%d", int64(time.Hour/time.Second)), "")
+	assertEqual(tb, "EOF", io.EOF.Error(), "")
+
+	assertEqual(tb, "kept", frozen[0], "")
+	frozen = []string{"replaced", "by a literal"}
+	assertEqual(tb, "2", fmt.Sprintf("%d", len(frozen)), "")
+	assertEqual(tb, "replaced", frozen[0], "")
+
+	frozen = append(frozen, "appended")
+	assertEqual(tb, "3", fmt.Sprintf("%d", len(frozen)), "")
+	assertEqual(tb, "appended", frozen[2], "")
+
+	assertEqual(tb, "prog", argv[0], "")
+	assertEqual(tb, "2", fmt.Sprintf("%d", len(argv)), "")
+
+	argv = []string{"1", "2", "3"}
+	assertEqual(tb, "3", fmt.Sprintf("%d", len(argv)), "")
+	assertEqual(tb, "1", argv[0], "")
+
+	argv = append(argv, "4")
+	assertEqual(tb, "4", fmt.Sprintf("%d", len(argv)), "")
+
+	cursor = 41
+	cursor++
+	assertEqual(tb, "42", fmt.Sprintf("%d", cursor), "")
+
+	seven := 7
+	p := &seven
+	assertEqual(tb, "7", fmt.Sprintf("%d", *p), "")
+	*p = 8
+	assertEqual(tb, "8", fmt.Sprintf("%d", *p), "")
+
+	assertEqual(tb, "1", fmt.Sprintf("%d", counter.N), "")
+	counter.Bump()
+	counter.Bump()
+	assertEqual(tb, "3", fmt.Sprintf("%d", counter.N), "")
+
+	assertEqual(tb, "from a field", cfg.Fn(), "")
+
+	xs := []string{"a", "b"}
+	assertEqual(tb, "2", fmt.Sprintf("%d", len(xs)), "")
+	assertEqual(tb, "b", xs[1], "")
+	assertEqual(tb, "a/b", path.Join(xs...), "")
+}
+
 // BenchmarkFixtures runs each fixture program against its handwritten
 // method: same work, same assertions, same context source. The VM side
 // compiles once outside the loop, which is the compile-once/run-many
@@ -294,6 +351,7 @@ func BenchmarkFixtures(b *testing.B) {
 		"structs":  (*testFixtures).testStructs,
 		"types":    (*testFixtures).testTypes,
 		"variadic": (*testFixtures).testVariadic,
+		"vars":     (*testFixtures).testVars,
 	}
 
 	files, err := filepath.Glob(filepath.Join("testdata", "*.txt"))

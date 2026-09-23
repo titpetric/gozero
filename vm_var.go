@@ -21,9 +21,12 @@ func (c *Compiler) varArg(path []string, addrOf bool) (a *vmArg, t reflect.Type,
 	if !ok {
 		return nil, nil, false, nil
 	}
-	name := joinPath(path)
 	t = vb.val.Type()
-	a = &vmArg{kind: vaVar, name: name, varv: vb.val, typ: t, iface: -1}
+	// The root is named by the binding's own prefix, not the whole
+	// path: the name is the key the per-run cell is found under, so
+	// "pv" and "pv.N" have to agree on it or a method call and a field
+	// read end up on different storage.
+	a = &vmArg{kind: vaVar, name: joinPath(path[:len(path)-len(rest)]), varv: vb.val, typ: t, iface: -1}
 	for _, seg := range rest {
 		f, deref, found := fieldOf(t, seg)
 		if !found {

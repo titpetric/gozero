@@ -439,7 +439,7 @@ var stackScalarConvs = map[reflect.Type]func(any) (uint64, float64, bool){
 
 // callResultType returns the static type for a call's i'th non-error result.
 func callResultType(c *vmCall, i int) reflect.Type {
-	ft := c.fn.Type()
+	ft := c.ft
 	n := 0
 	for j := 0; j < ft.NumOut(); j++ {
 		if j == c.errIdx {
