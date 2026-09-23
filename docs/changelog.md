@@ -17,10 +17,12 @@ the program compiles: after `BindVar("time.Hour", time.Hour)` a
 binding taking a `time.Duration` accepts it and one taking `int64`
 rejects it.
 
-Whether a program may write the binding is stated at the call site.
-`BindVar("os.Args", os.Args)` is a snapshot and assigning to it is a
-compile error; `BindVar("os.Args", Mutable(&os.Args))` aliases the
-host's variable and `os.Args = xs` lands in it. `Mutable` takes the
+Whether a write reaches the host is stated at the call site.
+`BindVar("os.Args", Mutable(&os.Args))` aliases the host's variable,
+so `os.Args = xs` lands in it. `BindVar("os.Args", os.Args)` is a
+snapshot, and the same statement writes the program's own copy for
+the run: the name shadows the binding rather than failing, the way
+a local shadows an outer name in Go. `Mutable` takes the
 address rather than the value because an address is the only thing
 that can alias, and it returns a `Ref` marker rather than a plain
 pointer because an `any` erases the interface it came from:
@@ -42,11 +44,13 @@ never fills a `T` one, and nothing auto-references an argument,
 which is Go - the one implicit address gozero takes is still the
 receiver of a pointer-method call.
 
-The two kinds of binding address different storage. `&name` on a
-mutable binding is a handle on the host's variable. On an immutable
-one it is a handle on a per-run copy: a program may append to it,
-sort it or write through it, and the host's variable keeps the
-header it had. The copy is per run rather than one copy the binding
+The two kinds of binding write different storage. On a mutable
+binding, `name = xs` and `&name` both reach the host's variable. On
+an immutable one both reach a per-run copy: a program may assign to
+it, append to it, sort it or write through it, and the host's
+variable keeps the header it had. The name denotes the variable and
+not a pointer to it either way, so `os.Args` reads as a `[]string`,
+`&os.Args` is the `*[]string`, and `*os.Args` does not compile. The copy is per run rather than one copy the binding
 holds, because a compiled program keeps no per-run state - two
 concurrent `Exec`s must not see each other's writes, and a second
 run must not start from what the first appended. One cell per name
@@ -65,7 +69,7 @@ Reading a value binding reaches the direct tier as one load from the
 binding's fixed address, with no frame slot and no boxing; an
 addressed one becomes a frame slot seeded per run, and `&name`
 filling an interface parameter carries a compile-time itab like any
-other interface argument. Writing a binding with `=` does not yet: `planInline` refuses the statement so the program
+other interface argument. A write does not yet: `planInline` refuses the statement so the program
 falls back to the reflect evaluator whole, rather than dropping the
 write. `testdata/vars.txt` runs the surface end to end and
 `bindvar_test.go` pins the rules.

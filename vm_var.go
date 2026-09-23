@@ -70,6 +70,7 @@ func (p *vmProgram) argRoots() []*vmArg {
 		if s.varSet != nil {
 			add(s.varSet.val)
 			add(s.varSet.via)
+			add(s.varSet.dst)
 		}
 		if s.recv != nil {
 			add(s.recv.ch)
@@ -141,10 +142,33 @@ func (p *vmProgram) materializeVarCells(args []*vmArg) {
 	}
 }
 
-// markVarCells records which binding names the program addresses
-// anywhere, so every occurrence of one shares the cell rather than
-// only the addressed occurrences moving into it.
+// markVarCells records which binding names the program addresses or
+// assigns anywhere, so every occurrence of one shares the cell rather
+// than only the addressed occurrences moving into it. A write is a
+// reason on its own: "os.Args = xs" needs the cell even when the
+// program never writes &os.Args.
 func (p *vmProgram) markVarCells(args []*vmArg) {
+	for i := range p.stmts {
+		vs := p.stmts[i].varSet
+		if vs == nil || vs.dst == nil {
+			continue
+		}
+		root := vs.dst
+		for root.kind == vaField {
+			root = root.src
+		}
+		if root.kind == vaVar && !root.mutable {
+			if p.varCells == nil {
+				p.varCells = map[string]bool{}
+			}
+			p.varCells[root.name] = true
+		}
+	}
+	p.markAddressed(args)
+}
+
+// markAddressed is the &name half of markVarCells.
+func (p *vmProgram) markAddressed(args []*vmArg) {
 	var walk func(a *vmArg, addressed bool)
 	walk = func(a *vmArg, addressed bool) {
 		if a == nil {
@@ -188,8 +212,12 @@ func derefArg(src *vmArg, t reflect.Type, name string) (*vmArg, reflect.Type, er
 }
 
 // vmVarSet is a compiled write to a value binding: "os.Args = xs", or
-// "*p = v" where p is a pointer. target is the settable destination
-// resolved at compile time, and val is the value to store.
+// "*p = v" where p is a pointer. Exactly one of the three destinations
+// is set, and which one says where the write lands:
+//
+//   - target, the host's own storage, for a mutable binding
+//   - dst, the program's per-run cell, for an immutable one
+//   - via, the pointee of a pointer the program holds
 type vmVarSet struct {
 	target reflect.Value
 	val    *vmArg
@@ -198,6 +226,11 @@ type vmVarSet struct {
 	// held in the program rather than fixed at compile time; target is
 	// then invalid and via produces the pointer per run.
 	via *vmArg
+	// dst is set when the destination is the per-run cell of an
+	// immutable binding. It is a vaVar when the program compiles and
+	// materializeVarCells rewrites it to the cell's slot, the same
+	// rewrite every read of the name gets.
+	dst *vmArg
 }
 
 func (vs *vmVarSet) apply(ctx context.Context, slots, frame []reflect.Value, ifaces []ifacePair, stack map[string]any, dest any) error {
@@ -206,6 +239,13 @@ func (vs *vmVarSet) apply(ctx context.Context, slots, frame []reflect.Value, ifa
 		return err
 	}
 	target := vs.target
+	if vs.dst != nil {
+		d, err := vs.dst.get(ctx, slots, frame, ifaces, stack, dest)
+		if err != nil {
+			return err
+		}
+		target = d
+	}
 	if vs.via != nil {
 		p, err := vs.via.get(ctx, slots, frame, ifaces, stack, dest)
 		if err != nil {
@@ -234,9 +274,12 @@ func (vs *vmVarSet) apply(ctx context.Context, slots, frame []reflect.Value, ifa
 }
 
 // compileVarSet compiles an assignment whose target is a value
-// binding. A binding the host passed by value has no writable
-// destination, and saying so here is the whole point of the
-// distinction BindVar draws.
+// binding. Which storage it writes follows the binding, not the
+// spelling: a mutable binding is the host's variable, and an
+// immutable one is the program's per-run cell, the same storage
+// &name addresses. Assigning an immutable binding therefore shadows
+// it for the run rather than reaching the host, which is what a
+// program that never received a pointer can do.
 func (c *Compiler) compileVarSet(slots map[string]int, env map[string]reflect.Type, path []string, s stmt) (*vmVarSet, error) {
 	vb, rest, ok := c.varOf(path)
 	if !ok {
@@ -244,7 +287,7 @@ func (c *Compiler) compileVarSet(slots map[string]int, env map[string]reflect.Ty
 	}
 	name := joinPath(path)
 	if !vb.mutable {
-		return nil, fmt.Errorf("compile: cannot assign to %s, it is bound by value; pass a pointer to BindVar to make it writable", name)
+		return c.compileCellSet(slots, env, path, name, vb, rest, s)
 	}
 	target := vb.val
 	t := target.Type()
@@ -270,6 +313,29 @@ func (c *Compiler) compileVarSet(slots map[string]int, env map[string]reflect.Ty
 		return nil, err
 	}
 	return &vmVarSet{target: target, val: val, name: name}, nil
+}
+
+// compileCellSet compiles an assignment to an immutable binding,
+// whose destination is the program's per-run cell. The target is
+// built as the same vaVar chain a read of the name compiles to, so
+// materializeVarCells rewrites both to the one cell and a read after
+// the write sees what was written.
+func (c *Compiler) compileCellSet(slots map[string]int, env map[string]reflect.Type, path []string, name string, vb varBinding, rest []string, s stmt) (*vmVarSet, error) {
+	dst := &vmArg{kind: vaVar, name: joinPath(path[:len(path)-len(rest)]), varv: vb.val, typ: vb.val.Type(), iface: -1}
+	t := dst.typ
+	for _, seg := range rest {
+		f, deref, found := fieldOf(t, seg)
+		if !found {
+			return nil, fmt.Errorf("compile: %s has no field %s", t, seg)
+		}
+		dst = &vmArg{kind: vaField, src: dst, index: f.Index, deref: deref, typ: f.Type, iface: -1}
+		t = f.Type
+	}
+	val, err := c.assignedValue(slots, env, name, t, s)
+	if err != nil {
+		return nil, err
+	}
+	return &vmVarSet{dst: dst, val: val, name: name}, nil
 }
 
 // compileDerefSet compiles "*p = v". The pointer comes from a program

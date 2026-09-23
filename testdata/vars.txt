@@ -16,9 +16,11 @@ replace(&os.Args, "rewritten")
 assert.Equal(tb, "rewritten", first(os.Args))
 assert.Equal(tb, "1", fmt.Sprintf("%d", argc(os.Args)))
 
-// & on an immutable binding addresses a per-run copy, so a program
-// grows it through an append binding and the host's variable keeps
-// the header it had. Every run starts from the bound value again.
+// An immutable binding is the program's own copy for the run: an
+// assignment shadows it, & addresses the same copy, and the host's
+// variable keeps the header it had. Every run starts from the bound
+// value again.
+assert.Equal(tb, "kept", first(frozen))
 append(&frozen, "added")
 assert.Equal(tb, "2", fmt.Sprintf("%d", argc(frozen)))
 assert.Equal(tb, "added", second(frozen))

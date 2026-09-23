@@ -487,15 +487,18 @@ rt.BindVar("os.Args", gozero.Mutable(&os.Args))
 because an address is the only thing that can alias:
 `Mutable(os.Args)` would hand over a copy, and a write to the copy
 reaches nothing the host reads. A binding registered without it is a
-snapshot: `os.Args = xs` is a compile error. The shallow copy is
-Go's, so a slice or a map bound by value still shares its elements
-with the host.
+snapshot, and a program that writes it writes its own copy for the
+run: the name shadows the binding the way a local shadows an outer
+name in Go. The shallow copy is Go's, so a slice or a map bound by
+value still shares its elements with the host.
 
-`&name` works on both kinds and addresses different storage. On a
-mutable binding it is a handle on the host's variable. On an
-immutable one it is a handle on a per-run copy, so a program grows
-or rewrites the copy and the host's variable keeps the header it
-had:
+The name denotes the variable, not a pointer to it, on both kinds:
+`os.Args` reads as a `[]string`, `&os.Args` is the `*[]string` a
+binding taking a pointer wants, and `*os.Args` does not compile.
+What differs is where a write lands. On a mutable binding both
+`name = xs` and `&name` reach the host's variable. On an immutable
+one both reach a per-run copy, so a program rewrites or grows the
+copy and the host keeps the header it had:
 
 ```go
 rt.BindVar("os.Args", os.Args)
@@ -503,8 +506,9 @@ rt.Bind("append", gozero.Append)
 ```
 
 ```go
-append(&os.Args, "-x")   // the copy is two long
-argc(os.Args)            // reads the same copy
+os.Args = rewritten()    // writes the run's copy
+append(&os.Args, "-x")   // grows the same copy
+argc(os.Args)            // reads it back
 ```
 
 The copy is per run, not one copy the binding holds: a compiled

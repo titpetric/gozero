@@ -87,3 +87,83 @@ func TestBindVarCellIsShared(t *testing.T) {
 		t.Errorf("read %v, want both appends in one cell", seen.l)
 	}
 }
+
+// TestBindVarCellAssign covers assignment to an immutable binding: it
+// writes the run's cell, the same storage &name addresses, so a read
+// afterwards sees it and the host's variable does not.
+func TestBindVarCellAssign(t *testing.T) {
+	rt, seen := bvRuntime(t)
+	host := []string{"a", "b"}
+	if err := rt.BindVar("os.Args", host); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.Bind("three", func() ([]string, error) { return []string{"1", "2", "3"}, nil }); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := bvRun(t, rt, "os.Args = three()\nrecordL(os.Args)"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(seen.l, ",") != "1,2,3" {
+		t.Errorf("program read %v after the write, want the assigned value", seen.l)
+	}
+	if strings.Join(host, ",") != "a,b" {
+		t.Errorf("host reads %v, want its own variable untouched", host)
+	}
+
+	// A write with no & anywhere still gets a cell, and the next run
+	// starts from the bound value again.
+	if err := bvRun(t, rt, `recordL(os.Args)`); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(seen.l, ",") != "a,b" {
+		t.Errorf("a later program read %v, want the bound value", seen.l)
+	}
+}
+
+// TestBindVarCellAssignAndAppend pins that the assignment and the
+// address reach one cell rather than two.
+func TestBindVarCellAssignAndAppend(t *testing.T) {
+	rt, seen := bvRuntime(t)
+	if err := rt.BindVar("args", []string{"a"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.Bind("append", Append); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.Bind("three", func() ([]string, error) { return []string{"1"}, nil }); err != nil {
+		t.Fatal(err)
+	}
+	src := "args = three()\nappend(&args, \"2\")\nrecordL(args)"
+	if err := bvRun(t, rt, src); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(seen.l, ",") != "1,2" {
+		t.Errorf("read %v, want the assignment and the append in one cell", seen.l)
+	}
+}
+
+// TestBindVarMutableAssignReachesHost is the other half: the same
+// statement on a mutable binding writes the host's variable, and the
+// name is the variable rather than a pointer to it, so *name does not
+// compile.
+func TestBindVarMutableAssignReachesHost(t *testing.T) {
+	rt, _ := bvRuntime(t)
+	host := []string{"a"}
+	if err := rt.BindVar("args", Mutable(&host)); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.Bind("three", func() ([]string, error) { return []string{"1", "2", "3"}, nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := bvRun(t, rt, `args = three()`); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(host, ",") != "1,2,3" {
+		t.Errorf("host reads %v, want the program's write", host)
+	}
+	err := bvRun(t, rt, `*args = three()`)
+	if err == nil || !strings.Contains(err.Error(), "not a pointer") {
+		t.Errorf("*args should not compile, got %v", err)
+	}
+}

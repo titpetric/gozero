@@ -131,9 +131,13 @@ func TestBindVarImmutable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := bvRun(t, rt, `io.EOF = nil`)
-	if err == nil || !strings.Contains(err.Error(), "bound by value") {
-		t.Fatalf("assigning an immutable binding: want a bound-by-value error, got %v", err)
+	// Assignment writes the program's per-run cell, the same storage
+	// &name addresses, and leaves the host's variable alone.
+	if err := bvRun(t, rt, `io.EOF = nil`); err != nil {
+		t.Fatal(err)
+	}
+	if io.EOF == nil {
+		t.Fatal("the host's io.EOF was overwritten")
 	}
 	// Reading still works, and the shallow copy is Go's: the elements
 	// behind an immutable slice binding stay shared.
@@ -334,10 +338,15 @@ func TestMutableNeedsAnAddress(t *testing.T) {
 	if err := rt.BindVar("io.EOF", io.EOF); err != nil {
 		t.Fatal(err)
 	}
-	// Bound by value despite the dynamic type being a pointer.
-	err := bvRun(t, rt, `io.EOF = nil`)
-	if err == nil || !strings.Contains(err.Error(), "bound by value") {
-		t.Fatalf("io.EOF should be immutable, got %v", err)
+	// Bound by value despite the dynamic type being a pointer: the
+	// write lands in the run's cell, not in the host's sentinel. Read
+	// pointerness as intent and this test fails with io.EOF nil for
+	// the rest of the process.
+	if err := bvRun(t, rt, `io.EOF = nil`); err != nil {
+		t.Fatal(err)
+	}
+	if io.EOF == nil {
+		t.Fatal("the host's io.EOF was overwritten")
 	}
 	// And it still reads as an error, not as the pointee.
 	if err := bvRun(t, rt, `recordE(io.EOF)`); err != nil {
