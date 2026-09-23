@@ -1,6 +1,7 @@
 package gozero
 
 import (
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -165,5 +166,51 @@ func TestBindVarMutableAssignReachesHost(t *testing.T) {
 	err := bvRun(t, rt, `*args = three()`)
 	if err == nil || !strings.Contains(err.Error(), "not a pointer") {
 		t.Errorf("*args should not compile, got %v", err)
+	}
+}
+
+// TestBindVarMethods pins that a value binding is a receiver: it owns
+// the longest dotted prefix of a path the way a func binding does, and
+// what follows is fields and methods.
+func TestBindVarMethods(t *testing.T) {
+	rt, seen := bvRuntime(t)
+	u, err := url.Parse("https://example.com/p?x=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.BindVar("u", u); err != nil {
+		t.Fatal(err)
+	}
+
+	// A field read.
+	if err := bvRun(t, rt, `recordS(u.Path)`); err != nil {
+		t.Fatal(err)
+	}
+	if seen.s != "/p" {
+		t.Errorf("u.Path = %q", seen.s)
+	}
+	// A method call.
+	if err := bvRun(t, rt, "s := u.String()\nrecordS(s)"); err != nil {
+		t.Fatal(err)
+	}
+	if seen.s != "https://example.com/p?x=1" {
+		t.Errorf("u.String() = %q", seen.s)
+	}
+	// A method on a field's type.
+	if err := bvRun(t, rt, "q := u.Query()\nrecordS(u.Hostname())"); err != nil {
+		t.Fatal(err)
+	}
+	if seen.s != "example.com" {
+		t.Errorf("u.Hostname() = %q", seen.s)
+	}
+	// The name alone is still not a call.
+	err = bvRun(t, rt, `u()`)
+	if err == nil || !strings.Contains(err.Error(), "is a value, not a call") {
+		t.Errorf("u(): %v", err)
+	}
+	// And an unknown selector names the type it was looked up on.
+	err = bvRun(t, rt, "s := u.Nope()\nrecordS(s)")
+	if err == nil || !strings.Contains(err.Error(), "has no method or field Nope") {
+		t.Errorf("u.Nope(): %v", err)
 	}
 }
