@@ -66,18 +66,21 @@ func sortedNames[V any](m map[string]V) []string {
 	return names
 }
 
-// Bind registers a Go function under a name, e.g.
-// Bind("NewRequest", http.NewRequest). Arguments are borrowed: they
-// are valid for the duration of the call, because the runtime pools
-// the memory behind packs, boxes and literal arguments and reuses it
-// after the call returns. A binding that keeps a received any, slice
-// or literal pointer copies it first, the way a type assertion
-// copies a value out of its box; plain string and scalar parameters
-// need no copy.
+// Bind registers a Go function or a value under a name: a func is
+// called, a value is read and carries the static type it was bound
+// with, and an address is read and written through. The reference
+// rules are in bindvar.go.
+//
+// Arguments are borrowed. A binding that keeps a received any, slice
+// or literal pointer copies it first, because the runtime pools the
+// memory behind them and reuses it after the call returns.
 func (r *Runtime) Bind(name string, fn any) error {
+	if fn == nil {
+		return fmt.Errorf("bind: %s: cannot bind a nil value, its type is unknown", name)
+	}
 	v := reflect.ValueOf(fn)
 	if v.Kind() != reflect.Func {
-		return fmt.Errorf("bind: %s is %s, want func", name, v.Kind())
+		return r.bindValue(name, v)
 	}
 	r.mu.Lock()
 	r.compiler.bindings[name] = binding{rv: v, raw: fn}
@@ -86,6 +89,23 @@ func (r *Runtime) Bind(name string, fn any) error {
 	}
 	// Everything the signature mentions becomes nameable in a var
 	// statement, along with what its methods reach.
+	r.origin = name
+	r.discover(v.Type(), 1)
+	r.origin = ""
+	r.mu.Unlock()
+	return nil
+}
+
+// bindValue is the value half of Bind.
+func (r *Runtime) bindValue(name string, v reflect.Value) error {
+	if v.Kind() == reflect.Pointer && v.IsNil() {
+		return fmt.Errorf("bind: %s: cannot bind a nil %s", name, v.Type())
+	}
+	r.mu.Lock()
+	r.compiler.vars[name] = varBinding{val: v}
+	if r.log != nil {
+		r.log.Debug("bind value", "name", name, "type", v.Type().String())
+	}
 	r.origin = name
 	r.discover(v.Type(), 1)
 	r.origin = ""

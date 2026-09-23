@@ -166,8 +166,12 @@ func TestExecVariableTypeMismatch(t *testing.T) {
 
 func TestRuntime_Bind(t *testing.T) {
 	rt := NewRuntime()
-	if err := rt.Bind("x", 42); err == nil {
-		t.Fatal("expected error binding a non-func")
+	// A non-func is a value binding, not an error: Bind takes both.
+	if err := rt.Bind("x", 42); err != nil {
+		t.Fatalf("binding a value: %v", err)
+	}
+	if err := rt.Bind("z", nil); err == nil {
+		t.Fatal("expected error binding nil")
 	}
 	if err := rt.Bind("f", strings.ToUpper); err != nil {
 		t.Fatal(err)
@@ -246,8 +250,12 @@ func TestRuntime_BindScope(t *testing.T) {
 	if got != "ABC" {
 		t.Errorf("got %q, want ABC", got)
 	}
-	if err := rt.BindScope("bad", map[string]any{"NotAFunc": 42}); err == nil {
-		t.Error("expected the non-func entry to fail the scope")
+	// A scope carries values as readily as funcs, since Bind does.
+	if err := rt.BindScope("cfg", map[string]any{"Retries": 3}); err != nil {
+		t.Errorf("a value entry should bind: %v", err)
+	}
+	if err := rt.BindScope("bad", map[string]any{"Nil": nil}); err == nil {
+		t.Error("expected the nil entry to fail the scope")
 	}
 }
 

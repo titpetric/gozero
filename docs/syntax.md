@@ -25,16 +25,17 @@ stmt    := "var" name typeref term
          | "*" path "=" rhs term
          | [ name { "," name } ( ":=" | "=" ) ] rhs term
 term    := ";" | EOL | EOF
-rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv | addr | deref
+rhs     := expr | string | number | "true" | "false" | "nil" | composite | slicelit | recv | addr | deref
 typeref := { "*" | "[]" | "chan" | "chan<-" | "<-chan" } path
 expr    := path "(" [ args ] ")" { "." ident "(" [ args ] ")" }
 path    := ident { "." ident }
 args    := arg { "," arg }
-arg     := string | number | path | expr | composite | recv | addr | deref | path "..."
+arg     := string | number | path | expr | composite | slicelit | recv | addr | deref | path "..."
 addr    := "&" path
 deref   := "*" path
 recv    := "<-" ( path | expr )
 composite := [ "&" ] path "{" [ elem { "," elem } [ "," ] ] "}"
+slicelit  := "[]" typeref "{" [ arg { "," arg } [ "," ] ] "}"
 elem    := [ ident ":" ] arg
 ```
 
@@ -470,53 +471,27 @@ done <- u.Host
 language; [design/channels.md](design/channels.md) records why they
 decompose onto conditions, loops and closures.
 
-## Value bindings and references
+## Values and references
 
-`Bind` registers funcs; `BindVar` registers data. A value binding is
-read in argument position like any other name and carries the static
-type it was bound with, so the parameter check happens when the
-program compiles:
-
-```go
-rt.BindVar("time.Hour", time.Hour)
-rt.BindVar("io.EOF", io.EOF)
-rt.BindVar("os.Args", gozero.Mutable(&os.Args))
-```
-
-`Mutable` is what makes a binding writable, and it takes the address
-because an address is the only thing that can alias:
-`Mutable(os.Args)` would hand over a copy, and a write to the copy
-reaches nothing the host reads. A binding registered without it is a
-snapshot, and a program that writes it writes its own copy for the
-run: the name shadows the binding the way a local shadows an outer
-name in Go. The shallow copy is Go's, so a slice or a map bound by
-value still shares its elements with the host.
-
-The name denotes the variable, not a pointer to it, on both kinds:
-`os.Args` reads as a `[]string`, `&os.Args` is the `*[]string` a
-binding taking a pointer wants, and `*os.Args` does not compile.
-What differs is where a write lands. On a mutable binding both
-`name = xs` and `&name` reach the host's variable. On an immutable
-one both reach a per-run copy, so a program rewrites or grows the
-copy and the host keeps the header it had:
+`Bind` takes a func or a value. A func is called; anything else is a
+value, read in argument position like any other name and carrying
+the static type it was bound with:
 
 ```go
-rt.BindVar("os.Args", os.Args)
-rt.Bind("append", gozero.Append)
+rt.Bind("url.Parse", url.Parse)   // a func
+rt.Bind("time.Hour", time.Hour)   // a value
+rt.Bind("io.EOF", io.EOF)         // a value
+rt.Bind("os.Args", &os.Args)      // an address
 ```
 
-```go
-os.Args = rewritten()    // writes the run's copy
-append(&os.Args, "-x")   // grows the same copy
-argc(os.Args)            // reads it back
-```
+A value binding is also a receiver: it owns the longest dotted
+prefix of a path the way a func binding does, so `Bind("u", u)` with
+a `*url.URL` makes `u.Path` and `u.String()` both compile.
 
-The copy is per run, not one copy the binding holds: a compiled
-program keeps no per-run state, so two concurrent `Exec`s cannot see
-each other and the next run starts from the bound value again. One
-cell per name per program, so two `&os.Args` address the same
-storage the way two `&x` do in Go. Bind `Mutable(&v)` when the host
-wants the writes to outlive the run.
+Whether a program reaches the host is Go's rule, and the `&` at the
+`Bind` call site is the whole of the opt-in. A value is copied in,
+so the name is the program's own for the run; an address makes the
+name a `*T`, and the program writes through it:
 
 <table>
 <tr>
@@ -526,8 +501,11 @@ wants the writes to outlive the run.
 <td>
 
 ```go
-first := os.Args[0]
-os.Args = []string{"rewritten"}
+frozen := []string{"kept"}
+frozen = []string{"replaced"}
+frozen = append(frozen, "added")
+
+os.Args = []string{"1", "2", "3"}
 sort.Strings(os.Args)
 ```
 
@@ -540,24 +518,32 @@ sort.Strings(os.Args)
 <td>
 
 ```go
-first := head(os.Args)
-os.Args = rewritten()
-sort.Strings(os.Args)
+// Bind("frozen", []string{"kept"})
+frozen = []string{"replaced"}
+append(&frozen, "added")
+
+// Bind("os.Args", &os.Args)
+*os.Args = []string{"1", "2", "3"}
+sort.Strings(*os.Args)
 ```
 
 </td>
 </tr>
 </table>
 
-`&` and `*` are Go's, with Go's rules and no softening of them.
+The copy is per run: the next run starts from the bound value again,
+and two concurrent `Exec`s cannot see each other. One cell per name
+per program, so a write, an `&` and every read reach the same
+storage. The shallow copy is Go's, so a slice or a map bound by
+value still shares its elements with the host.
+
+`&` and `*` are the only operators besides the channel arrow.
 `&name` takes the address of a program name, a field of one, or a
-mutable value binding; `*p` reads through a pointer and `*p = v`
-writes through one. A value never fills a `*T` parameter and a
-pointer never fills a `T` one, so a binding that means to mutate its
-argument is called the way it is in Go:
+value binding; `*p` reads through a pointer and `*p = v` writes
+through one. A value never fills a `*T` parameter and a pointer
+never fills a `T` one:
 
 ```go
-replace(&os.Args, "rewritten")
 p := ptrTo(7)
 n := *p
 *p = 8
@@ -568,6 +554,25 @@ takes implicitly is the receiver of a pointer-method call, which is
 the only place Go takes one too: `o := f(); o.Bump()` addresses `o`,
 and `Mutate(o)` against a `*T` parameter is a compile error until it
 is written `Mutate(&o)`.
+
+## Slice literals
+
+`[]T{a, b}` builds a slice per evaluation, the way a Go composite
+literal allocates each time the expression runs. It stands anywhere
+a value stands - an argument, a name, the right of an assignment -
+and each element is checked against `T` the way an argument of that
+type is:
+
+```go
+xs := []string{"a", "b"}
+assert.Equal(tb, "a/b", path.Join(xs...))
+*os.Args = []string{"1", "2", "3"}
+```
+
+Elements are unkeyed: an index key would need the compiler to size
+the slice, and nothing in the language needs one. The type is
+spelled the way a `var` statement spells one, so it must name a type
+discovery registered.
 
 The program in [`testdata/vars.txt`](../testdata/vars.txt) runs the
 whole surface.

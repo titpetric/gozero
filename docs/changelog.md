@@ -7,56 +7,49 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
-## 2026-09-22 00:00 +02:00: value bindings, and the two reference operators
+## 2026-09-23 00:00 +02:00: Bind takes values, and the two reference operators
 
-`Bind` carries funcs, so data had no way into a program except as a
+`Bind` carried funcs, so data had no way into a program except as a
 literal or through a nullary getter, at the cost of a call per read.
-`Runtime.BindVar` registers a value under a name, read in argument
-position like any other and type-checked against the parameter when
-the program compiles: after `BindVar("time.Hour", time.Hour)` a
-binding taking a `time.Duration` accepts it and one taking `int64`
-rejects it.
+A host could not expose `time.Hour`, `io.EOF` or `os.Args` at all.
 
-Whether a write reaches the host is stated at the call site.
-`BindVar("os.Args", Mutable(&os.Args))` aliases the host's variable,
-so `os.Args = xs` lands in it. `BindVar("os.Args", os.Args)` is a
-snapshot, and the same statement writes the program's own copy for
-the run: the name shadows the binding rather than failing, the way
-a local shadows an outer name in Go. `Mutable` takes the
-address rather than the value because an address is the only thing
-that can alias, and it returns a `Ref` marker rather than a plain
-pointer because an `any` erases the interface it came from:
-`reflect.ValueOf(io.EOF)` is a `*errors.errorString`, so reading
-pointerness as intent would have bound `io.EOF` as a mutable
-`errors.errorString`. `Ptr` is the generic address-of helper for
-making a fresh cell to bind.
+`Bind` now takes either. A func is called; anything else is a value,
+read in argument position like any other name and type-checked
+against the parameter when the program compiles, so after
+`Bind("time.Hour", time.Hour)` a binding taking a `time.Duration`
+accepts it and one taking `int64` rejects it. A value binding is
+also a receiver: it owns the longest dotted prefix of a path the way
+a func binding does, so `Bind("u", u)` with a `*url.URL` makes both
+`u.Path` and `u.String()` compile. `BindScope` carries values for
+free, since it is `Bind` in a loop.
 
-The shallow copy is Go's. An immutable binding of a slice or a map
-copies the header, so the elements behind it stay shared and a
-binding that writes them writes host memory; only rebinding the name
-is blocked.
+Whether a program reaches the host is Go's rule and needs no API for
+it. A value is copied in, so the name is the program's own for the
+run: `label = x` and `&label` both reach a per-run copy, and the
+host's variable keeps what it had. Binding an address opts in. The
+name is then a `*T`, so `*os.Args` reads the host's slice,
+`*os.Args = xs` writes it, and a binding taking a `*[]string` takes
+the name directly. The shallow copy is Go's too, so a slice or a map
+bound by value still shares its elements with the host.
 
-With data in the language, the two reference operators follow.
-`&name` takes the address of a program name, a field of one, or a
-value binding, and `*p` reads through a pointer; `*p = v` writes
-through one. A value never fills a `*T` parameter and a pointer
-never fills a `T` one, and nothing auto-references an argument,
-which is Go - the one implicit address gozero takes is still the
-receiver of a pointer-method call.
+The copy is per run rather than one copy the binding holds: a
+compiled program keeps no per-run state, so two concurrent `Exec`s
+must not see each other's writes and a second run must not start
+from what the first appended. One cell per name per program, so two
+`&label` address the same storage the way two `&x` do in Go.
 
-The two kinds of binding write different storage. On a mutable
-binding, `name = xs` and `&name` both reach the host's variable. On
-an immutable one both reach a per-run copy: a program may assign to
-it, append to it, sort it or write through it, and the host's
-variable keeps the header it had. The name denotes the variable and
-not a pointer to it either way, so `os.Args` reads as a `[]string`,
-`&os.Args` is the `*[]string`, and `*os.Args` does not compile. The copy is per run rather than one copy the binding
-holds, because a compiled program keeps no per-run state - two
-concurrent `Exec`s must not see each other's writes, and a second
-run must not start from what the first appended. One cell per name
-per program, so two `&os.Args` address the same storage the way two
-`&x` do in Go. A host wanting storage that outlives the run binds
-`Mutable(&v)`.
+`&` and `*` are the only operators the language gained. `&name`
+takes the address of a program name, a field of one, or a value
+binding; `*p` reads through a pointer and `*p = v` writes through
+one. A value never fills a `*T` parameter and a pointer never fills
+a `T` one, and nothing auto-references an argument - the one
+implicit address gozero takes is still the receiver of a
+pointer-method call.
+
+Slice literals landed with them, because `*os.Args = []string{...}`
+needs one. `[]T{a, b}` builds a slice per evaluation, with the
+element checks an argument of type `T` gets, and stands anywhere a
+value stands.
 
 `gozero.Delete(m, key)` removes a key from a map held in an `any`
 and `gozero.Append(&v, x)` appends through a pointer held in one;
@@ -65,14 +58,18 @@ through an interface. The common shapes are type-asserted and the
 rest goes through reflect. A missing key, a nil map and a nil slice
 are no-ops, as in Go.
 
-Reading a value binding reaches the direct tier as one load from the
+Reading a value reaches the direct tier as one load from the
 binding's fixed address, with no frame slot and no boxing; an
 addressed one becomes a frame slot seeded per run, and `&name`
 filling an interface parameter carries a compile-time itab like any
-other interface argument. A write does not yet: `planInline` refuses the statement so the program
-falls back to the reflect evaluator whole, rather than dropping the
-write. `testdata/vars.txt` runs the surface end to end and
-`bindvar_test.go` pins the rules.
+other interface argument. A write does not yet: `planInline` refuses
+the statement so the program falls back to the reflect evaluator
+whole, rather than dropping the write. `testdata/vars.txt` runs the
+surface end to end.
+
+A rebind is a new binding, not an update: neither a compiled program
+nor the cached compilation of the same source sees it, which is the
+rule `Bind` already had for funcs.
 
 ## 2026-09-10 16:58 +02:00: argument pooling under the binding contract
 

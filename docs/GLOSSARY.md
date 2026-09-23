@@ -28,7 +28,8 @@ aliased slot cannot be rewritten.
 A Go function the host registers in a Runtime under a name, for
 example `rt.Bind("url.Parse", url.Parse)`. The set of bindings is
 the complete surface a program can call: gozero programs have no
-standard library of their own.
+standard library of their own. `Bind` also takes data, which is a
+value binding.
 
 ## boxed value
 
@@ -67,22 +68,22 @@ their values directly and need no copy.
 
 ## value binding
 
-Data the host registers under a name with `BindVar`, as opposed to
-the func a `binding` holds. A program reads it in argument position
-and it carries the static type it was bound with, so the parameter
-check happens when the program compiles. A value binding is
-immutable unless the host wrapped its address in `Mutable`.
+Data the host registers with `Bind`, as opposed to the func a
+`binding` holds: `Bind` takes either and what it is decides what the
+name does. A program reads a value binding in argument position, it
+carries the static type it was bound with, and it can be the
+receiver of a field read or a method call.
 
-## mutable binding
+## per-run cell
 
-A value binding the host registered as `Mutable(&v)`, which stores
-the host's variable as settable storage rather than a copy. Both
-`name = xs` and `&name` reach that variable. On an immutable binding
-both reach a per-run copy instead, so a program may assign to it and
-write through it without the host's variable changing. The
-distinction is about the variable itself: a slice or a map bound by
-value still shares its elements with the host, the same shallow copy
-Go makes anywhere.
+The storage a program gets when it writes or addresses a value
+binding. A value is copied into the runtime, so the name is the
+program's own for the run: `name = v` and `&name` reach the cell,
+and the host's variable is untouched. The cell is seeded from the
+bound value at the start of every run and there is one per name per
+program, so two `&name` address the same storage the way two `&x` do
+in Go. A host that wants a program to write its own storage binds an
+address instead, and the program writes through it with `*name = v`.
 
 ## direct-call tier
 

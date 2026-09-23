@@ -297,6 +297,9 @@ func (c *jitCompiler) bridgeArg(a *vmArg) (func(unsafe.Pointer, context.Context,
 	case vaVar, vaDeref:
 		return c.bridgeRef(a)
 
+	case vaSlice:
+		return c.bridgeSlice(a)
+
 	case vaSlot:
 		if producer := c.splices[a]; producer != nil {
 			sub, err := c.exprNode(producer)

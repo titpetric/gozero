@@ -68,7 +68,7 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 			base := len(e.path) - len(rest)
 			recv = &vmArg{
 				kind: vaVar, name: joinPath(e.path[:base]), varv: vb.val,
-				mutable: vb.mutable, typ: vb.val.Type(), iface: -1,
+				typ: vb.val.Type(), iface: -1,
 			}
 			currType = vb.val.Type()
 			methods = rest
@@ -405,6 +405,17 @@ func (c *Compiler) compileArg(slots map[string]int, env map[string]reflect.Type,
 		}
 		cur.typ = pt
 		return cur, nil
+
+	case argSlice:
+		sa, st, err := c.compileSliceLit(slots, env, a)
+		if err != nil {
+			return nil, fmt.Errorf("compile: %s argument %d: %w", name, pos+1, err)
+		}
+		if !st.AssignableTo(pt) {
+			return nil, fmt.Errorf("compile: %s argument %d: cannot use %s as %s", name, pos+1, st, pt)
+		}
+		sa.typ = pt
+		return sa, nil
 
 	case argStruct:
 		sa, st, err := c.compileStructLit(slots, env, a)

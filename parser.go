@@ -17,16 +17,17 @@ import (
 //	         | "*" path "=" rhs term
 //	         | [ name { "," name } ( ":=" | "=" ) ] rhs term
 //	term    := ";" | EOL | EOF
-//	rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv | addr | deref
+//	rhs     := expr | string | number | "true" | "false" | "nil" | composite | slicelit | recv | addr | deref
 //	typeref := { "*" | "[]" | "chan" | "chan<-" | "<-chan" } path
 //	expr    := path "(" [ args ] ")" { "." ident "(" [ args ] ")" }
 //	path    := ident { "." ident }
 //	args    := arg { "," arg }
-//	arg     := string | number | path | expr | composite | recv | addr | deref
+//	arg     := string | number | path | expr | composite | slicelit | recv | addr | deref
 //	addr    := "&" path
 //	deref   := "*" path
 //	recv    := "<-" ( path | expr )
 //	composite := [ "&" ] path "{" [ elem { "," elem } [ "," ] ] "}"
+//	slicelit  := "[]" typeref "{" [ arg { "," arg } [ "," ] ] "}"
 //	elem    := [ ident ":" ] arg
 
 // Parser turns a program into a list of statements. A path is resolved
@@ -77,6 +78,9 @@ const (
 	// &http.Request{}. The path names the type; the compiler resolves
 	// it, because only it holds the registry.
 	argStruct
+	// argSlice is a slice literal, []string{"a", "b"}. typ is the
+	// type as typeRef spells it and elems are the values, unkeyed.
+	argSlice
 	// argRecv is a channel receive, <-c. The source is a name, a
 	// field, or a call; the compiler types it.
 	argRecv
@@ -116,6 +120,8 @@ type arg struct {
 	addr  bool
 	// argRecv: the channel the receive reads.
 	recv *arg
+	// argSlice: the written type, "[]string".
+	typ string
 }
 
 // link is one ".Method(args)" step chained onto a call.

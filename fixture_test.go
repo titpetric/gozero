@@ -64,36 +64,31 @@ func fixtureRuntime(t *testing.T) *Runtime {
 	if err := rt.Bind("chanOf", chanOf); err != nil {
 		t.Fatal(err)
 	}
-	// The value bindings the vars fixture reads and writes. argv and
-	// cursor are per-runtime, so the fixture's writes are visible to it
-	// and to nothing else; time.Hour and io.EOF are the immutable
-	// case, a constant and a sentinel that a program may read and not
-	// replace.
+	// The values the vars fixture reads and writes. argv and cursor
+	// are bound by address, so the fixture writes them through "*name
+	// = v" and reads the writes back; they are per-runtime, so the
+	// writes are visible to this subtest and nothing else. time.Hour,
+	// io.EOF and frozen are bound by value: a program reads them and
+	// writes its own copy for the run.
 	argv := []string{"prog", "-v"}
 	cursor := 0
 	for name, v := range map[string]any{
-		"os.Args":   Mutable(&argv),
-		"cursor":    Mutable(&cursor),
+		"os.Args":   &argv,
+		"cursor":    &cursor,
 		"time.Hour": time.Hour,
 		"io.EOF":    io.EOF,
 		"frozen":    []string{"kept"},
+		"append":    Append,
+		"first":     func(v []string) string { return v[0] },
+		"second":    func(v []string) string { return v[1] },
+		"third":     func(v []string) string { return v[2] },
+		"argc":      func(v []string) int { return len(v) },
+		"bump":      func(p *int) { *p++ },
+		"ptrTo":     func(n int) *int { return &n },
+		"seconds":   func(d time.Duration) int64 { return int64(d / time.Second) },
+		"message":   func(e error) string { return e.Error() },
 	} {
-		if err := rt.BindVar(name, v); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for name, fn := range map[string]any{
-		"append":  Append,
-		"first":   func(v []string) string { return v[0] },
-		"second":  func(v []string) string { return v[1] },
-		"argc":    func(v []string) int { return len(v) },
-		"replace": func(p *[]string, s string) { *p = []string{s} },
-		"bump":    func(p *int) { *p++ },
-		"ptrTo":   func(n int) *int { return &n },
-		"seconds": func(d time.Duration) int64 { return int64(d / time.Second) },
-		"message": func(e error) string { return e.Error() },
-	} {
-		if err := rt.Bind(name, fn); err != nil {
+		if err := rt.Bind(name, v); err != nil {
 			t.Fatal(err)
 		}
 	}
