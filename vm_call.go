@@ -53,7 +53,26 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 	default:
 		slot, ok := slots[e.path[0]]
 		if !ok {
-			return nil, nil, fmt.Errorf("compile: unknown binding %q", joinPath(e.path))
+			// Not a program name either: a value binding can be the
+			// receiver, and it owns the longest dotted prefix of the
+			// path the way a func binding does. Everything after that
+			// prefix is fields and methods, which the link loop below
+			// already tells apart.
+			vb, rest, found := c.varOf(e.path)
+			if !found {
+				return nil, nil, fmt.Errorf("compile: unknown binding %q", joinPath(e.path))
+			}
+			if len(rest) == 0 && len(e.chain) == 0 {
+				return nil, nil, fmt.Errorf("compile: %s is a value, not a call", joinPath(e.path))
+			}
+			base := len(e.path) - len(rest)
+			recv = &vmArg{
+				kind: vaVar, name: joinPath(e.path[:base]), varv: vb.val,
+				mutable: vb.mutable, typ: vb.val.Type(), iface: -1,
+			}
+			currType = vb.val.Type()
+			methods = rest
+			break
 		}
 		recv = &vmArg{kind: vaSlot, slot: slot, typ: env[e.path[0]], iface: -1}
 		currType = env[e.path[0]]
