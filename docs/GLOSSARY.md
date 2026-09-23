@@ -77,11 +77,13 @@ immutable unless the host wrapped its address in `Mutable`.
 
 A value binding the host registered as `Mutable(&v)`, which stores
 the host's variable as settable storage rather than a copy. A
-program may assign to it and take its address; an immutable binding
-rejects both at compile time, because writing a copy nobody reads is
-a silent wrong answer rather than an error. The distinction is about
-the variable itself: a slice or a map bound by value still shares
-its elements with the host, the same shallow copy Go makes anywhere.
+program may assign to it, and `&name` is a handle on the host's
+variable. An immutable binding rejects the assignment at compile
+time, and `&name` on one addresses a per-run copy instead, so the
+program may write through the pointer without the host's variable
+changing. The distinction is about the variable itself: a slice or a
+map bound by value still shares its elements with the host, the same
+shallow copy Go makes anywhere.
 
 ## direct-call tier
 

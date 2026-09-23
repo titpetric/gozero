@@ -50,15 +50,18 @@ func TestVarArgResolution(t *testing.T) {
 		t.Errorf("absent: ok=%v err=%v, want a clean miss", ok, err)
 	}
 
-	// Addressability: the immutable root has no address.
-	if _, _, _, err := c.varArg([]string{"cfg"}, true); err == nil || !strings.Contains(err.Error(), "bound by value") {
-		t.Errorf("&cfg: want a bound-by-value error, got %v", err)
+	// Both kinds are addressable; they differ in what they address,
+	// which materializeVarCells decides rather than varArg.
+	ia, it, _, err := c.varArg([]string{"cfg"}, true)
+	if err != nil {
+		t.Fatalf("&cfg: %v", err)
 	}
-	if _, _, _, err := c.varArg([]string{"cfg", "In", "Name"}, true); err == nil {
-		t.Error("&cfg.In.Name: a field of an immutable binding should have no address")
+	if !ia.addrOf || it.Kind() != reflect.Pointer || it.Elem() != reflect.TypeOf(val) {
+		t.Errorf("&cfg compiled to addrOf=%v type=%s", ia.addrOf, it)
 	}
-	// A pointer in the chain makes what follows addressable, the way
-	// it does in Go.
+	if _, _, _, err := c.varArg([]string{"cfg", "In", "Name"}, true); err != nil {
+		t.Errorf("&cfg.In.Name: %v", err)
+	}
 	if _, _, _, err := c.varArg([]string{"cfg", "P", "Name"}, true); err != nil {
 		t.Errorf("&cfg.P.Name: %v", err)
 	}
