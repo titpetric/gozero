@@ -43,6 +43,10 @@ type varBinding struct {
 // Wrap the address in [Mutable] to make it writable; a value bound
 // without it rejects assignment when the program compiles. Funcs
 // belong to [Runtime.Bind] and are rejected here.
+//
+// A rebind is a new binding, not an update: neither a compiled
+// program nor the cached compilation of the same source sees it, the
+// rule [Runtime.Bind] already has.
 func (r *Runtime) BindVar(name string, v any) error {
 	if v == nil {
 		return fmt.Errorf("bindvar: %s: cannot bind a nil value, its type is unknown", name)

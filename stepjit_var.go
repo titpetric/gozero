@@ -13,10 +13,12 @@ import (
 // The address is therefore a compile-time constant and a read is one
 // load from it, with no frame slot, no boxing and no reflect.
 //
-// An immutable binding could be folded into the node as a constant,
-// and is not: the same node shape serves both, and a value binding is
-// rebindable through BindVar, so reading the live storage is what
-// keeps a rebind visible to a program compiled before it.
+// Reading the storage rather than folding the value into the node is
+// what makes a mutable binding track the host's writes to the
+// variable. It does not make a rebind visible: the node captures the
+// binding as it stood when the program compiled, and a compiled
+// program is cached per source string, so a later BindVar under the
+// same name reaches neither. That is the rule Bind already has.
 
 // bridgeRef resolves a value binding or a pointer read for the
 // reflect bridge, which is where they land when the call around them
