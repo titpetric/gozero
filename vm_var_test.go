@@ -7,8 +7,9 @@ import (
 )
 
 // TestVarArgResolution covers the resolver directly: the longest
-// dotted prefix wins, field selectors continue from there, and
-// addressability follows Go's rule rather than the binding's shape.
+// dotted prefix wins, field selectors continue from there, and an
+// address is legal on any of them because it addresses the program's
+// own cell rather than the host's storage.
 func TestVarArgResolution(t *testing.T) {
 	type inner struct{ Name string }
 	type outer struct {
@@ -21,8 +22,6 @@ func TestVarArgResolution(t *testing.T) {
 	c := &Compiler{vars: map[string]varBinding{}, types: map[string]reflect.Type{}}
 	c.vars["cfg"] = varBinding{val: reflect.ValueOf(val)}
 	c.vars["cfg.deep"] = varBinding{val: reflect.ValueOf(val)}
-	mutable := val
-	c.vars["mut"] = varBinding{val: reflect.ValueOf(&mutable).Elem(), mutable: true}
 
 	// The longest prefix wins, so cfg.deep is one name and not a field
 	// of cfg.
@@ -50,28 +49,18 @@ func TestVarArgResolution(t *testing.T) {
 		t.Errorf("absent: ok=%v err=%v, want a clean miss", ok, err)
 	}
 
-	// Both kinds are addressable; they differ in what they address,
-	// which materializeVarCells decides rather than varArg.
-	ia, it, _, err := c.varArg([]string{"cfg"}, true)
+	// An address is legal and carries the pointer type.
+	pa, pt, _, err := c.varArg([]string{"cfg"}, true)
 	if err != nil {
 		t.Fatalf("&cfg: %v", err)
 	}
-	if !ia.addrOf || it.Kind() != reflect.Pointer || it.Elem() != reflect.TypeOf(val) {
-		t.Errorf("&cfg compiled to addrOf=%v type=%s", ia.addrOf, it)
+	if !pa.addrOf || pt.Kind() != reflect.Pointer || pt.Elem() != reflect.TypeOf(val) {
+		t.Errorf("&cfg compiled to addrOf=%v type=%s", pa.addrOf, pt)
 	}
-	if _, _, _, err := c.varArg([]string{"cfg", "In", "Name"}, true); err != nil {
-		t.Errorf("&cfg.In.Name: %v", err)
-	}
-	if _, _, _, err := c.varArg([]string{"cfg", "P", "Name"}, true); err != nil {
-		t.Errorf("&cfg.P.Name: %v", err)
-	}
-	// And a mutable root is addressable throughout.
-	pa, pt, _, err := c.varArg([]string{"mut"}, true)
-	if err != nil {
-		t.Fatalf("&mut: %v", err)
-	}
-	if !pa.addrOf || pt.Kind() != reflect.Pointer {
-		t.Errorf("&mut compiled to addrOf=%v type=%s", pa.addrOf, pt)
+	for _, path := range [][]string{{"cfg", "In", "Name"}, {"cfg", "P", "Name"}} {
+		if _, _, _, err := c.varArg(path, true); err != nil {
+			t.Errorf("&%s: %v", strings.Join(path, "."), err)
+		}
 	}
 }
 

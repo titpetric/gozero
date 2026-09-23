@@ -15,16 +15,17 @@ import (
 //	         | "return" [ arg ] term
 //	         | "*" path "=" rhs term
 //	         | [ name { "," name } ( ":=" | "=" ) ] rhs term
-//	rhs     := expr | string | number | "true" | "false" | "nil" | composite | addr | deref
+//	rhs     := expr | string | number | "true" | "false" | "nil" | composite | slicelit | addr | deref
 //	typeref := { "*" | "[]" } path
 //	expr    := path "(" [ args ] ")" { "." ident "(" [ args ] ")" }
 //	path    := ident { "." ident }
 //	args    := arg { "," arg }
-//	arg     := string | number | path | expr | composite | addr | deref
+//	arg     := string | number | path | expr | composite | slicelit | addr | deref
 //	addr    := "&" path
 //	deref   := "*" path
 //	elem    := [ ident ":" ] arg
 //	composite := [ "&" ] path "{" [ elem { "," elem } [ "," ] ] "}"
+//	slicelit  := "[]" typeref "{" [ arg { "," arg } [ "," ] ] "}"
 //	term    := ";" | EOL | EOF
 
 // Parser turns a program into a list of statements. The compiler
@@ -75,6 +76,9 @@ const (
 	// &http.Request{}. The path names the type; the compiler resolves
 	// it, because only it holds the registry.
 	argStruct
+	// argSlice is a slice literal, []string{"a", "b"}. typ is the
+	// type as typeRef spells it and elems are the values, unkeyed.
+	argSlice
 	// argAddr is "&x": the address of a name, a field of one, or a
 	// value binding. path holds the operand, and the &T{} form stays
 	// with argStruct because the parser can tell them apart at the
@@ -109,6 +113,8 @@ type arg struct {
 	// marks the &T{} form.
 	elems []structElem
 	addr  bool
+	// argSlice: the written type, "[]string".
+	typ string
 }
 
 // link is one ".Method(args)" step chained onto a call.

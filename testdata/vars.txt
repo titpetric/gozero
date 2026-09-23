@@ -1,37 +1,54 @@
-// Value bindings. A name BindVar registered reads like any other, and
-// is writable only when the host bound it through Mutable.
+// Values bound with Bind, and the two reference operators.
+//
+// A value is copied in, so the name is the program's own for the run.
+// An address is bound as a pointer, so the name is a *T and the
+// program reaches the host through it: Go's rules, Go's spellings.
 
-// Reading an immutable binding: a constant and a sentinel.
+// Reading a value binding: a constant and a sentinel.
 assert.Equal(tb, "3600", fmt.Sprintf("%d", seconds(time.Hour)))
 assert.Equal(tb, "EOF", message(io.EOF))
 
-// Reading a mutable binding. The name is the variable, not a pointer
-// to it, so this is a []string.
-assert.Equal(tb, "prog", first(os.Args))
-assert.Equal(tb, "2", fmt.Sprintf("%d", argc(os.Args)))
-
-// & produces the pointer a *T parameter wants. Go's rule, spelled the
-// way Go spells it: nothing auto-references an argument.
-replace(&os.Args, "rewritten")
-assert.Equal(tb, "rewritten", first(os.Args))
-assert.Equal(tb, "1", fmt.Sprintf("%d", argc(os.Args)))
-
-// An immutable binding is the program's own copy for the run: an
-// assignment shadows it, & addresses the same copy, and the host's
-// variable keeps the header it had. Every run starts from the bound
-// value again.
+// A value binding is the program's copy. Writing it shadows the
+// binding for the run; the host's variable is untouched, and the next
+// run starts from the bound value again.
 assert.Equal(tb, "kept", first(frozen))
-append(&frozen, "added")
+frozen = []string{"replaced", "by a literal"}
 assert.Equal(tb, "2", fmt.Sprintf("%d", argc(frozen)))
-assert.Equal(tb, "added", second(frozen))
+assert.Equal(tb, "replaced", first(frozen))
 
-// Assignment writes the host's variable directly.
-cursor = 41
-bump(&cursor)
-assert.Equal(tb, "42", fmt.Sprintf("%d", cursor))
+// & addresses that copy, so a binding taking a pointer grows it and a
+// read afterwards sees the longer slice.
+append(&frozen, "appended")
+assert.Equal(tb, "3", fmt.Sprintf("%d", argc(frozen)))
+assert.Equal(tb, "appended", third(frozen))
 
-// * reads through a pointer held by a program name.
+// os.Args was bound as &argv, so the name is a *[]string: * reads the
+// slice and *name = v writes the host's variable.
+assert.Equal(tb, "prog", first(*os.Args))
+assert.Equal(tb, "2", fmt.Sprintf("%d", argc(*os.Args)))
+
+*os.Args = []string{"1", "2", "3"}
+assert.Equal(tb, "3", fmt.Sprintf("%d", argc(*os.Args)))
+assert.Equal(tb, "1", first(*os.Args))
+
+// The name is already the pointer, so a binding taking one needs no &.
+append(os.Args, "4")
+assert.Equal(tb, "4", fmt.Sprintf("%d", argc(*os.Args)))
+
+// Same for a scalar bound by address.
+*cursor = 41
+bump(cursor)
+assert.Equal(tb, "42", fmt.Sprintf("%d", *cursor))
+
+// A pointer a binding returned reads and writes the same way.
 p := ptrTo(7)
 assert.Equal(tb, "7", fmt.Sprintf("%d", *p))
 *p = 8
 assert.Equal(tb, "8", fmt.Sprintf("%d", *p))
+
+// A slice literal is a value like any other: it fills an argument,
+// binds a name, and is built fresh on every run.
+xs := []string{"a", "b"}
+assert.Equal(tb, "2", fmt.Sprintf("%d", argc(xs)))
+assert.Equal(tb, "b", second(xs))
+assert.Equal(tb, "a/b", path.Join(xs...))

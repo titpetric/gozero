@@ -188,10 +188,17 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 					return nil, err
 				}
 			}
-			// u = url.URL{...} binds the name to the literal's own type,
-			// built fresh on every run.
-			if s.lit.kind == argStruct {
-				sa, st, err := c.compileStructLit(slots, env, *s.lit)
+			// u = url.URL{...} and xs = []string{...} bind the name to
+			// the literal's own type, built fresh on every run.
+			if s.lit.kind == argStruct || s.lit.kind == argSlice {
+				var sa *vmArg
+				var st reflect.Type
+				var err error
+				if s.lit.kind == argSlice {
+					sa, st, err = c.compileSliceLit(slots, env, *s.lit)
+				} else {
+					sa, st, err = c.compileStructLit(slots, env, *s.lit)
+				}
 				if err != nil {
 					return nil, fmt.Errorf("compile: %s: %w", name, err)
 				}
@@ -306,7 +313,7 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 		p.stmts = append(p.stmts, vmStmt{call: call, out: out, ret: s.ret})
 	}
 
-	// Addressed immutable bindings get their per-run cells before the
+	// Addressed and assigned bindings get their per-run cells before the
 	// frame is laid out, because a cell is a slot and slots are what
 	// the frame is made of. A runtime with no value bindings cannot
 	// have produced one, and the walk is skipped rather than allocated
@@ -375,7 +382,7 @@ func (p *vmProgram) assignArg(a *vmArg) {
 	switch a.kind {
 	case vaCall:
 		p.assignFrame(a.sub)
-	case vaStruct:
+	case vaStruct, vaSlice:
 		for i := range a.elems {
 			p.assignArg(a.elems[i].val)
 		}
@@ -393,58 +400,18 @@ func (p *vmProgram) assignArg(a *vmArg) {
 	}
 }
 
-// compileFieldSet compiles req.Method = value. The base is a
-// program-bound name, every selector is an exported field, and the
-// value is a literal or a call whose result is assignable to the field.
-func (c *Compiler) compileFieldSet(slots map[string]int, env map[string]reflect.Type, s stmt) (*vmFieldSet, error) {
-	base := s.fieldLhs[0]
-	slot, ok := slots[base]
-	if !ok {
-		return nil, fmt.Errorf("compile: %s is not a name bound by the program, so its fields cannot be assigned", base)
-	}
-	t := env[base]
-	fs := &vmFieldSet{base: slot, field: joinPath(s.fieldLhs)}
-	for _, seg := range s.fieldLhs[1:] {
-		f, deref, ok := fieldOf(t, seg)
-		if !ok {
-			return nil, fmt.Errorf("compile: %s has no field %s", t, seg)
+// resultType is the static type of the i'th non-error result.
+func (c *Compiler) resultType(call *vmCall, i int) reflect.Type {
+	ft := call.fn.Type()
+	n := 0
+	for j := 0; j < ft.NumOut(); j++ {
+		if j == call.errIdx {
+			continue
 		}
-		fs.steps = append(fs.steps, fieldStep{index: f.Index, deref: deref})
-		t = f.Type
-	}
-
-	val, err := c.assignedValue(slots, env, fs.field, t, s)
-	if err != nil {
-		return nil, err
-	}
-	fs.val = val
-	return fs, nil
-}
-
-// compileRetVal compiles the value of a "return x;" form. The value
-// compiles against its own type: a program-bound name uses its static
-// type, a stack name has none and returns unchanged, a literal keeps
-// its natural width.
-func (c *Compiler) compileRetVal(slots map[string]int, env map[string]reflect.Type, a arg) (*vmArg, error) {
-	pt := reflect.TypeFor[any]()
-	switch a.kind {
-	case argVar:
-		if t, ok := env[a.str]; ok && t != nil {
-			pt = t
+		if n == i {
+			return ft.Out(j)
 		}
-	case argString:
-		pt = reflect.TypeFor[string]()
-	case argInt:
-		pt = reflect.TypeFor[int64]()
-	case argFloat:
-		pt = reflect.TypeFor[float64]()
-	case argBool:
-		pt = reflect.TypeFor[bool]()
-	case argNil:
-		return nil, fmt.Errorf("compile: return nil returns no value, use return;")
-	case argPath, argStruct:
-		// compileArg resolves these and checks assignability against
-		// pt, so any is what lets the value keep its own type.
+		n++
 	}
-	return c.compileArg(slots, env, "return", 0, pt, a)
+	return nil
 }

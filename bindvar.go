@@ -5,81 +5,27 @@ import (
 	"reflect"
 )
 
-// Value bindings. Bind carries funcs; BindVar carries data, and
-// whether a program may write it is stated at the call site:
+// Value bindings. Bind takes a func or a value: a func is callable, a
+// value is readable, and Go's own reference rules decide the rest.
 //
-//	rt.BindVar("os.Args", os.Args)           // immutable: a snapshot
-//	rt.BindVar("os.Args", Mutable(&os.Args)) // mutable: aliases the variable
+//	rt.Bind("url.Parse", url.Parse)  // a func, called
+//	rt.Bind("io.EOF", io.EOF)        // a value, read
+//	rt.Bind("os.Args", &os.Args)     // a pointer, read and written through
 //
-// Mutable is a marker rather than a plain pointer because an any
-// erases the interface it came from: reflect.ValueOf(io.EOF) is a
-// *errors.errorString, indistinguishable from a pointer the host
-// passed on purpose. Reading pointerness as intent would bind io.EOF
-// as a mutable errors.errorString, so intent is spelled instead.
+// A value is copied into the runtime the way passing a value to a
+// function copies it, so the name is the program's own for the run:
+// "label = x" writes the copy and the host's variable is untouched.
+// Binding an address opts into mutation without any API for it. The
+// name is then a *T, so "*os.Args" reads the host's slice and
+// "*os.Args = xs" writes it, exactly as the same spellings do in Go.
 //
-// An immutable binding is copied into the runtime the way passing a
-// value to a function copies it, so a program that assigns to it
-// would be writing a copy nobody reads, and the compiler rejects the
-// statement. Taking its address is rejected for the same reason,
-// which is Go's addressability rule.
-//
-// Shallow copying is Go's too. An immutable binding of a slice or a
-// map copies the header, so the elements behind it stay shared and a
-// binding that writes them writes host memory. Only rebinding the
-// name itself is blocked.
+// Shallow copying is Go's too. A value binding of a slice or a map
+// copies the header, so the elements behind it stay shared and a
+// binding that writes them writes host memory.
 
-// varBinding is one value binding: the value, and whether a program
-// may assign to it.
+// varBinding is one value binding: the value the name reads.
 type varBinding struct {
-	// val is the bound value. For a mutable binding it is the
-	// settable Elem of the pointer the host passed, so writes reach
-	// the host's variable and Addr gives back the original pointer.
-	val     reflect.Value
-	mutable bool
-}
-
-// BindVar registers a value under a name, read in argument position
-// like any other and carrying the static type it was bound with.
-// Wrap the address in [Mutable] to make it writable; a value bound
-// without it rejects assignment when the program compiles. Funcs
-// belong to [Runtime.Bind] and are rejected here.
-//
-// A rebind is a new binding, not an update: neither a compiled
-// program nor the cached compilation of the same source sees it, the
-// rule [Runtime.Bind] already has.
-func (r *Runtime) BindVar(name string, v any) error {
-	if v == nil {
-		return fmt.Errorf("bindvar: %s: cannot bind a nil value, its type is unknown", name)
-	}
-
-	var vb varBinding
-	switch ref := v.(type) {
-	case Ref:
-		if !ref.val.IsValid() {
-			return fmt.Errorf("bindvar: %s: the Mutable handle is zero", name)
-		}
-		vb = varBinding{val: ref.val, mutable: true}
-	default:
-		rv := reflect.ValueOf(v)
-		if rv.Kind() == reflect.Func {
-			return fmt.Errorf("bindvar: %s is a func, register it with Bind", name)
-		}
-		if rv.Kind() == reflect.Pointer && rv.IsNil() {
-			return fmt.Errorf("bindvar: %s: cannot bind a nil %s", name, rv.Type())
-		}
-		vb = varBinding{val: rv}
-	}
-
-	r.mu.Lock()
-	r.compiler.vars[name] = vb
-	if r.log != nil {
-		r.log.Debug("bindvar", "name", name, "type", vb.val.Type().String(), "mutable", vb.mutable)
-	}
-	r.origin = name
-	r.discover(vb.val.Type(), 1)
-	r.origin = ""
-	r.mu.Unlock()
-	return nil
+	val reflect.Value
 }
 
 // Delete removes a key from a map held in an any, which is what the

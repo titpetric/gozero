@@ -330,7 +330,7 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 	}
 
 	// A seeded slot starts each run from a value rather than from
-	// zero: the per-run copy of an addressed immutable value binding.
+	// zero: the per-run copy of an addressed value binding.
 	// The frame is already zero here, so an unseeded init has nothing
 	// to run and the loop skips it.
 	for _, in := range plan.inits {

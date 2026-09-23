@@ -42,8 +42,9 @@ const (
 	vaField                   // a struct field read off another value
 	vaCtx                     // the execution context, auto-filled
 	vaStruct                  // a composite literal, built fresh per evaluation
-	vaVar                     // a value binding registered with BindVar
+	vaVar                     // a value binding registered with Bind
 	vaDeref                   // the value behind a pointer, *p
+	vaSlice                   // a slice literal, built fresh per evaluation
 )
 
 var ctxType = reflect.TypeFor[context.Context]()
@@ -92,14 +93,10 @@ type vmArg struct {
 	// and the result of a call does not.
 	addrOf bool
 
-	// vaVar: varv is the bound value, settable when the host passed a
-	// pointer to BindVar. mutable carries that through to the
-	// statement compiler, which is the only place it changes an
-	// answer. A vaVar read copies out of varv the way any argument
-	// copies, so a callee never receives the address of the host's
-	// variable unless the program wrote &.
-	varv    reflect.Value
-	mutable bool
+	// vaVar: varv is the value Bind registered under the name. It is
+	// read-only storage: a program that writes the name writes a
+	// per-run cell instead, which materializeVarCells creates.
+	varv reflect.Value
 
 	// vaStruct: styp is the struct type the literal builds, addr marks
 	// the &T{} form, and elems are the field writes. Every evaluation
@@ -195,8 +192,8 @@ type vmFieldSet struct {
 }
 
 // slotInit is the value a slot starts each run from: the zero value a
-// var statement puts in scope, or the bound value an addressed
-// immutable binding is copied from.
+// var statement puts in scope, or the bound value a value binding's
+// per-run cell is copied from.
 type slotInit struct {
 	slot int
 	zero reflect.Value
@@ -233,8 +230,8 @@ type vmProgram struct {
 	// nothing assigned it.
 	inits []slotInit
 
-	// varCells names the immutable value bindings the program
-	// addresses, and varSlots the per-run cell each one got. Both are
+	// varCells names the value bindings the program addresses or
+	// assigns, and varSlots the per-run cell each one got. Both are
 	// filled while the program is assembled; see materializeVarCells.
 	varCells map[string]bool
 	varSlots map[string]int
@@ -461,16 +458,11 @@ func (a *vmArg) get(ctx context.Context, slots, frame []reflect.Value, ifaces []
 			return pv, nil
 		}
 		return sv, nil
+	case vaSlice:
+		return a.buildSlice(ctx, slots, frame, ifaces, stack, dest)
 	case vaVar:
-		if a.addrOf {
-			// Settability was proved when the program compiled, so
-			// reaching here with a value binding is a compiler bug
-			// rather than a program error.
-			if !a.varv.CanAddr() {
-				return reflect.Value{}, fmt.Errorf("exec: %s is not addressable", a.name)
-			}
-			return a.varv.Addr(), nil
-		}
+		// An addressed occurrence became a slot when the program was
+		// assembled, so what is left here is a plain read.
 		return a.varv, nil
 	case vaDeref:
 		v, err := a.src.get(ctx, slots, frame, ifaces, stack, dest)

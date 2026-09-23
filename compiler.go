@@ -23,9 +23,9 @@ type binding struct {
 // caller's stack only at execution time, when their value exists.
 type Compiler struct {
 	bindings map[string]binding
-	// vars are the value bindings BindVar registers. They share the
-	// namespace with bindings and are resolved the same way, by
-	// longest dotted prefix, so os.Args is one name rather than a
+	// vars are the value bindings Bind registers for a non-func. They
+	// share the namespace with bindings and are resolved the same way,
+	// by longest dotted prefix, so os.Args is one name rather than a
 	// field of os.
 	vars map[string]varBinding
 	// types is the Runtime's registry, shared by reference so a Bind
