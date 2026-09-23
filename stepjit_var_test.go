@@ -125,3 +125,78 @@ func TestVarNodeMutableIfaceCopies(t *testing.T) {
 		t.Errorf("the callee's copy reads %v, want before", held)
 	}
 }
+
+// TestVarCellSeedsTheFrame covers the direct tier's prologue for an
+// addressed immutable binding: the frame slot starts each run from the
+// bound value, so a program that appends through &name gets the same
+// answer every run rather than accumulating across them.
+func TestVarCellSeedsTheFrame(t *testing.T) {
+	rt := NewRuntime()
+	host := []string{"a"}
+	seen := ""
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(rt.BindVar("args", host))
+	must(rt.Bind("append", Append))
+	// PS_i64 and SS_E are in the table, so the tier report is about
+	// the addressed binding rather than the recorder's signature.
+	must(rt.Bind("join", func(sep string, v []string) string { return strings.Join(v, sep) }))
+	must(rt.Bind("record", func(a, b string) error { seen = a; return nil }))
+
+	src := "append(&args, \"-x\")\ns := join(\",\", args)\nrecord(s, \"\")"
+	if err := rt.Supports(src); err != nil {
+		t.Fatalf("expected the direct tier: %v", err)
+	}
+	fn, err := rt.Compile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := fn.Exec[any](nil); err != nil {
+			t.Fatal(err)
+		}
+		if seen != "a,-x" {
+			t.Fatalf("run %d read %q, want a,-x on every run", i, seen)
+		}
+	}
+	if strings.Join(host, ",") != "a" {
+		t.Errorf("host reads %v, want its own header untouched", host)
+	}
+}
+
+// TestVarCellFrameIsNotPooled pins the gate that keeps the per-run
+// copy honest: the cell's address goes to a callee, so the frame
+// escapes and cannot be recycled between runs.
+func TestVarCellFrameIsNotPooled(t *testing.T) {
+	rt := NewRuntime()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(rt.BindVar("args", []string{"a"}))
+	must(rt.Bind("append", Append))
+	must(rt.Bind("join", func(sep string, v []string) string { return strings.Join(v, sep) }))
+	must(rt.Bind("record", func(a, b string) error { return nil }))
+
+	prog, err := (&Parser{}).Parse("append(&args, \"-x\")\ns := join(\",\", args)\nrecord(s, \"\")")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := rt.compiler.compileProgram(prog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jp, err := jitCompileProgram(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if jp.pool != nil {
+		t.Error("a frame whose cell address escapes must not be pooled")
+	}
+}

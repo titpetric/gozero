@@ -198,11 +198,16 @@ type vmFieldSet struct {
 	field string // for diagnostics
 }
 
-// slotInit is the zero value a var statement puts in scope before the
-// program runs.
+// slotInit is the value a slot starts each run from: the zero value a
+// var statement puts in scope, or the bound value an addressed
+// immutable binding is copied from.
 type slotInit struct {
 	slot int
 	zero reflect.Value
+	// seed marks an init that copies zero in rather than relying on
+	// fresh storage already being zero. A var declaration does not
+	// need it; a value binding's per-run copy does.
+	seed bool
 }
 
 // vmProgram is a compiled program. It holds no per-call state: the
@@ -231,6 +236,12 @@ type vmProgram struct {
 	// statement so a name reads as its type's zero value even when
 	// nothing assigned it.
 	inits []slotInit
+
+	// varCells names the immutable value bindings the program
+	// addresses, and varSlots the per-run cell each one got. Both are
+	// filled while the program is assembled; see materializeVarCells.
+	varCells map[string]bool
+	varSlots map[string]int
 }
 
 // apply writes the value through the field chain. Addressability comes
@@ -276,7 +287,11 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 	for _, in := range p.inits {
 		// New rather than Zero, so a field of a var-declared struct is
 		// settable in place.
-		slots[in.slot] = reflect.New(in.zero.Type()).Elem()
+		cell := reflect.New(in.zero.Type()).Elem()
+		if in.seed {
+			cell.Set(in.zero)
+		}
+		slots[in.slot] = cell
 	}
 	for i := range p.stmts {
 		s := &p.stmts[i]

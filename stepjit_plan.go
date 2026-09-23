@@ -92,6 +92,9 @@ type jitPlan struct {
 	// retSlot is the slot a "return name;" reads, -1 when the program
 	// returns through a trailing call or not at all.
 	retSlot int
+	// inits are the program's slot initialisers, carried through so
+	// the compiler can emit a prologue for the seeded ones.
+	inits []slotInit
 }
 
 // planInline drops a statement whose single result is read exactly once
@@ -267,7 +270,7 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 			return nil, fmt.Errorf("a returned value needs a slot")
 		}
 	}
-	return &jitPlan{stmts: stmts, live: live, writes: writes, splices: splices, retSlot: retSlot}, nil
+	return &jitPlan{stmts: stmts, live: live, writes: writes, splices: splices, retSlot: retSlot, inits: p.inits}, nil
 }
 
 // countReads tallies how many times each name is read, which decides

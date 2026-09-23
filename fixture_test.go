@@ -76,13 +76,16 @@ func fixtureRuntime(t *testing.T) *Runtime {
 		"cursor":    Mutable(&cursor),
 		"time.Hour": time.Hour,
 		"io.EOF":    io.EOF,
+		"frozen":    []string{"kept"},
 	} {
 		if err := rt.BindVar(name, v); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for name, fn := range map[string]any{
+		"append":  Append,
 		"first":   func(v []string) string { return v[0] },
+		"second":  func(v []string) string { return v[1] },
 		"argc":    func(v []string) int { return len(v) },
 		"replace": func(p *[]string, s string) { *p = []string{s} },
 		"bump":    func(p *int) { *p++ },

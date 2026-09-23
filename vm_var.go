@@ -34,34 +34,146 @@ func (c *Compiler) varArg(path []string, addrOf bool) (a *vmArg, t reflect.Type,
 	if !addrOf {
 		return a, t, true, nil
 	}
-	// Go's addressability rule. A value binding is a copy the runtime
-	// holds; taking its address would hand out a pointer to that copy,
-	// which reads like a handle on the host's variable and is not one.
-	if a.kind == vaVar && !vb.mutable {
-		return nil, nil, true, fmt.Errorf("cannot take the address of %s, it is bound by value; pass a pointer to BindVar to make it addressable", name)
-	}
-	if a.kind == vaField && !fieldAddressable(a) {
-		return nil, nil, true, fmt.Errorf("cannot take the address of %s, its base is bound by value", name)
-	}
+	// Both kinds of binding are addressable, and they address
+	// different storage. A mutable binding is the host's variable, so
+	// &name is a handle on it. An immutable one is a copy the runtime
+	// holds, so &name is a handle on a per-run copy of that copy: a
+	// program may append to it, sort it or write through it, and the
+	// host's variable keeps the header it had. materializeVarCells
+	// gives the immutable case its storage once the program is
+	// assembled.
 	a.addrOf = true
 	a.typ = reflect.PointerTo(t)
 	return a, a.typ, true, nil
 }
 
-// fieldAddressable reports whether a field chain rooted in a value
-// binding has an address: either the root is mutable, or a pointer in
-// the chain makes what follows it addressable regardless.
-func fieldAddressable(a *vmArg) bool {
-	for a.kind == vaField {
-		if a.deref {
-			return true
+// argRoots lists every argument the program evaluates, as the entry
+// points of a walk: the passes below reach nested calls, struct
+// elements and field chains from these.
+func (p *vmProgram) argRoots() []*vmArg {
+	var roots []*vmArg
+	add := func(a *vmArg) {
+		if a != nil {
+			roots = append(roots, a)
 		}
-		a = a.src
 	}
-	if a.kind == vaVar {
-		return a.mutable
+	for i := range p.stmts {
+		s := &p.stmts[i]
+		if s.call != nil {
+			roots = append(roots, s.call.args...)
+		}
+		add(s.assign)
+		add(s.retArg)
+		if s.fieldSet != nil {
+			add(s.fieldSet.val)
+		}
+		if s.varSet != nil {
+			add(s.varSet.val)
+			add(s.varSet.via)
+		}
+		if s.recv != nil {
+			add(s.recv.ch)
+		}
+		if s.send != nil {
+			add(s.send.ch)
+			add(s.send.val)
+		}
 	}
-	return true
+	return roots
+}
+
+// materializeVarCells rewrites every addressed immutable value binding
+// into a per-run slot seeded from the bound value.
+//
+// The copy is per run rather than one copy the binding holds. A
+// compiled program keeps no per-run state, so two concurrent Execs
+// must not see each other's writes and a second run must not start
+// from what the first one appended. A host that wants storage
+// outliving the run binds Mutable(&v), which is what that is for.
+//
+// One cell per binding name per program, so two &os.Args address the
+// same storage the way two &x do in Go.
+func (p *vmProgram) materializeVarCells(args []*vmArg) {
+	var walk func(a *vmArg)
+	walk = func(a *vmArg) {
+		if a == nil {
+			return
+		}
+		switch a.kind {
+		case vaField, vaDeref:
+			walk(a.src)
+		case vaStruct:
+			for i := range a.elems {
+				walk(a.elems[i].val)
+			}
+		case vaCall:
+			for _, sub := range a.sub.args {
+				walk(sub)
+			}
+		case vaVar:
+			// A mutable binding already has settable storage, and a
+			// name the program never addresses needs none.
+			if a.mutable || !p.varCells[a.name] {
+				return
+			}
+			slot, ok := p.varSlots[a.name]
+			if !ok {
+				if p.varSlots == nil {
+					p.varSlots = map[string]int{}
+				}
+				slot = p.nslots
+				p.nslots++
+				p.slotTypes = append(p.slotTypes, a.varv.Type())
+				p.inits = append(p.inits, slotInit{slot: slot, zero: a.varv, seed: true})
+				p.varSlots[a.name] = slot
+			}
+			p.addrTaken[slot] = true
+			// Reads of the name come from the cell too, so a program
+			// that appends through &name sees the longer slice when it
+			// reads name afterwards.
+			a.kind = vaSlot
+			a.slot = slot
+			a.varv = reflect.Value{}
+		}
+	}
+	for _, a := range args {
+		walk(a)
+	}
+}
+
+// markVarCells records which binding names the program addresses
+// anywhere, so every occurrence of one shares the cell rather than
+// only the addressed occurrences moving into it.
+func (p *vmProgram) markVarCells(args []*vmArg) {
+	var walk func(a *vmArg, addressed bool)
+	walk = func(a *vmArg, addressed bool) {
+		if a == nil {
+			return
+		}
+		addressed = addressed || a.addrOf
+		switch a.kind {
+		case vaField, vaDeref:
+			walk(a.src, addressed)
+		case vaStruct:
+			for i := range a.elems {
+				walk(a.elems[i].val, false)
+			}
+		case vaCall:
+			for _, sub := range a.sub.args {
+				walk(sub, false)
+			}
+		case vaVar:
+			if addressed && !a.mutable {
+				if p.varCells == nil {
+					p.varCells = map[string]bool{}
+				}
+				p.varCells[a.name] = true
+			}
+		}
+	}
+	for _, a := range args {
+		walk(a, false)
+	}
 }
 
 // derefArg wraps an argument in a pointer read, "*p". The operand's

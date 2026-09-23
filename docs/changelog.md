@@ -36,21 +36,36 @@ is blocked.
 
 With data in the language, the two reference operators follow.
 `&name` takes the address of a program name, a field of one, or a
-mutable value binding, and `*p` reads through a pointer; `*p = v`
-writes through one. Both follow Go's addressability rule rather than
-softening it: an immutable binding has no address, a value never
-fills a `*T` parameter and a pointer never fills a `T` one. Nothing
-auto-references an argument, which is also Go - the one implicit
-address gozero takes is still the receiver of a pointer-method call.
+value binding, and `*p` reads through a pointer; `*p = v` writes
+through one. A value never fills a `*T` parameter and a pointer
+never fills a `T` one, and nothing auto-references an argument,
+which is Go - the one implicit address gozero takes is still the
+receiver of a pointer-method call.
 
-`gozero.Delete(m, key)` removes a key from a map held in an `any`,
-which the builtin cannot do once the map has been through an
-interface. The common key shapes are type-asserted and the rest goes
-through reflect; a missing key and a nil map are no-ops, as in Go.
+The two kinds of binding address different storage. `&name` on a
+mutable binding is a handle on the host's variable. On an immutable
+one it is a handle on a per-run copy: a program may append to it,
+sort it or write through it, and the host's variable keeps the
+header it had. The copy is per run rather than one copy the binding
+holds, because a compiled program keeps no per-run state - two
+concurrent `Exec`s must not see each other's writes, and a second
+run must not start from what the first appended. One cell per name
+per program, so two `&os.Args` address the same storage the way two
+`&x` do in Go. A host wanting storage that outlives the run binds
+`Mutable(&v)`.
+
+`gozero.Delete(m, key)` removes a key from a map held in an `any`
+and `gozero.Append(&v, x)` appends through a pointer held in one;
+neither is something the builtin can do once the value has been
+through an interface. The common shapes are type-asserted and the
+rest goes through reflect. A missing key, a nil map and a nil slice
+are no-ops, as in Go.
 
 Reading a value binding reaches the direct tier as one load from the
-binding's fixed address, with no frame slot and no boxing. Writing
-one does not yet: `planInline` refuses the statement so the program
+binding's fixed address, with no frame slot and no boxing; an
+addressed one becomes a frame slot seeded per run, and `&name`
+filling an interface parameter carries a compile-time itab like any
+other interface argument. Writing a binding with `=` does not yet: `planInline` refuses the statement so the program
 falls back to the reflect evaluator whole, rather than dropping the
 write. `testdata/vars.txt` runs the surface end to end and
 `bindvar_test.go` pins the rules.

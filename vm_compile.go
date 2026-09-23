@@ -343,6 +343,17 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 		p.stmts = append(p.stmts, vmStmt{call: call, out: out, ret: s.ret})
 	}
 
+	// Addressed immutable bindings get their per-run cells before the
+	// frame is laid out, because a cell is a slot and slots are what
+	// the frame is made of. A runtime with no value bindings cannot
+	// have produced one, and the walk is skipped rather than allocated
+	// for: parse and compile are on a measured allocation budget.
+	if len(c.vars) > 0 {
+		roots := p.argRoots()
+		p.markVarCells(roots)
+		p.materializeVarCells(roots)
+	}
+
 	for i := range p.stmts {
 		s := &p.stmts[i]
 		if s.call != nil {

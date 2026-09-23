@@ -135,10 +135,6 @@ func TestBindVarImmutable(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "bound by value") {
 		t.Fatalf("assigning an immutable binding: want a bound-by-value error, got %v", err)
 	}
-	err = bvRun(t, rt, `setL(&os.Args)`)
-	if err == nil || !strings.Contains(err.Error(), "cannot take the address") {
-		t.Fatalf("addressing an immutable binding: want an addressability error, got %v", err)
-	}
 	// Reading still works, and the shallow copy is Go's: the elements
 	// behind an immutable slice binding stay shared.
 	if err := bvRun(t, rt, `pokeL(os.Args)`); err != nil {

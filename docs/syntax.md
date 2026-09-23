@@ -487,10 +487,32 @@ rt.BindVar("os.Args", gozero.Mutable(&os.Args))
 because an address is the only thing that can alias:
 `Mutable(os.Args)` would hand over a copy, and a write to the copy
 reaches nothing the host reads. A binding registered without it is a
-snapshot, and both assigning to it and taking its address are
-compile errors, because each would write a copy nobody reads. The
-shallow copy is Go's: a slice or a map bound by value still shares
-its elements with the host.
+snapshot: `os.Args = xs` is a compile error. The shallow copy is
+Go's, so a slice or a map bound by value still shares its elements
+with the host.
+
+`&name` works on both kinds and addresses different storage. On a
+mutable binding it is a handle on the host's variable. On an
+immutable one it is a handle on a per-run copy, so a program grows
+or rewrites the copy and the host's variable keeps the header it
+had:
+
+```go
+rt.BindVar("os.Args", os.Args)
+rt.Bind("append", gozero.Append)
+```
+
+```go
+append(&os.Args, "-x")   // the copy is two long
+argc(os.Args)            // reads the same copy
+```
+
+The copy is per run, not one copy the binding holds: a compiled
+program keeps no per-run state, so two concurrent `Exec`s cannot see
+each other and the next run starts from the bound value again. One
+cell per name per program, so two `&os.Args` address the same
+storage the way two `&x` do in Go. Bind `Mutable(&v)` when the host
+wants the writes to outlive the run.
 
 <table>
 <tr>

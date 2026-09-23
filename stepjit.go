@@ -328,6 +328,31 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 		})
 	}
 
+	// A seeded slot starts each run from a value rather than from
+	// zero: the per-run copy of an addressed immutable value binding.
+	// The frame is already zero here, so an unseeded init has nothing
+	// to run and the loop skips it.
+	for _, in := range plan.inits {
+		if !in.seed {
+			continue
+		}
+		field, ok := c.slotOf[in.slot]
+		if !ok {
+			return nil, fmt.Errorf("a seeded slot has no frame field")
+		}
+		seed, ft, off := in.zero, c.types[field], c.offs[field]
+		if ft != seed.Type() {
+			return nil, fmt.Errorf("a seeded slot is %s, want %s", ft, seed.Type())
+		}
+		// NewAt over the frame field and Set: a typed copy that keeps
+		// the write barriers the layout classes would have to
+		// reproduce by hand. It runs once per run, not per call.
+		jp.stmts = append(jp.stmts, func(fr unsafe.Pointer, _ context.Context, _ map[string]any, _ any) error {
+			reflect.NewAt(ft, unsafe.Add(fr, off)).Elem().Set(seed)
+			return nil
+		})
+	}
+
 	for _, s := range plan.stmts {
 		stmt, err := c.stmtNode(s, jp)
 		if err != nil {
