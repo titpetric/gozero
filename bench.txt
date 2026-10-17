@@ -2,71 +2,77 @@ goos: linux
 goarch: amd64
 pkg: github.com/titpetric/gozero
 cpu: Intel(R) N150
-BenchmarkNative             	 1729928	       687.9 ns/op	     512 B/op	       3 allocs/op
-BenchmarkNative             	 1638805	       711.9 ns/op	     512 B/op	       3 allocs/op
-BenchmarkNative             	 1748026	       680.4 ns/op	     512 B/op	       3 allocs/op
-BenchmarkCostWithoutCaching 	  332614	      3579 ns/op	      2871 cost-ns/op	       707.7 native-ns/op	    1592 B/op	      18 allocs/op
-BenchmarkCostWithoutCaching 	  339602	      3521 ns/op	      2820 cost-ns/op	       701.0 native-ns/op	    1592 B/op	      18 allocs/op
-BenchmarkCostWithoutCaching 	  341467	      3451 ns/op	      2728 cost-ns/op	       722.9 native-ns/op	    1592 B/op	      18 allocs/op
-BenchmarkCostNaive          	  821812	      1641 ns/op	       941.0 cost-ns/op	       700.2 native-ns/op	     576 B/op	       5 allocs/op
-BenchmarkCostNaive          	  734295	      1646 ns/op	       942.6 cost-ns/op	       703.0 native-ns/op	     576 B/op	       5 allocs/op
-BenchmarkCostNaive          	  807850	      1702 ns/op	       918.9 cost-ns/op	       782.9 native-ns/op	     576 B/op	       5 allocs/op
-BenchmarkCostAmortizedCache 	 1487235	       823.3 ns/op	        55.47 cost-ns/op	       767.8 native-ns/op	     512 B/op	       3 allocs/op
-BenchmarkCostAmortizedCache 	 1490826	       825.3 ns/op	        77.41 cost-ns/op	       747.9 native-ns/op	     512 B/op	       3 allocs/op
-BenchmarkCostAmortizedCache 	 1489838	       817.8 ns/op	        18.95 cost-ns/op	       798.9 native-ns/op	     512 B/op	       3 allocs/op
-BenchmarkFixtures/fmt/vm    	  779628	      1775 ns/op	     152 B/op	       7 allocs/op
-BenchmarkFixtures/fmt/vm    	  773654	      1818 ns/op	     152 B/op	       7 allocs/op
-BenchmarkFixtures/fmt/vm    	  817868	      1833 ns/op	     152 B/op	       7 allocs/op
-BenchmarkFixtures/fmt/native         	 1000000	      1091 ns/op	      48 B/op	       4 allocs/op
-BenchmarkFixtures/fmt/native         	 1000000	      1204 ns/op	      48 B/op	       4 allocs/op
-BenchmarkFixtures/fmt/native         	 1000000	      1242 ns/op	      48 B/op	       4 allocs/op
-BenchmarkFixtures/http/vm            	  368914	      3634 ns/op	     616 B/op	       9 allocs/op
-BenchmarkFixtures/http/vm            	  323618	      3745 ns/op	     616 B/op	       9 allocs/op
-BenchmarkFixtures/http/vm            	  305460	      3689 ns/op	     616 B/op	       9 allocs/op
-BenchmarkFixtures/http/native        	  361172	      3230 ns/op	     640 B/op	       9 allocs/op
-BenchmarkFixtures/http/native        	  403976	      3167 ns/op	     640 B/op	       9 allocs/op
-BenchmarkFixtures/http/native        	  354774	      3416 ns/op	     640 B/op	       9 allocs/op
-BenchmarkFixtures/json/vm            	  213366	      5336 ns/op	    1016 B/op	      17 allocs/op
-BenchmarkFixtures/json/vm            	  232738	      5601 ns/op	    1016 B/op	      17 allocs/op
-BenchmarkFixtures/json/vm            	  235441	      5308 ns/op	    1016 B/op	      17 allocs/op
-BenchmarkFixtures/json/native        	  278269	      4464 ns/op	     984 B/op	      16 allocs/op
-BenchmarkFixtures/json/native        	  261883	      4682 ns/op	     984 B/op	      16 allocs/op
-BenchmarkFixtures/json/native        	  269625	      4584 ns/op	     984 B/op	      16 allocs/op
-BenchmarkFixtures/structs/vm         	  113652	     10591 ns/op	    2120 B/op	      26 allocs/op
-BenchmarkFixtures/structs/vm         	  105175	     10783 ns/op	    2120 B/op	      26 allocs/op
-BenchmarkFixtures/structs/vm         	  117610	     10394 ns/op	    2120 B/op	      26 allocs/op
-BenchmarkFixtures/structs/native     	  176215	      7028 ns/op	     680 B/op	      19 allocs/op
-BenchmarkFixtures/structs/native     	  174283	      7209 ns/op	     680 B/op	      19 allocs/op
-BenchmarkFixtures/structs/native     	  171116	      7280 ns/op	     680 B/op	      19 allocs/op
-BenchmarkFixtures/types/vm           	  212456	      6015 ns/op	     440 B/op	      21 allocs/op
-BenchmarkFixtures/types/vm           	  208474	      6013 ns/op	     440 B/op	      21 allocs/op
-BenchmarkFixtures/types/vm           	  189606	      5919 ns/op	     440 B/op	      21 allocs/op
-BenchmarkFixtures/types/native       	  352090	      3484 ns/op	     120 B/op	      11 allocs/op
-BenchmarkFixtures/types/native       	  368388	      3440 ns/op	     120 B/op	      11 allocs/op
-BenchmarkFixtures/types/native       	  362439	      3443 ns/op	     120 B/op	      11 allocs/op
-BenchmarkFixtures/url/vm             	  269100	      4692 ns/op	     816 B/op	      15 allocs/op
-BenchmarkFixtures/url/vm             	  242938	      4638 ns/op	     816 B/op	      15 allocs/op
-BenchmarkFixtures/url/vm             	  261111	      4759 ns/op	     816 B/op	      15 allocs/op
-BenchmarkFixtures/url/native         	  264102	      4257 ns/op	     784 B/op	      14 allocs/op
-BenchmarkFixtures/url/native         	  299715	      4262 ns/op	     784 B/op	      14 allocs/op
-BenchmarkFixtures/url/native         	  286702	      4280 ns/op	     784 B/op	      14 allocs/op
-BenchmarkFixtures/variadic/vm        	 2096312	       643.5 ns/op	      69 B/op	       3 allocs/op
-BenchmarkFixtures/variadic/vm        	 1565437	       744.2 ns/op	      69 B/op	       3 allocs/op
-BenchmarkFixtures/variadic/vm        	 1693059	       732.0 ns/op	      69 B/op	       3 allocs/op
-BenchmarkFixtures/variadic/native    	 1778091	       710.5 ns/op	      69 B/op	       3 allocs/op
-BenchmarkFixtures/variadic/native    	 1726058	       663.4 ns/op	      69 B/op	       3 allocs/op
-BenchmarkFixtures/variadic/native    	 1954755	       621.8 ns/op	      69 B/op	       3 allocs/op
-BenchmarkFixtureWork/vm              	 1000000	      1051 ns/op	     520 B/op	       4 allocs/op
-BenchmarkFixtureWork/vm              	 1000000	      1126 ns/op	     520 B/op	       4 allocs/op
-BenchmarkFixtureWork/vm              	 1000000	      1029 ns/op	     520 B/op	       4 allocs/op
-BenchmarkFixtureWork/native          	 1320547	       905.9 ns/op	     512 B/op	       3 allocs/op
-BenchmarkFixtureWork/native          	 1421878	       849.4 ns/op	     512 B/op	       3 allocs/op
-BenchmarkFixtureWork/native          	 1310091	       917.9 ns/op	     512 B/op	       3 allocs/op
-BenchmarkProgramNative               	  602512	      1897 ns/op	     688 B/op	       6 allocs/op
-BenchmarkProgramNative               	  664530	      1872 ns/op	     688 B/op	       6 allocs/op
-BenchmarkProgramNative               	  665589	      1918 ns/op	     688 B/op	       6 allocs/op
-BenchmarkProgramCached               	  538483	      2349 ns/op	       432.8 cost-ns/op	      1916 native-ns/op	     688 B/op	       6 allocs/op
-BenchmarkProgramCached               	  544562	      2253 ns/op	       387.3 cost-ns/op	      1866 native-ns/op	     688 B/op	       6 allocs/op
-BenchmarkProgramCached               	  477619	      2330 ns/op	       562.9 cost-ns/op	      1768 native-ns/op	     688 B/op	       6 allocs/op
+BenchmarkNative             	 2143758	       558.5 ns/op	     512 B/op	       3 allocs/op
+BenchmarkNative             	 2111521	       563.9 ns/op	     512 B/op	       3 allocs/op
+BenchmarkNative             	 2170634	       556.5 ns/op	     512 B/op	       3 allocs/op
+BenchmarkCostWithoutCaching 	  426411	      2868 ns/op	      2276 cost-ns/op	       592.6 native-ns/op	    1592 B/op	      18 allocs/op
+BenchmarkCostWithoutCaching 	  423163	      2847 ns/op	      2252 cost-ns/op	       594.7 native-ns/op	    1592 B/op	      18 allocs/op
+BenchmarkCostWithoutCaching 	  438184	      2861 ns/op	      2270 cost-ns/op	       591.4 native-ns/op	    1592 B/op	      18 allocs/op
+BenchmarkCostNaive          	  934158	      1356 ns/op	       762.7 cost-ns/op	       593.1 native-ns/op	     576 B/op	       5 allocs/op
+BenchmarkCostNaive          	  925038	      1363 ns/op	       782.1 cost-ns/op	       580.9 native-ns/op	     576 B/op	       5 allocs/op
+BenchmarkCostNaive          	  896556	      1373 ns/op	       767.4 cost-ns/op	       605.4 native-ns/op	     576 B/op	       5 allocs/op
+BenchmarkCostAmortizedCache 	 1891240	       627.8 ns/op	        36.20 cost-ns/op	       591.6 native-ns/op	     512 B/op	       3 allocs/op
+BenchmarkCostAmortizedCache 	 1929758	       627.1 ns/op	        41.15 cost-ns/op	       586.0 native-ns/op	     512 B/op	       3 allocs/op
+BenchmarkCostAmortizedCache 	 1944619	       620.5 ns/op	        30.88 cost-ns/op	       589.7 native-ns/op	     512 B/op	       3 allocs/op
+BenchmarkConcurrency/mutex/native         	26547001	        46.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConcurrency/mutex/native         	26514484	        47.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConcurrency/mutex/native         	25593057	        47.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConcurrency/mutex/vm             	 7370330	       170.0 ns/op	       8 B/op	       1 allocs/op
+BenchmarkConcurrency/mutex/vm             	 7181312	       179.0 ns/op	       8 B/op	       1 allocs/op
+BenchmarkConcurrency/mutex/vm             	 7212916	       192.7 ns/op	       8 B/op	       1 allocs/op
+BenchmarkFixtures/fmt/vm                  	 1000000	      1140 ns/op	      16 B/op	       2 allocs/op
+BenchmarkFixtures/fmt/vm                  	 1000000	      1089 ns/op	      16 B/op	       2 allocs/op
+BenchmarkFixtures/fmt/vm                  	 1000000	      1127 ns/op	      16 B/op	       2 allocs/op
+BenchmarkFixtures/fmt/native              	 1303894	       910.8 ns/op	      48 B/op	       4 allocs/op
+BenchmarkFixtures/fmt/native              	 1367680	       878.8 ns/op	      48 B/op	       4 allocs/op
+BenchmarkFixtures/fmt/native              	 1335612	       904.0 ns/op	      48 B/op	       4 allocs/op
+BenchmarkFixtures/http/vm                 	  461034	      2821 ns/op	     576 B/op	       7 allocs/op
+BenchmarkFixtures/http/vm                 	  427020	      2850 ns/op	     576 B/op	       7 allocs/op
+BenchmarkFixtures/http/vm                 	  437376	      2827 ns/op	     576 B/op	       7 allocs/op
+BenchmarkFixtures/http/native             	  566448	      2249 ns/op	     592 B/op	       8 allocs/op
+BenchmarkFixtures/http/native             	  566758	      2284 ns/op	     592 B/op	       8 allocs/op
+BenchmarkFixtures/http/native             	  565239	      2332 ns/op	     592 B/op	       8 allocs/op
+BenchmarkFixtures/json/vm                 	  231888	      4371 ns/op	     952 B/op	      14 allocs/op
+BenchmarkFixtures/json/vm                 	  274258	      4308 ns/op	     952 B/op	      14 allocs/op
+BenchmarkFixtures/json/vm                 	  291541	      4270 ns/op	     952 B/op	      14 allocs/op
+BenchmarkFixtures/json/native             	  356025	      3562 ns/op	     984 B/op	      16 allocs/op
+BenchmarkFixtures/json/native             	  333433	      3486 ns/op	     984 B/op	      16 allocs/op
+BenchmarkFixtures/json/native             	  348729	      3481 ns/op	     984 B/op	      16 allocs/op
+BenchmarkFixtures/structs/vm              	  159711	      7684 ns/op	    1400 B/op	      18 allocs/op
+BenchmarkFixtures/structs/vm              	  160928	      7638 ns/op	    1400 B/op	      18 allocs/op
+BenchmarkFixtures/structs/vm              	  164590	      7899 ns/op	    1400 B/op	      18 allocs/op
+BenchmarkFixtures/structs/native          	  233305	      5020 ns/op	     680 B/op	      19 allocs/op
+BenchmarkFixtures/structs/native          	  241069	      5072 ns/op	     680 B/op	      19 allocs/op
+BenchmarkFixtures/structs/native          	  254583	      5164 ns/op	     680 B/op	      19 allocs/op
+BenchmarkFixtures/types/vm                	  321550	      3996 ns/op	      56 B/op	       8 allocs/op
+BenchmarkFixtures/types/vm                	  322608	      3994 ns/op	      56 B/op	       8 allocs/op
+BenchmarkFixtures/types/vm                	  312394	      3982 ns/op	      56 B/op	       8 allocs/op
+BenchmarkFixtures/types/native            	  411826	      3069 ns/op	     120 B/op	      11 allocs/op
+BenchmarkFixtures/types/native            	  404012	      3102 ns/op	     120 B/op	      11 allocs/op
+BenchmarkFixtures/types/native            	  404368	      3140 ns/op	     120 B/op	      11 allocs/op
+BenchmarkFixtures/url/vm                  	  291782	      4468 ns/op	     736 B/op	      11 allocs/op
+BenchmarkFixtures/url/vm                  	  274363	      4390 ns/op	     736 B/op	      11 allocs/op
+BenchmarkFixtures/url/vm                  	  268071	      4526 ns/op	     736 B/op	      11 allocs/op
+BenchmarkFixtures/url/native              	  325795	      3828 ns/op	     784 B/op	      14 allocs/op
+BenchmarkFixtures/url/native              	  327368	      3831 ns/op	     784 B/op	      14 allocs/op
+BenchmarkFixtures/url/native              	  324970	      3876 ns/op	     784 B/op	      14 allocs/op
+BenchmarkFixtures/variadic/vm             	 1945657	       611.4 ns/op	      53 B/op	       2 allocs/op
+BenchmarkFixtures/variadic/vm             	 1928737	       630.7 ns/op	      53 B/op	       2 allocs/op
+BenchmarkFixtures/variadic/vm             	 1951138	       612.4 ns/op	      53 B/op	       2 allocs/op
+BenchmarkFixtures/variadic/native         	 2489745	       484.7 ns/op	      69 B/op	       3 allocs/op
+BenchmarkFixtures/variadic/native         	 2515498	       478.3 ns/op	      69 B/op	       3 allocs/op
+BenchmarkFixtures/variadic/native         	 2485558	       483.6 ns/op	      69 B/op	       3 allocs/op
+BenchmarkFixtureWork/vm                   	 1501467	       802.5 ns/op	     512 B/op	       3 allocs/op
+BenchmarkFixtureWork/vm                   	 1508910	       804.1 ns/op	     512 B/op	       3 allocs/op
+BenchmarkFixtureWork/vm                   	 1491098	       809.9 ns/op	     512 B/op	       3 allocs/op
+BenchmarkFixtureWork/native               	 2050142	       584.1 ns/op	     512 B/op	       3 allocs/op
+BenchmarkFixtureWork/native               	 2047905	       584.0 ns/op	     512 B/op	       3 allocs/op
+BenchmarkFixtureWork/native               	 2025567	       589.0 ns/op	     512 B/op	       3 allocs/op
+BenchmarkProgramNative                    	 1000000	      1229 ns/op	     688 B/op	       6 allocs/op
+BenchmarkProgramNative                    	 1000000	      1197 ns/op	     688 B/op	       6 allocs/op
+BenchmarkProgramNative                    	  995636	      1196 ns/op	     688 B/op	       6 allocs/op
+BenchmarkProgramCached                    	  828339	      1464 ns/op	       153.8 cost-ns/op	      1310 native-ns/op	     688 B/op	       6 allocs/op
+BenchmarkProgramCached                    	  845596	      1469 ns/op	       285.5 cost-ns/op	      1184 native-ns/op	     688 B/op	       6 allocs/op
+BenchmarkProgramCached                    	  855834	      1494 ns/op	       308.8 cost-ns/op	      1185 native-ns/op	     688 B/op	       6 allocs/op
 PASS
-ok  	github.com/titpetric/gozero	89.559s
+ok  	github.com/titpetric/gozero	97.861s

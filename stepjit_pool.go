@@ -143,13 +143,6 @@ func (c *jitCompiler) planPools(plan *jitPlan) {
 		if s.fieldSet != nil {
 			walkArg(s.fieldSet.val, s.fieldSet.val.typ)
 		}
-		if s.recv != nil {
-			walkArg(s.recv.ch, s.recv.ch.typ)
-		}
-		if s.send != nil {
-			walkArg(s.send.ch, s.send.ch.typ)
-			walkArg(s.send.val, s.send.val.typ)
-		}
 	}
 }
 

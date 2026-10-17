@@ -20,7 +20,6 @@ copies:
 
 | fixture  | vm                        | native            | ratio |
 |----------|---------------------------|-------------------|-------|
-| channels | 2001ns, 608 B, 13 allocs  | 1293ns, 400 B, 8  | 1.5x  |
 | fmt      | 792ns, 16 B, 2 allocs     | 607ns, 48 B, 4    | 1.3x  |
 | http     | 1796ns, 576 B, 7 allocs   | 1590ns, 592 B, 8  | 1.1x  |
 | json     | 2376ns, 952 B, 14 allocs  | 1579ns, 728 B, 14 | 1.5x  |
@@ -35,7 +34,6 @@ Table 2, the same suite with inlining disabled:
 
 | fixture  | vm                        | native            | ratio |
 |----------|---------------------------|-------------------|-------|
-| channels | 4355ns, 608 B, 13 allocs  | 2045ns, 400 B, 8  | 2.1x  |
 | fmt      | 1232ns, 16 B, 2 allocs    | 972ns, 48 B, 4    | 1.3x  |
 | http     | 3185ns, 576 B, 7 allocs   | 2510ns, 592 B, 8  | 1.3x  |
 | json     | 4573ns, 952 B, 14 allocs  | 3789ns, 984 B, 16 | 1.2x  |
@@ -48,13 +46,10 @@ Two pools shape the allocation columns. The frame pool recycles the
 per-run frame of every program whose frame the compiler proves does
 not escape. Argument pooling recycles the pack slices, string boxes
 and literal blocks behind every call, under the binding contract
-that arguments are borrowed. Together they put seven of the eight fixtures at or below their mirrors'
-allocation counts: fmt runs at 2 allocations against its mirror's
-4, types at 8 against 11, and json at parity in the default build
-and two under at `-l`. channels is the exception at 13 against 8:
-its constructor packs pool, but its receive and send box one element
-each inside reflect, and its asserts read from write-once string
-slots, which alias the frame instead of boxing.
+that arguments are borrowed. Together they put every fixture at or
+below its mirror's allocation count: fmt runs at 2 allocations
+against its mirror's 4, types at 8 against 11, and json at parity in
+the default build and two under at `-l`.
 
 ## What the difference says
 
@@ -67,14 +62,13 @@ The compiled program is a graph of closures called through function
 pointers. The compiler can never inline across those calls, in either
 build, so the vm column changes only by what the standard library
 loses. The native column additionally loses the inlining of its own
-statements. channels moves furthest, 1.5x to 2.1x: its per-operation
-cost is the reflect receive and the element box, both immune to
-inlining, while the mirror's channel operations are runtime calls
-whose surroundings inline away. fmt holds 1.3x in both builds since
-argument pooling: two allocations of remaining vm work leave little
-for either build to fold away. variadic sits between 1.1x and 1.3x:
-its work is one spread call, and the vm and the mirror make the same
-calls once nothing inlines.
+statements. http moves furthest, 1.1x to 1.3x: its mirror's
+statements inline away in the default build where the vm's closures
+cannot. fmt holds 1.3x in both builds since argument pooling: two
+allocations of remaining vm work leave little for either build to
+fold away. variadic sits between 1.1x and 1.3x: its work is one
+spread call, and the vm and the mirror make the same calls once
+nothing inlines.
 
 Inlining also feeds escape analysis, which shows in the alloc columns.
 With inlining, json/native drops from 16 allocs to 14 and url/native

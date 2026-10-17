@@ -3,13 +3,13 @@ title: Channels
 date: "2026-09-10T11:31:00+02:00"
 ---
 
-Channels moved from research into the syntax on 2026-09-10. This
-document records what landed and its semantics, how the operations
-run on each tier with the measured cost, and what stayed out with
-the reasons the research established. The original question, "what
-if we implemented channels?", is answered: receive and send are
-language operations, and everything else about a channel was already
-a value.
+Channels moved from research into the syntax on 2026-09-10 and out
+again on 2026-10-17 ([changelog](../changelog.md)): the operations
+never left reflect's per-element boxing, and a channel was already a
+value a binding produces and a program passes on, which is all that
+remains. This document records what the syntax was while it existed,
+its semantics, how the operations ran on each tier with the measured
+cost, and what stayed out with the reasons the research established.
 
 ## What landed
 

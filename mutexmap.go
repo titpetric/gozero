@@ -5,9 +5,8 @@ import (
 )
 
 // MutexMap is a map[string]int behind a mutex: shared state offered
-// to programs as a binding, the host-type alternative to moving
-// values through a channel. Its methods land on the direct-call
-// tier; docs/concurrency.md holds the measured comparison.
+// to programs as a binding. Its methods land on the direct-call
+// tier, measured in BenchmarkConcurrency.
 type MutexMap struct {
 	mu sync.Mutex
 	m  map[string]int

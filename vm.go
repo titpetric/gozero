@@ -161,11 +161,6 @@ type vmStmt struct {
 
 	// fieldSet writes a value through a field: req.Method = "POST".
 	fieldSet *vmFieldSet
-
-	// recv is a channel receive, its value and ok slots in out; send
-	// is a channel send. Both in vm_chan.go.
-	recv *vmRecv
-	send *vmSend
 }
 
 // fieldStep is one selector of a field-assignment target.
@@ -279,22 +274,6 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 		}
 		if s.fieldSet != nil {
 			if err := s.fieldSet.apply(ctx, slots, frame, ifaces, stack, dest); err != nil {
-				return nil, err
-			}
-			continue
-		}
-		if s.recv != nil {
-			v, err := s.recv.exec(ctx, slots, frame, ifaces, stack, dest)
-			if err != nil {
-				return nil, err
-			}
-			if len(s.out) > 0 {
-				slots[s.out[0]] = p.addrCell(v, s.out[0])
-			}
-			continue
-		}
-		if s.send != nil {
-			if err := s.send.exec(ctx, slots, frame, ifaces, stack, dest); err != nil {
 				return nil, err
 			}
 			continue

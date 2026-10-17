@@ -7,6 +7,22 @@ Changes to the language and the runtime after the chapters were
 written, newest first. Each entry records when it landed, what the
 syntax gained, and how it is used.
 
+## 2026-10-17 13:15 +02:00: channel receive and send removed
+
+The channel statements leave the syntax: receive, send, the bare
+receive and the chan spellings in a var typeref no longer parse, and
+vm_chan.go and stepjit_chan.go go with them. A channel is still a
+value with a layout class: a binding produces one, a name holds it, a
+call takes it, and goroutines and topology stay with the host as they
+always did. The operations never escaped reflect: each receive and
+send paid a context-armed select and an element box, which held the
+channels fixture at 2.1x its mirror with inlining disabled while
+every other fixture sat at 1.1x-1.5x, and made it the one fixture
+above its mirror's allocation count. The concurrency chapter retires
+with the syntax; the MutexMap binding stays, measured in
+BenchmarkConcurrency. [design/channels.md](design/channels.md) keeps
+the research record.
+
 ## 2026-09-10 16:58 +02:00: argument pooling under the binding contract
 
 Arguments are borrowed. A binding receives values that are valid for
@@ -51,7 +67,7 @@ toolchain caveat), so every run still starts from the zero frame the
 declarations and literal builders rely on.
 
 Verified with benchstat over four runs against the pre-pool tree.
-The mutex round trip in [concurrency.md](concurrency.md) drops 14%
+The mutex round trip in the concurrency chapter drops 14%
 (151.0ns to 129.5ns, p=0.029) and its allocations halve (24 B, 2 to
 8 B, 1); the channel round trip is unchanged in time and one
 allocation lighter. Six of the eight fixtures qualify and each loses
@@ -76,7 +92,7 @@ moving values through a channel. Its `Set` and `Get` land on the
 direct tier through two shape-table entries added for their
 signatures.
 
-[concurrency.md](concurrency.md) measures the two against each
+The concurrency chapter measures the two against each
 other: an uncontended native channel round trip costs within 5ns of
 the native mutex round trip, so the channel itself is not the
 overhead; the compiled channel program pays +192ns over native

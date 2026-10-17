@@ -15,10 +15,10 @@ are the investigations that produced both.
 ## The imperative principle
 
 The language has statements and nothing else: a call, a name bound to
-a call's results, a var declaration, a field read or write, a channel
-receive or send, a return. The language has no operators beyond the channel
-arrow, no conditionals, no loops and no standard library. Everything
-a program can do, it does by calling a Go function the host bound:
+a call's results, a var declaration, a field read or write, a return.
+The language has no operators, no conditionals, no loops and no
+standard library. Everything a program can do, it does by calling a
+Go function the host bound:
 
 ```go
 rt := gozero.NewRuntime()
@@ -232,14 +232,12 @@ because `Compile` wraps what it returns.
 ## Costs
 
 A cached single call costs tens of nanoseconds over native with the
-same allocations ([overheads.md](overheads.md)); the eight-fixture
-suite runs at 1.1x-1.5x of handwritten mirrors with inlining
-disabled - channels at 2.1x, paying reflect's per-operation element
-boxing - and 1.1x-1.6x with it on, with seven of the eight at or
-below their mirrors' allocation counts (tables 1 and 2 in
-[inlining.md](inlining.md); the analysis is in
-[fixtures.md](fixtures.md)). Parse and compile cost about 2us and are
-paid once per source string.
+same allocations ([overheads.md](overheads.md)); the seven-fixture
+suite runs at 1.1x-1.5x of handwritten mirrors with and without
+inlining, with every fixture at or below its mirror's allocation
+count (tables 1 and 2 in [inlining.md](inlining.md); the analysis is
+in [fixtures.md](fixtures.md)). Parse and compile cost about 2us and
+are paid once per source string.
 
 ## Open edges
 
@@ -260,6 +258,9 @@ paid once per source string.
 - Extending the syntax with conditionals, loops, closures, operator
   expressions or struct type declarations is researched and
   declined, feature by feature, in [design/](design/). Channel
-  receive and send started as the same research and moved into the
-  syntax; [design/channels.md](design/channels.md) records what
-  landed and what stayed out.
+  receive and send moved from the same research into the syntax and
+  back out: a channel still passes as a value, but both operations
+  paid a reflect select and an element box per operation, and the
+  goroutines and topology stayed with the host either way.
+  [design/channels.md](design/channels.md) records the research and
+  [changelog.md](changelog.md) the removal.
