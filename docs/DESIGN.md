@@ -249,8 +249,13 @@ are paid once per source string.
   was measured and rejected: a returned value travels through a frame
   slot on the step JIT, and the pooled-frame round trip plus the boxing
   read put the amortized cost of the cached flat statement at about
-  290ns against this tier's 35ns on the benchmark box. The tier stays
-  until a returned value can travel without the frame.
+  290ns against this tier's 35ns on the benchmark box, with the same
+  allocations. A profile splits the delta: about 65ns in the frame
+  round trip (the pool get, the typed clear, the put), about 70ns in
+  the `reflect.NewAt(...).Elem().Interface()` read that boxes the
+  returned slot, the rest in per-node closure hops the fused
+  single-statement closure does not pay. The tier stays until a
+  returned value can travel without the frame.
 - Frame pooling is gated per program: a frame no pointer escapes is
   recycled through a pool, an aliased or addressed frame allocates
   fresh. The trade and the approaches not taken are recorded at the
