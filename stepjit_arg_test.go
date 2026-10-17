@@ -3,6 +3,7 @@ package gozero
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/url"
 	"strings"
 	"testing"
@@ -95,6 +96,68 @@ func TestFieldReadNilBase(t *testing.T) {
 	err = fn.Scan(&dest, nil)
 	if err == nil || !strings.Contains(err.Error(), "nil") {
 		t.Fatalf("err = %v, want the nil read reported", err)
+	}
+}
+
+// wantScalar binds a checker that asserts the callee received exactly
+// want, so a width or sign slip in the carrier shows up as the value
+// the callee saw.
+func wantScalar[T comparable](t *testing.T, rt *Runtime, name string, want T) {
+	t.Helper()
+	if err := rt.Bind(name, func(v T) error {
+		if v != want {
+			return fmt.Errorf("saw %v, want %v", v, want)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestStackScalarConvWidths exercises every stackScalarConvs entry on
+// the direct tier: one binding per predeclared scalar type, its value
+// read off the caller's stack. The negative values pin the carrier
+// contract the intBits comment states: the nodeN bits may be sign- or
+// zero-extended past the parameter's width, because every consumer
+// converts at that width before the value is seen.
+func TestStackScalarConvWidths(t *testing.T) {
+	rt := NewRuntime()
+	wantScalar(t, rt, "checkBool", true)
+	wantScalar(t, rt, "checkInt", -3)
+	wantScalar(t, rt, "checkI8", int8(-8))
+	wantScalar(t, rt, "checkI16", int16(-16))
+	wantScalar(t, rt, "checkI32", int32(-32))
+	wantScalar(t, rt, "checkI64", int64(-64))
+	wantScalar(t, rt, "checkUint", uint(3))
+	wantScalar(t, rt, "checkU8", uint8(8))
+	wantScalar(t, rt, "checkU16", uint16(16))
+	wantScalar(t, rt, "checkU32", uint32(32))
+	wantScalar(t, rt, "checkU64", uint64(1)<<63)
+	wantScalar(t, rt, "checkF32", float32(-0.5))
+	wantScalar(t, rt, "checkF64", 2.5)
+	for name, v := range map[string]any{
+		"checkBool": true,
+		"checkInt":  -3,
+		"checkI8":   int8(-8),
+		"checkI16":  int16(-16),
+		"checkI32":  int32(-32),
+		"checkI64":  int64(-64),
+		"checkUint": uint(3),
+		"checkU8":   uint8(8),
+		"checkU16":  uint16(16),
+		"checkU32":  uint32(32),
+		"checkU64":  uint64(1) << 63,
+		"checkF32":  float32(-0.5),
+		"checkF64":  2.5,
+	} {
+		src := name + `(v);`
+		if err := rt.Supports(src); err != nil {
+			t.Errorf("%s: did not JIT: %v", name, err)
+			continue
+		}
+		if _, err := rt.Eval[any](src, map[string]any{"v": v}); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }
 

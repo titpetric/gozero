@@ -10,16 +10,14 @@ import (
 //	program := { stmt }
 //	stmt    := "var" name typeref term
 //	         | "return" [ arg ] term
-//	         | path "<-" arg term
 //	         | [ name { "," name } ( ":=" | "=" ) ] rhs term
 //	term    := ";" | EOL | EOF
-//	rhs     := expr | string | number | "true" | "false" | "nil" | composite | recv
-//	typeref := { "*" | "[]" | "chan" | "chan<-" | "<-chan" } path
+//	rhs     := expr | string | number | "true" | "false" | "nil" | composite
+//	typeref := { "*" | "[]" } path
 //	expr    := path "(" [ args ] ")" { "." ident "(" [ args ] ")" }
 //	path    := ident { "." ident }
 //	args    := arg { "," arg }
-//	arg     := string | number | path | expr | composite | recv
-//	recv    := "<-" ( path | expr )
+//	arg     := string | number | path | expr | composite
 //	composite := [ "&" ] path "{" [ elem { "," elem } [ "," ] ] "}"
 //	elem    := [ ident ":" ] arg
 
@@ -71,9 +69,6 @@ const (
 	// &http.Request{}. The path names the type; the compiler resolves
 	// it, because only it holds the registry.
 	argStruct
-	// argRecv is a channel receive, <-c. The source is a name, a
-	// field, or a call; the compiler types it.
-	argRecv
 )
 
 // structElem is one element of a composite literal: the field name
@@ -100,8 +95,6 @@ type arg struct {
 	// marks the &T{} form.
 	elems []structElem
 	addr  bool
-	// argRecv: the channel the receive reads.
-	recv *arg
 }
 
 // link is one ".Method(args)" step chained onto a call.
@@ -145,11 +138,6 @@ type stmt struct {
 	// "req.Method = ...". The base is a program-bound name and the
 	// rest are field selectors.
 	fieldLhs []string
-
-	// sendCh and sendVal are a send statement, "c <- v". The path
-	// names the channel the way fieldLhs names a field target.
-	sendCh  []string
-	sendVal *arg
 }
 
 // program is a parsed source unit.
@@ -161,6 +149,13 @@ type program struct {
 // arguments are all leaves, and whether the program has that shape.
 // This is the form the JIT shape table matches, and the form every
 // statement had before programs grew past one line.
+//
+// Only the argument kinds compileStatement fills are admitted. It used
+// to reject just argCall and argStruct, so "return f(true);" and
+// "return f(nil);" reached the single-statement compiler, which calls
+// Type on an invalid reflect.Value for a kind outside its switch:
+// Compile panicked instead of returning. The program compiler handles
+// every kind, so anything else routes there.
 func (p *program) flatCall() (*callExpr, bool) {
 	if len(p.stmts) != 1 {
 		return nil, false
@@ -170,7 +165,12 @@ func (p *program) flatCall() (*callExpr, bool) {
 		return nil, false
 	}
 	for _, a := range s.call.args {
-		if a.kind == argCall || a.kind == argStruct {
+		if a.spread {
+			return nil, false
+		}
+		switch a.kind {
+		case argString, argInt, argFloat, argVar:
+		default:
 			return nil, false
 		}
 	}
@@ -272,39 +272,6 @@ func (p *Parser) stmt() (stmt, error) {
 		}
 	}
 	p.pos = fieldSave
-
-	// A path followed by "<-" is a send. Nothing else in the grammar
-	// puts "<-" after a path, so the sniff cannot misread a call or an
-	// assignment.
-	sendSave := p.pos
-	if p.ident() != "" {
-		p.pos = sendSave
-		path, _ := p.path()
-		p.skipSpace()
-		if p.consumeStr("<-") {
-			v, err := p.arg()
-			if err != nil {
-				return stmt{}, err
-			}
-			if !p.terminated() {
-				return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
-			}
-			return stmt{sendCh: path, sendVal: &v}, nil
-		}
-	}
-	p.pos = sendSave
-
-	// A bare receive, "<-c;", runs for its blocking effect.
-	if p.pos+1 < len(p.src) && p.src[p.pos] == '<' && p.src[p.pos+1] == '-' {
-		a, err := p.arg()
-		if err != nil {
-			return stmt{}, err
-		}
-		if !p.terminated() {
-			return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
-		}
-		return stmt{lit: &a}, nil
-	}
 
 	// A statement is a call, optionally preceded by the names its
 	// results bind to. The names are only known to be names once the

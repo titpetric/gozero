@@ -179,7 +179,7 @@ func (c *jitCompiler) bridgeNode(call *vmCall) (node, error) {
 		getters[i] = g
 	}
 
-	fn, name, errIdx, spread := call.fn, call.name, call.errIdx, call.spread
+	fn, errIdx, spread := call.fn, call.errIdx, call.spread
 	invoke := func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) ([]reflect.Value, error) {
 		args := make([]reflect.Value, len(getters))
 		for i, g := range getters {
@@ -202,7 +202,6 @@ func (c *jitCompiler) bridgeNode(call *vmCall) (node, error) {
 		}
 		return out, nil
 	}
-	_ = name
 
 	if call.nres == 0 {
 		return node{class: lNone, E: func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) error {

@@ -15,10 +15,10 @@ are the investigations that produced both.
 ## The imperative principle
 
 The language has statements and nothing else: a call, a name bound to
-a call's results, a var declaration, a field read or write, a channel
-receive or send, a return. The language has no operators beyond the channel
-arrow, no conditionals, no loops and no standard library. Everything
-a program can do, it does by calling a Go function the host bound:
+a call's results, a var declaration, a field read or write, a return.
+The language has no operators, no conditionals, no loops and no
+standard library. Everything a program can do, it does by calling a
+Go function the host bound:
 
 ```go
 rt := gozero.NewRuntime()
@@ -232,14 +232,12 @@ because `Compile` wraps what it returns.
 ## Costs
 
 A cached single call costs tens of nanoseconds over native with the
-same allocations ([overheads.md](overheads.md)); the eight-fixture
-suite runs at 1.1x-1.5x of handwritten mirrors with inlining
-disabled - channels at 2.1x, paying reflect's per-operation element
-boxing - and 1.1x-1.6x with it on, with seven of the eight at or
-below their mirrors' allocation counts (tables 1 and 2 in
-[inlining.md](inlining.md); the analysis is in
-[fixtures.md](fixtures.md)). Parse and compile cost about 2us and are
-paid once per source string.
+same allocations ([overheads.md](overheads.md)); the seven-fixture
+suite runs at 1.1x-1.5x of handwritten mirrors with and without
+inlining, with every fixture at or below its mirror's allocation
+count (tables 1 and 2 in [inlining.md](inlining.md); the analysis is
+in [fixtures.md](fixtures.md)). Parse and compile cost about 2us and
+are paid once per source string.
 
 ## Open edges
 
@@ -247,9 +245,17 @@ paid once per source string.
   tier: a returned value needs a slot. The named form, `v := f(x); return v`, does. The planner could give a trailing returned call a
   slot of its own.
 - `jit.go` holds the original single-statement tier, still used for a
-  flat non-variadic call. Some of its shapes are unreachable from any
-  test; whether the tier still earns its place against the program
-  compiler is an open question.
+  flat non-variadic call. Deleting it in favour of the program tiers
+  was measured and rejected: a returned value travels through a frame
+  slot on the step JIT, and the pooled-frame round trip plus the boxing
+  read put the amortized cost of the cached flat statement at about
+  290ns against this tier's 35ns on the benchmark box, with the same
+  allocations. A profile splits the delta: about 65ns in the frame
+  round trip (the pool get, the typed clear, the put), about 70ns in
+  the `reflect.NewAt(...).Elem().Interface()` read that boxes the
+  returned slot, the rest in per-node closure hops the fused
+  single-statement closure does not pay. The tier stays until a
+  returned value can travel without the frame.
 - Frame pooling is gated per program: a frame no pointer escapes is
   recycled through a pool, an aliased or addressed frame allocates
   fresh. The trade and the approaches not taken are recorded at the
@@ -257,6 +263,9 @@ paid once per source string.
 - Extending the syntax with conditionals, loops, closures, operator
   expressions or struct type declarations is researched and
   declined, feature by feature, in [design/](design/). Channel
-  receive and send started as the same research and moved into the
-  syntax; [design/channels.md](design/channels.md) records what
-  landed and what stayed out.
+  receive and send moved from the same research into the syntax and
+  back out: a channel still passes as a value, but both operations
+  paid a reflect select and an element box per operation, and the
+  goroutines and topology stayed with the host either way.
+  [design/channels.md](design/channels.md) records the research and
+  [changelog.md](changelog.md) the removal.

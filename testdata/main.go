@@ -4,8 +4,7 @@
 //	go run testdata/main.go testdata/url.txt
 //
 // A failed assertion or a failing call ends the program through the
-// implicit error contract and exits non-zero; a receive on a closed
-// channel ends it with io.EOF.
+// implicit error contract and exits non-zero.
 package main
 
 import (
@@ -75,13 +74,6 @@ func bindings() map[string]any {
 		"strings.Fields":             strings.Fields,
 		"path.Join":                  path.Join,
 		"gozero.NewMutexMap":         gozero.NewMutexMap,
-		"chanOf": func(vs ...string) chan string {
-			c := make(chan string, len(vs)+2)
-			for _, v := range vs {
-				c <- v
-			}
-			return c
-		},
 		"ctxValue": func(ctx context.Context) string {
 			v, _ := ctx.Value(ctxKey{}).(string)
 			return v

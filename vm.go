@@ -33,14 +33,14 @@ import (
 type vmArgKind int
 
 const (
-	vaConst vmArgKind = iota // a literal, or an omitted argument's zero value
-	vaSlot                   // a name bound earlier in the program
-	vaStack                  // a name read from the caller's stack map
-	vaDest                   // the pointer Scan was handed
-	vaCall                   // a nested call
-	vaField                  // a struct field read off another value
-	vaCtx                    // the execution context, auto-filled
-	vaStruct                 // a composite literal, built fresh per evaluation
+	vaConst  vmArgKind = iota // a literal, or an omitted argument's zero value
+	vaSlot                    // a name bound earlier in the program
+	vaStack                   // a name read from the caller's stack map
+	vaDest                    // the pointer Scan was handed
+	vaCall                    // a nested call
+	vaField                   // a struct field read off another value
+	vaCtx                     // the execution context, auto-filled
+	vaStruct                  // a composite literal, built fresh per evaluation
 )
 
 var ctxType = reflect.TypeFor[context.Context]()
@@ -161,11 +161,6 @@ type vmStmt struct {
 
 	// fieldSet writes a value through a field: req.Method = "POST".
 	fieldSet *vmFieldSet
-
-	// recv is a channel receive, its value and ok slots in out; send
-	// is a channel send. Both in vm_chan.go.
-	recv *vmRecv
-	send *vmSend
 }
 
 // fieldStep is one selector of a field-assignment target.
@@ -279,22 +274,6 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 		}
 		if s.fieldSet != nil {
 			if err := s.fieldSet.apply(ctx, slots, frame, ifaces, stack, dest); err != nil {
-				return nil, err
-			}
-			continue
-		}
-		if s.recv != nil {
-			v, err := s.recv.exec(ctx, slots, frame, ifaces, stack, dest)
-			if err != nil {
-				return nil, err
-			}
-			if len(s.out) > 0 {
-				slots[s.out[0]] = p.addrCell(v, s.out[0])
-			}
-			continue
-		}
-		if s.send != nil {
-			if err := s.send.exec(ctx, slots, frame, ifaces, stack, dest); err != nil {
 				return nil, err
 			}
 			continue

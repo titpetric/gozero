@@ -3,17 +3,11 @@ package gozero
 import (
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 func joinPath(path []string) string {
-	out := ""
-	for i, s := range path {
-		if i > 0 {
-			out += "."
-		}
-		out += s
-	}
-	return out
+	return strings.Join(path, ".")
 }
 
 func (p *Parser) stringLit(quote byte) (arg, error) {

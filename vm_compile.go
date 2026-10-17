@@ -126,45 +126,6 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			p.stmts = append(p.stmts, vmStmt{fieldSet: fs})
 			continue
 		}
-		if s.sendCh != nil {
-			sn, err := c.compileSend(slots, env, s)
-			if err != nil {
-				return nil, err
-			}
-			p.stmts = append(p.stmts, vmStmt{send: sn})
-			continue
-		}
-		if s.lit != nil && s.lit.kind == argRecv {
-			// The ok of Go's two-value receive is implicit, like the
-			// trailing error of a call: a closed channel ends the
-			// program with io.EOF, so there is no second name to bind.
-			if len(s.lhs) > 1 {
-				return nil, fmt.Errorf("compile: a receive binds one name; ok is implicit, a closed channel ends the program with io.EOF")
-			}
-			for _, name := range s.lhs {
-				if err := checkName(name); err != nil {
-					return nil, err
-				}
-				if err := checkDecl(name, s.define); err != nil {
-					return nil, err
-				}
-			}
-			if s.define {
-				if err := checkNew(s.lhs); err != nil {
-					return nil, err
-				}
-			}
-			rv, err := c.compileRecv(slots, env, *s.lit)
-			if err != nil {
-				return nil, err
-			}
-			var out []int
-			if len(s.lhs) == 1 {
-				out = []int{newSlot(s.lhs[0], rv.elem)}
-			}
-			p.stmts = append(p.stmts, vmStmt{recv: rv, out: out})
-			continue
-		}
 		if s.lit != nil {
 			if len(s.lhs) != 1 {
 				return nil, fmt.Errorf("compile: a literal assigns to exactly one name")
@@ -294,7 +255,7 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			if err := checkDecl(name, s.define); err != nil {
 				return nil, err
 			}
-			out = append(out, newSlot(name, c.resultType(call, i)))
+			out = append(out, newSlot(name, callResultType(call, i)))
 		}
 		p.stmts = append(p.stmts, vmStmt{call: call, out: out, ret: s.ret})
 	}
@@ -312,13 +273,6 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 		}
 		if s.retArg != nil {
 			p.assignArg(s.retArg)
-		}
-		if s.recv != nil {
-			p.assignArg(s.recv.ch)
-		}
-		if s.send != nil {
-			p.assignArg(s.send.ch)
-			p.assignArg(s.send.val)
 		}
 	}
 	return p, nil
@@ -452,20 +406,4 @@ func (c *Compiler) compileRetVal(slots map[string]int, env map[string]reflect.Ty
 		// pt, so any is what lets the value keep its own type.
 	}
 	return c.compileArg(slots, env, "return", 0, pt, a)
-}
-
-// resultType is the static type of the i'th non-error result.
-func (c *Compiler) resultType(call *vmCall, i int) reflect.Type {
-	ft := call.fn.Type()
-	n := 0
-	for j := 0; j < ft.NumOut(); j++ {
-		if j == call.errIdx {
-			continue
-		}
-		if n == i {
-			return ft.Out(j)
-		}
-		n++
-	}
-	return nil
 }

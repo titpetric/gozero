@@ -75,4 +75,20 @@ func TestParser_Parse(t *testing.T) {
 	if _, ok := prog.flatCall(); ok {
 		t.Error("a two-statement program should not report as flat")
 	}
+	// An argument kind the single-statement compiler cannot fill routes
+	// to the program compiler instead of panicking it.
+	for name, src := range map[string]string{
+		"bool":   `return f(true);`,
+		"nil":    `return f(nil);`,
+		"path":   `return f(a.b);`,
+		"spread": `return f(xs...);`,
+	} {
+		prog, err := (&Parser{}).Parse(src)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if _, ok := prog.flatCall(); ok {
+			t.Errorf("%s: %q should not report as flat", name, src)
+		}
+	}
 }

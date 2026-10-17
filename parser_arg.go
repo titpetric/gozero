@@ -25,24 +25,6 @@ func (p *Parser) typeRef() (string, error) {
 			prefix += "[]"
 			continue
 		}
-		// Channel prefixes spell what reflect.Type.String produces,
-		// which is what the registry is keyed by: "chan T",
-		// "<-chan T", "chan<- T".
-		if p.consumeStr("<-") {
-			if !p.keyword("chan") {
-				return "", fmt.Errorf("parse: expected chan after <- at offset %d", p.pos)
-			}
-			prefix += "<-chan "
-			continue
-		}
-		if p.keyword("chan") {
-			if p.consumeStr("<-") {
-				prefix += "chan<- "
-			} else {
-				prefix += "chan "
-			}
-			continue
-		}
 		break
 	}
 	path, err := p.path()
@@ -83,19 +65,6 @@ func (p *Parser) arg() (arg, error) {
 	switch {
 	case c == '"' || c == '\'':
 		return p.stringLit(c)
-	case c == '<' && p.pos+1 < len(p.src) && p.src[p.pos+1] == '-':
-		p.pos += 2
-		p.nl = false
-		src, err := p.arg()
-		if err != nil {
-			return arg{}, err
-		}
-		switch src.kind {
-		case argVar, argPath, argCall:
-		default:
-			return arg{}, fmt.Errorf("parse: expected a channel after <- at offset %d", p.pos)
-		}
-		return arg{kind: argRecv, recv: &src}, nil
 	case c == '-' || (c >= '0' && c <= '9'):
 		return p.numberLit()
 	case c == '&':

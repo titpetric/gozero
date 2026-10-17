@@ -50,8 +50,7 @@ pass vacuously.
 
 Adding a test is adding a file. Scope it the way the existing ones are
 scoped, one concern per file: `http.txt`, `url.txt`, `json.txt`,
-`fmt.txt`, `types.txt`, `structs.txt`, `variadic.txt`,
-`channels.txt`.
+`fmt.txt`, `types.txt`, `structs.txt`, `variadic.txt`.
 
 ## The assert bindings
 
@@ -97,10 +96,9 @@ the request, and back out.
 
 `BenchmarkFixtures` runs every fixture against a handwritten mirror: a
 `testFixtures` method doing the same work with the same assertions,
-context from `tb.Context()` on both sides. All eight fixtures run
+context from `tb.Context()` on both sides. All seven fixtures run
 fully on the direct-call tier, structs since composite literals landed
-on it and channels since receive and send became language nodes
-([changelog](changelog.md)). The measurements live in
+on it ([changelog](changelog.md)). The measurements live in
 [inlining.md](inlining.md): table 1 is the default build, table 2 the
 build with inlining disabled, and the method (best of three
 fixed-count runs) is described there once.
@@ -110,12 +108,9 @@ pool recycles
 the per-run frame of a program whose frame provably does not escape,
 and argument pooling recycles the pack slices, string boxes and
 literal blocks behind every call, under the binding contract that
-arguments are borrowed. Seven of the eight
-fixtures run at or below their mirrors' allocation counts - fmt at
-half its mirror's. channels is the exception at 13 against 8: every
-reflect receive boxes the element where the mirror receives into a
-local, and its asserts read write-once string slots that alias the
-frame instead of boxing ([inlining.md](inlining.md)).
+arguments are borrowed. Every fixture runs at or below its mirror's
+allocation count - fmt at half its mirror's
+([inlining.md](inlining.md)).
 For the bridge cost
 of a call the shape table cannot express, and for the work-only
 comparison without assertions, see the benchmarks in

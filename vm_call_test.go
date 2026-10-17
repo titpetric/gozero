@@ -177,3 +177,130 @@ return s`); err != nil {
 		t.Errorf("pointer method kept the program off the direct tier: %v", err)
 	}
 }
+
+type ctxKey struct{}
+
+// TestContextAutoFill checks the plumbing rules: a context.Context
+// parameter the program does not write receives the execution context,
+// a context the program made and passed explicitly wins, and the plain
+// Exec falls back to context.Background.
+func TestContextAutoFill(t *testing.T) {
+	rt := featRuntime(t)
+	var got context.Context
+	if err := rt.Bind("take", func(ctx context.Context, tag string) (*url.URL, error) {
+		got = ctx
+		return &url.URL{Path: tag}, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Auto-filled: the source never mentions a context.
+	fn, err := rt.Compile(`return take("auto");`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.WithValue(context.Background(), ctxKey{}, "outer")
+	u, err := fn.ExecContext[*url.URL](ctx, nil)
+	if err != nil || u.Path != "auto" {
+		t.Fatalf("got %v, %v", u, err)
+	}
+	if got.Value(ctxKey{}) != "outer" {
+		t.Errorf("binding saw %v, want the execution context", got)
+	}
+
+	// Explicit: a program-bound context consumes the parameter.
+	fn, err = rt.Compile(`own := context.Background(); return take(own, "explicit");`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err = fn.ExecContext[*url.URL](ctx, nil)
+	if err != nil || u.Path != "explicit" {
+		t.Fatalf("got %v, %v", u, err)
+	}
+	if got.Value(ctxKey{}) != nil {
+		t.Error("the explicit context leaked the execution context's value")
+	}
+
+	// Exec without a context still runs, on Background.
+	fn, err = rt.Compile(`return take("plain");`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fn.Exec[*url.URL](nil); err != nil {
+		t.Fatal(err)
+	}
+	if got == nil {
+		t.Error("binding saw a nil context")
+	}
+
+	// Auto-fill reaches http.NewRequestWithContext as advertised.
+	fn, err = rt.Compile(`req := http.NewRequestWithContext("GET", "/c"); return req;`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := fn.ExecContext[*http.Request](ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Context().Value(ctxKey{}) != "outer" {
+		t.Error("the request did not carry the execution context")
+	}
+}
+
+// TestVariadic covers packing individual arguments and spreading a
+// slice, and the errors around a misplaced spread.
+func TestVariadic(t *testing.T) {
+	rt := featRuntime(t)
+	// The tier is asserted for every legal form with the result named:
+	// a silent fall back to the reflect evaluator would leave the pack
+	// and spread nodes untested while the test still passed. A call
+	// returned directly (return path.Join(...)) does not reach the JIT
+	// at all, because a returned value needs a slot; that is a known
+	// planner gap, not a variadic one.
+	for _, src := range []string{
+		`s := path.Join("a", "b", "c"); return s;`,
+		`parts := strings.Fields("x y z"); s := path.Join(parts...); return s;`,
+		`s := path.Join(); return s;`,
+	} {
+		if err := rt.Supports(src); err != nil {
+			t.Errorf("%s: did not JIT: %v", src, err)
+		}
+	}
+
+	fn, err := rt.Compile(`return path.Join("a", "b", "c");`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := fn.Exec[string](nil)
+	if err != nil || s != "a/b/c" {
+		t.Fatalf("pack: got %q, %v", s, err)
+	}
+
+	fn, err = rt.Compile(`parts := strings.Fields("x y z"); return path.Join(parts...);`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err = fn.Exec[string](nil)
+	if err != nil || s != "x/y/z" {
+		t.Fatalf("spread: got %q, %v", s, err)
+	}
+
+	// Zero variadic arguments is a legal call.
+	fn, err = rt.Compile(`return path.Join();`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, err := fn.Exec[string](nil); err != nil || s != "" {
+		t.Fatalf("empty: got %q, %v", s, err)
+	}
+
+	for _, bad := range []string{
+		`u := url.Parse("/a"); return path.Join(u...);`,
+		`parts := strings.Fields("x"); return url.Parse(parts...);`,
+		`parts := strings.Fields("x"); return path.Join(parts..., "y");`,
+	} {
+		if _, err := rt.Compile(bad); err == nil {
+			t.Errorf("%s: expected a compile error", bad)
+		}
+	}
+}
