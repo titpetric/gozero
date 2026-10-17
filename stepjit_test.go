@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sync"
 	"testing"
 )
 
@@ -349,4 +350,55 @@ func TestFramePoolGate(t *testing.T) {
 			t.Fatalf("run %d: v = %v, err = %v", i, v, err)
 		}
 	}
+}
+
+// TestJITTierIsConcurrent is the direct-call mirror of the reflect
+// test: the program is asserted onto the JIT, reads a stack name three
+// times so the hoisted frame field is exercised, and writes a field.
+// The frame is per-run; nothing here may be shared between goroutines
+// but the compiled closures themselves.
+func TestJITTierIsConcurrent(t *testing.T) {
+	rt := NewRuntime()
+	for name, fns := range map[string]map[string]any{
+		"http": {"NewRequest": http.NewRequest},
+		"url":  {"Parse": url.Parse},
+	} {
+		if err := rt.BindScope(name, fns); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const src = `
+		req := http.NewRequest("GET", link)
+		req.Host = "raced"
+		u := url.Parse(link)
+		return u
+	`
+	if err := rt.Supports(src); err != nil {
+		t.Fatalf("this test needs the JIT tier: %v", err)
+	}
+	fn, err := rt.Compile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		want := "/race/" + string(rune('a'+i))
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 400; j++ {
+				u, err := fn.Exec[*url.URL](map[string]any{"link": want})
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if u.Path != want {
+					t.Errorf("path = %q, want %q", u.Path, want)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
 }
