@@ -294,7 +294,7 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			if err := checkDecl(name, s.define); err != nil {
 				return nil, err
 			}
-			out = append(out, newSlot(name, c.resultType(call, i)))
+			out = append(out, newSlot(name, callResultType(call, i)))
 		}
 		p.stmts = append(p.stmts, vmStmt{call: call, out: out, ret: s.ret})
 	}
@@ -452,20 +452,4 @@ func (c *Compiler) compileRetVal(slots map[string]int, env map[string]reflect.Ty
 		// pt, so any is what lets the value keep its own type.
 	}
 	return c.compileArg(slots, env, "return", 0, pt, a)
-}
-
-// resultType is the static type of the i'th non-error result.
-func (c *Compiler) resultType(call *vmCall, i int) reflect.Type {
-	ft := call.fn.Type()
-	n := 0
-	for j := 0; j < ft.NumOut(); j++ {
-		if j == call.errIdx {
-			continue
-		}
-		if n == i {
-			return ft.Out(j)
-		}
-		n++
-	}
-	return nil
 }

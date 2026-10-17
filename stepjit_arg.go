@@ -357,11 +357,10 @@ func stackScalarNode(name string, pt reflect.Type, cl layout) (node, error) {
 			if !ok || v == nil {
 				return 0, nil
 			}
-			bits, fl, ok := get(v)
+			_, fl, ok := get(v)
 			if !ok {
 				return 0, fmt.Errorf("exec: variable %q: cannot use %T as %s", name, v, pt)
 			}
-			_ = bits
 			return fl, nil
 		}}, nil
 	}
@@ -378,6 +377,34 @@ func stackScalarNode(name string, pt reflect.Type, cl layout) (node, error) {
 	}}, nil
 }
 
+// intBits asserts a stack any to the signed type T and reports its
+// bits. Sign-extension past T's width is invisible: storeN writes the
+// parameter's width, so only the low bits are ever read back.
+func intBits[T int | int8 | int16 | int32 | int64]() func(any) (uint64, float64, bool) {
+	return func(v any) (uint64, float64, bool) {
+		n, ok := v.(T)
+		return uint64(int64(n)), 0, ok
+	}
+}
+
+// uintBits asserts a stack any to the unsigned type T and reports its
+// bits.
+func uintBits[T uint | uint8 | uint16 | uint32 | uint64]() func(any) (uint64, float64, bool) {
+	return func(v any) (uint64, float64, bool) {
+		n, ok := v.(T)
+		return uint64(n), 0, ok
+	}
+}
+
+// floatBits asserts a stack any to the float type T and reports it on
+// the float lane.
+func floatBits[T float32 | float64]() func(any) (uint64, float64, bool) {
+	return func(v any) (uint64, float64, bool) {
+		f, ok := v.(T)
+		return 0, float64(f), ok
+	}
+}
+
 // stackScalarConvs asserts a stack any to each predeclared scalar type
 // and reports its bits. Keyed by exact type, so a named type misses.
 var stackScalarConvs = map[reflect.Type]func(any) (uint64, float64, bool){
@@ -388,54 +415,18 @@ var stackScalarConvs = map[reflect.Type]func(any) (uint64, float64, bool){
 		}
 		return 0, 0, ok
 	},
-	reflect.TypeFor[int](): func(v any) (uint64, float64, bool) {
-		n, ok := v.(int)
-		return uint64(int64(n)), 0, ok
-	},
-	reflect.TypeFor[int8](): func(v any) (uint64, float64, bool) {
-		n, ok := v.(int8)
-		return uint64(uint8(n)), 0, ok
-	},
-	reflect.TypeFor[int16](): func(v any) (uint64, float64, bool) {
-		n, ok := v.(int16)
-		return uint64(uint16(n)), 0, ok
-	},
-	reflect.TypeFor[int32](): func(v any) (uint64, float64, bool) {
-		n, ok := v.(int32)
-		return uint64(uint32(n)), 0, ok
-	},
-	reflect.TypeFor[int64](): func(v any) (uint64, float64, bool) {
-		n, ok := v.(int64)
-		return uint64(n), 0, ok
-	},
-	reflect.TypeFor[uint](): func(v any) (uint64, float64, bool) {
-		n, ok := v.(uint)
-		return uint64(n), 0, ok
-	},
-	reflect.TypeFor[uint8](): func(v any) (uint64, float64, bool) {
-		n, ok := v.(uint8)
-		return uint64(n), 0, ok
-	},
-	reflect.TypeFor[uint16](): func(v any) (uint64, float64, bool) {
-		n, ok := v.(uint16)
-		return uint64(n), 0, ok
-	},
-	reflect.TypeFor[uint32](): func(v any) (uint64, float64, bool) {
-		n, ok := v.(uint32)
-		return uint64(n), 0, ok
-	},
-	reflect.TypeFor[uint64](): func(v any) (uint64, float64, bool) {
-		n, ok := v.(uint64)
-		return n, 0, ok
-	},
-	reflect.TypeFor[float32](): func(v any) (uint64, float64, bool) {
-		f, ok := v.(float32)
-		return 0, float64(f), ok
-	},
-	reflect.TypeFor[float64](): func(v any) (uint64, float64, bool) {
-		f, ok := v.(float64)
-		return 0, f, ok
-	},
+	reflect.TypeFor[int]():     intBits[int](),
+	reflect.TypeFor[int8]():    intBits[int8](),
+	reflect.TypeFor[int16]():   intBits[int16](),
+	reflect.TypeFor[int32]():   intBits[int32](),
+	reflect.TypeFor[int64]():   intBits[int64](),
+	reflect.TypeFor[uint]():    uintBits[uint](),
+	reflect.TypeFor[uint8]():   uintBits[uint8](),
+	reflect.TypeFor[uint16]():  uintBits[uint16](),
+	reflect.TypeFor[uint32]():  uintBits[uint32](),
+	reflect.TypeFor[uint64]():  uintBits[uint64](),
+	reflect.TypeFor[float32](): floatBits[float32](),
+	reflect.TypeFor[float64](): floatBits[float64](),
 }
 
 // callResultType is the static type of a call's i'th non-error result.

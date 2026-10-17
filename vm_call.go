@@ -86,7 +86,7 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 		if err != nil {
 			return nil, nil, err
 		}
-		curr, currType = call, c.resultType(call, 0)
+		curr, currType = call, callResultType(call, 0)
 	}
 
 	for _, l := range links {
@@ -109,7 +109,7 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 			if err != nil {
 				return nil, nil, err
 			}
-			curr, currType = call, c.resultType(call, 0)
+			curr, currType = call, callResultType(call, 0)
 			continue
 		}
 		// The pointer type's method set completes Go's rule: a pointer
@@ -127,7 +127,7 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 				if err != nil {
 					return nil, nil, err
 				}
-				curr, currType = call, c.resultType(call, 0)
+				curr, currType = call, callResultType(call, 0)
 				continue
 			}
 		}
@@ -253,7 +253,11 @@ func (c *Compiler) compileCall(slots map[string]int, env map[string]reflect.Type
 	switch {
 	case !ft.IsVariadic():
 		if len(rest) > 0 {
-			return nil, fmt.Errorf("compile: %s takes %d arguments, got %d", name, fixed-boolToInt(recv != nil), len(src))
+			params := fixed
+			if recv != nil {
+				params--
+			}
+			return nil, fmt.Errorf("compile: %s takes %d arguments, got %d", name, params, len(src))
 		}
 	case len(rest) == 1 && rest[0].spread:
 		// f(xs...): the slice is passed whole and the invocation goes

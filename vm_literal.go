@@ -137,13 +137,6 @@ func fieldOf(t reflect.Type, name string) (f reflect.StructField, deref bool, ok
 	return f, deref, true
 }
 
-func boolToInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
-}
-
 // unspread strips the spread flag for compiling the slice argument
 // itself.
 func unspread(a arg) arg {

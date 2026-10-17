@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"reflect"
 	"runtime/debug"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -88,12 +89,7 @@ func (r *Runtime) Bind(name string, fn any) error {
 // on every run. The first failure stops the loop; entries already bound
 // stay bound.
 func (r *Runtime) BindScope(prefix string, fns map[string]any) error {
-	names := make([]string, 0, len(fns))
-	for name := range fns {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
+	for _, name := range slices.Sorted(maps.Keys(fns)) {
 		if err := r.Bind(prefix+"."+name, fns[name]); err != nil {
 			return err
 		}
