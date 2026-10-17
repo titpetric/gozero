@@ -3,6 +3,9 @@ package gozero
 import (
 	"context"
 	"net/http"
+	"net/url"
+	"path"
+	"reflect"
 	"testing"
 )
 
@@ -69,25 +72,55 @@ func TestCompiler_Compile(t *testing.T) {
 // panic: a flat "return f(x);" whose argument was nil or a bool
 // reached the single-statement compiler, which handles only strings,
 // numbers and names and called Type on an invalid reflect.Value for
-// anything else. Those argument kinds route to the program compiler
-// now, which handles them all.
+// anything else. The table walks every argument kind the parser
+// produces, plus the spread forms: each one either runs or reports a
+// compile error, and none may panic.
 func TestCompilerFlatReturnArgKinds(t *testing.T) {
 	rt := NewRuntime()
-	if err := rt.Bind("wantAny", func(v any) any { return v }); err != nil {
-		t.Fatal(err)
+	for name, fn := range map[string]any{
+		"wantAny": func(v any) any { return v },
+		"give":    func() string { return "g" },
+		"Parse":   url.Parse,
+		"Join":    path.Join,
+	} {
+		if err := rt.Bind(name, fn); err != nil {
+			t.Fatal(err)
+		}
 	}
-	res, err := rt.Eval[any](`return wantAny(nil);`, nil)
-	if err != nil {
-		t.Fatalf("return wantAny(nil): %v", err)
-	}
-	if res != nil {
-		t.Errorf("wantAny(nil) = %v, want nil", res)
-	}
-	b, err := rt.Eval[bool](`return wantAny(true);`, nil)
-	if err != nil {
-		t.Fatalf("return wantAny(true): %v", err)
-	}
-	if !b {
-		t.Errorf("wantAny(true) = %v, want true", b)
+	stack := map[string]any{"x": 7, "xs": []string{"a", "b"}}
+	for name, tc := range map[string]struct {
+		src     string
+		want    any
+		wantErr bool
+	}{
+		"string":     {src: `return wantAny("s");`, want: "s"},
+		"int":        {src: `return wantAny(5);`, want: int64(5)},
+		"float":      {src: `return wantAny(2.5);`, want: 2.5},
+		"bool":       {src: `return wantAny(true);`, want: true},
+		"nil":        {src: `return wantAny(nil);`, want: nil},
+		"var":        {src: `return wantAny(x);`, want: 7},
+		"call":       {src: `return wantAny(give());`, want: "g"},
+		"struct":     {src: `return wantAny(url.URL{Path: "/x"});`, want: url.URL{Path: "/x"}},
+		"struct ptr": {src: `return wantAny(&url.URL{Path: "/x"});`, want: &url.URL{Path: "/x"}},
+		"spread":     {src: `return Join(xs...);`, want: "a/b"},
+		// A path needs a program-bound base, and a spread needs a
+		// variadic parameter; both report at compile time.
+		"path":           {src: `return wantAny(a.b);`, wantErr: true},
+		"spread non-var": {src: `return wantAny(xs...);`, wantErr: true},
+	} {
+		v, err := rt.Eval[any](tc.src, stack)
+		if tc.wantErr {
+			if err == nil {
+				t.Errorf("%s: expected a compile error for %q", name, tc.src)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if !reflect.DeepEqual(v, tc.want) {
+			t.Errorf("%s: got %#v, want %#v", name, v, tc.want)
+		}
 	}
 }
