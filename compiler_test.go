@@ -64,3 +64,30 @@ func TestCompiler_Compile(t *testing.T) {
 		t.Errorf("path = %q, want /vm", req.URL.Path)
 	}
 }
+
+// TestCompilerFlatReturnArgKinds pins the fix for a compile-time
+// panic: a flat "return f(x);" whose argument was nil or a bool
+// reached the single-statement compiler, which handles only strings,
+// numbers and names and called Type on an invalid reflect.Value for
+// anything else. Those argument kinds route to the program compiler
+// now, which handles them all.
+func TestCompilerFlatReturnArgKinds(t *testing.T) {
+	rt := NewRuntime()
+	if err := rt.Bind("wantAny", func(v any) any { return v }); err != nil {
+		t.Fatal(err)
+	}
+	res, err := rt.Eval[any](`return wantAny(nil);`, nil)
+	if err != nil {
+		t.Fatalf("return wantAny(nil): %v", err)
+	}
+	if res != nil {
+		t.Errorf("wantAny(nil) = %v, want nil", res)
+	}
+	b, err := rt.Eval[bool](`return wantAny(true);`, nil)
+	if err != nil {
+		t.Fatalf("return wantAny(true): %v", err)
+	}
+	if !b {
+		t.Errorf("wantAny(true) = %v, want true", b)
+	}
+}

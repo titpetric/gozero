@@ -161,6 +161,13 @@ type program struct {
 // arguments are all leaves, and whether the program has that shape.
 // This is the form the JIT shape table matches, and the form every
 // statement had before programs grew past one line.
+//
+// Only the argument kinds compileStatement fills are admitted. It used
+// to reject just argCall and argStruct, so "return f(true);" and
+// "return f(nil);" reached the single-statement compiler, which calls
+// Type on an invalid reflect.Value for a kind outside its switch:
+// Compile panicked instead of returning. The program compiler handles
+// every kind, so anything else routes there.
 func (p *program) flatCall() (*callExpr, bool) {
 	if len(p.stmts) != 1 {
 		return nil, false
@@ -170,7 +177,12 @@ func (p *program) flatCall() (*callExpr, bool) {
 		return nil, false
 	}
 	for _, a := range s.call.args {
-		if a.kind == argCall || a.kind == argStruct {
+		if a.spread {
+			return nil, false
+		}
+		switch a.kind {
+		case argString, argInt, argFloat, argVar:
+		default:
 			return nil, false
 		}
 	}

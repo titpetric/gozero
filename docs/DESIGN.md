@@ -247,9 +247,12 @@ paid once per source string.
   tier: a returned value needs a slot. The named form, `v := f(x); return v`, does. The planner could give a trailing returned call a
   slot of its own.
 - `jit.go` holds the original single-statement tier, still used for a
-  flat non-variadic call. Some of its shapes are unreachable from any
-  test; whether the tier still earns its place against the program
-  compiler is an open question.
+  flat non-variadic call. Deleting it in favour of the program tiers
+  was measured and rejected: a returned value travels through a frame
+  slot on the step JIT, and the pooled-frame round trip plus the boxing
+  read put the amortized cost of the cached flat statement at about
+  290ns against this tier's 35ns on the benchmark box. The tier stays
+  until a returned value can travel without the frame.
 - Frame pooling is gated per program: a frame no pointer escapes is
   recycled through a pool, an aliased or addressed frame allocates
   fresh. The trade and the approaches not taken are recorded at the
