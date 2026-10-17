@@ -33,14 +33,14 @@ import (
 type vmArgKind int
 
 const (
-	vaConst vmArgKind = iota // a literal, or an omitted argument's zero value
-	vaSlot                   // a name bound earlier in the program
-	vaStack                  // a name read from the caller's stack map
-	vaDest                   // the pointer Scan was handed
-	vaCall                   // a nested call
-	vaField                  // a struct field read off another value
-	vaCtx                    // the execution context, auto-filled
-	vaStruct                 // a composite literal, built fresh per evaluation
+	vaConst  vmArgKind = iota // a literal, or an omitted argument's zero value
+	vaSlot                    // a name bound earlier in the program
+	vaStack                   // a name read from the caller's stack map
+	vaDest                    // the pointer Scan was handed
+	vaCall                    // a nested call
+	vaField                   // a struct field read off another value
+	vaCtx                     // the execution context, auto-filled
+	vaStruct                  // a composite literal, built fresh per evaluation
 )
 
 var ctxType = reflect.TypeFor[context.Context]()

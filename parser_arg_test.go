@@ -47,14 +47,14 @@ func TestParseSendStmt(t *testing.T) {
 // reads, matching reflect.Type.String.
 func TestParseChanTypeRef(t *testing.T) {
 	for src, want := range map[string]string{
-		`var c chan string;`:    "chan string",
-		`var c <-chan string;`:  "<-chan string",
-		`var c chan<- string;`:  "chan<- string",
-		`var c []chan int;`:     "[]chan int",
-		`var c chan *url.URL;`:  "chan *url.URL",
-		`var c chan chan int;`:  "chan chan int",
-		`var ch chanLike;`:      "chanLike",
-		`var c *chan struct;`:   "*chan struct",
+		`var c chan string;`:   "chan string",
+		`var c <-chan string;`: "<-chan string",
+		`var c chan<- string;`: "chan<- string",
+		`var c []chan int;`:    "[]chan int",
+		`var c chan *url.URL;`: "chan *url.URL",
+		`var c chan chan int;`: "chan chan int",
+		`var ch chanLike;`:     "chanLike",
+		`var c *chan struct;`:  "*chan struct",
 	} {
 		prog, err := (&Parser{}).Parse(src)
 		if err != nil {
