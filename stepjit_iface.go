@@ -26,8 +26,8 @@ func itabFor(ct, it reflect.Type) (unsafe.Pointer, bool) {
 }
 
 // toIface wraps a computed value as an interface. A pointer-shaped
-// value is the data word itself; anything wider is stored indirectly,
-// which is the allocation the Go compiler makes at the same place.
+// value is the data word itself; anything wider lives indirectly,
+// the allocation the Go compiler makes at the same place.
 func (c *jitCompiler) toIface(st, pt reflect.Type, sub node) (node, error) {
 	// The string-box pool site, armed by argNode for the one argument
 	// this call is compiling; taken unconditionally so a stale site
@@ -89,10 +89,10 @@ func (c *jitCompiler) toIface(st, pt reflect.Type, sub node) (node, error) {
 	return node{}, fmt.Errorf("a %s result cannot become an interface", sub.class)
 }
 
-// staticBoxes is the immutable cell a small scalar aliases when it is
-// boxed, the trick runtime.staticuint64s plays for convT64 and
-// friends: bits under 256 point into this table instead of escaping a
-// fresh cell to the heap. The data word of an interface has to point
+// staticBoxes is the immutable cell a small scalar aliases when boxing
+// it, the trick runtime.staticuint64s plays for convT64 and
+// friends: bits under 256 point into this table and no fresh cell
+// escapes to the heap. The data word of an interface has to point
 // at a value of the concrete width; the low bytes of a uint64 cell
 // read correctly at every narrower width on a little-endian machine,
 // and smallBox offsets to the high bytes on a big-endian one.

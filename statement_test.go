@@ -68,8 +68,8 @@ func TestStatement_Func(t *testing.T) {
 }
 
 // TestReflectTierIsConcurrent runs one cached compiled func from many
-// goroutines on the reflect path, where the argument slice used to be
-// patched in place and raced.
+// goroutines on the reflect path, where patching the argument slice in
+// place races.
 func TestReflectTierIsConcurrent(t *testing.T) {
 	rt := NewRuntime()
 	// The shape table has no bool parameter, so this flat call cannot

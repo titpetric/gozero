@@ -11,10 +11,10 @@ import (
 
 // TestStepJITReassignedSlotIsCopied pins the rule behind the aliasing.
 // An interface argument taken from a slot normally points at the slot
-// rather than a copy, which is what reaches native's allocation count.
-// That is only legal while the slot is written once: here it is written
-// twice, so the value handed to the callee must be a copy taken at the
-// call, not a window onto whatever the slot holds later.
+// and skips a copy, and that reaches native's allocation count.
+// Aliasing is only legal while the slot takes one write: here the
+// program writes it twice, so the callee must receive a copy taken at
+// the call, not a window onto whatever the slot holds later.
 func TestStepJITReassignedSlotIsCopied(t *testing.T) {
 	rt := pairRuntime(t)
 	var kept any
@@ -85,7 +85,7 @@ func TestFieldReadClasses(t *testing.T) {
 }
 
 // TestFieldReadNilBase pins the run-time read guard, the mirror of the
-// write guard: a field of a nil pointer reports rather than faults.
+// write guard: a field of a nil pointer reports an error and does not fault.
 func TestFieldReadNilBase(t *testing.T) {
 	rt := boxRuntime(t)
 	fn, err := rt.Compile(`b := nilBox(); json.NewEncoder(dest).Encode(b.F)`)
@@ -119,7 +119,7 @@ func wantScalar[T comparable](t *testing.T, rt *Runtime, name string, want T) {
 // read off the caller's stack. The negative values pin the carrier
 // contract the intBits comment states: the nodeN bits may be sign- or
 // zero-extended past the parameter's width, because every consumer
-// converts at that width before the value is seen.
+// converts at that width before reading the value.
 func TestStackScalarConvWidths(t *testing.T) {
 	rt := NewRuntime()
 	wantScalar(t, rt, "checkBool", true)
@@ -162,9 +162,9 @@ func TestStackScalarConvWidths(t *testing.T) {
 }
 
 // TestHoistedStackNameSnapshot pins the documented semantics of the
-// hidden frame field: a stack name read more than once is loaded once
-// when the program starts, so a binding that mutates the stack mid-run
-// is not seen by later uses of the same name.
+// hidden frame field: the program loads a stack name read more than
+// once a single time when it starts, so later uses of the same name
+// miss a binding's mid-run mutation of the stack.
 func TestHoistedStackNameSnapshot(t *testing.T) {
 	rt := boxRuntime(t)
 	stack := map[string]any{"v": "before"}

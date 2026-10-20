@@ -3,9 +3,9 @@ title: What if we implemented conditions?
 date: "2026-09-09T00:00:00+02:00"
 ---
 
-The language has one conditional today, and it is invisible: a
+The language has one conditional today, an invisible one: a
 non-nil trailing error ends the program. Every call is an implicit
-`if err != nil { return }`. This document asks what a visible `if`
+`if err != nil { return }`. This document weighs what a visible `if`
 would cost, under the constraints the design already carries: Go
 syntax only, no operator expressions in the AST, no userland
 evaluation, stdlib only.
@@ -40,11 +40,11 @@ is small.
 
 ## What it costs the design
 
-**The grammar stops being line-oriented.** A statement is currently
+**The grammar stops being line-oriented.** A statement is today
 one line, closed by EOL; the parser has no nesting. Blocks bring
 brace tracking, multi-line statements, and a statement tree where
-there is now a flat list. This is the parsing extension the design
-avoids on purpose, and it does not stop at `if`: `else`, `else if`
+there is now a flat list. The design avoids this parsing extension,
+and the extension does not stop at `if`: `else`, `else if`
 and nesting come with the syntax, or the language ships a visibly
 incomplete `if`.
 
@@ -58,19 +58,19 @@ shape for the feature's least common case.
 
 **Branches make write counts conditional.** The interface-aliasing
 optimization in stepjit_arg.go is legal only for a slot written
-exactly once; that is what lets an interface argument point into the
-frame instead of copying. A slot assigned inside a branch is
+exactly once; that single write lets an interface argument point into
+the frame with no copy. A slot assigned inside a branch is
 maybe-written, so the planner must count it conservatively and the
 aliasing that produces allocation parity turns off for any name a
 branch touches. The cost is silent: programs keep working and
-allocate more.
+make more allocations.
 
 **Splicing stops at the branch boundary.** A producer whose single
-reader sits in the other arm, or past the join, cannot be spliced
-without proving the branch executes; the planner keeps the slot. More
+reader sits in the other arm, or past the join, cannot splice
+without proof that the branch executes; the planner keeps the slot. More
 slots, larger frames, more stores.
 
-**Scope has to be decided.** Go gives a block its own scope; the slot
+**Scope needs a decision.** Go assigns a block its own scope; the slot
 model is flat. Either a name declared inside `if` stays visible after
 it, which is Go syntax with non-Go semantics, or the compiler tracks
 scopes and shadowing, which reopens the polymorphic-slot problem a
@@ -79,7 +79,7 @@ reassignment at a different type already trips.
 ## The boolean-production problem
 
 The operand is a harder question than the `if` itself. Real
-conditions are mostly comparisons, and `x == 5` is an expression
+conditions are comparisons in the main, and `x == 5` is an expression
 ([expressions.md](expressions.md)). Without operators, every
 predicate is a call:
 
@@ -95,7 +95,7 @@ The cons:
 - `eq(x, 5)` is legal Go, but Go writes `x == 5`; every comparison
   site reads differently from the Go it mirrors.
 - A generic `eq(a, b any) bool` erases the type safety the bindings
-  provide: both sides box to `any`, scalars allocate or hit the
+  carry: both sides box to `any`, scalars hit the allocator or the
   static-cell path, and a type mismatch that `==` would reject at
   compile time becomes a runtime `false` from `reflect.DeepEqual`.
 - Typed variants (`eqInt`, `eqStr`, ...) restore the checking and
@@ -114,7 +114,7 @@ next.ServeHTTP(w, r)
 ```
 
 `auth.Require` writes the 401 and returns an error when the header is
-missing; the program stops on the spot, exactly as `Scan` and `Exec`
+missing; the program stops at that line, exactly as `Scan` and `Exec`
 already behave for a failed `http.NewRequest`. Cons:
 
 - Only one arm. The form has no else; the other branch is "the rest of
@@ -140,7 +140,7 @@ on the exit status of a command, and `[` is a command; gozero's error
 contract is the same shape with `set -e` built in. testify is the
 same move inside Go tests: `assert.Equal(t, want, got)` is a
 comparison as a call, and the fixture suite under `testdata/` already
-runs on it. An `http.Handler` body is imperative and mostly
+runs on it. An `http.Handler` body is imperative and close to
 condition-free (build, encode, write), so handlers fit the current
 language. Middleware is where the conditions are
 (header equality, path prefixes, status classes), and the guard

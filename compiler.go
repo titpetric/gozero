@@ -18,9 +18,9 @@ type binding struct {
 // Compiler turns a parsed program into an executable form against a set
 // of bound functions. All argument validation happens here, at compile
 // time: literal types must be assignable to the parameter types of the
-// binding, and a method must exist on the static type of the name it is
-// called on. Names read from the caller's stack are only type-checked at
-// execution time, when their value is known.
+// binding, and a method must exist on the name's static type the
+// program calls it through. The compiler type-checks names read from the
+// caller's stack only at execution time, when their value exists.
 type Compiler struct {
 	bindings map[string]binding
 	// types is the Runtime's registry, shared by reference so a Bind
@@ -102,7 +102,7 @@ func (c *Compiler) compileStatement(call *callExpr) (*Statement, error) {
 
 	for i := 0; i < ft.NumIn(); i++ {
 		pt := ft.In(i)
-		// Missing arguments are filled with their zero value: "" for
+		// Missing arguments take their zero value: "" for
 		// string, nil for io.Reader and other pointer-shaped types.
 		if i >= len(call.args) {
 			s.args[i] = reflect.Zero(pt)

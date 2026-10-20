@@ -23,9 +23,8 @@ Hot evaluation means there is no build step between the text and the
 run. The runner reads the file, `Compile` turns it into a tree of typed
 closures over the live binding funcvals, and the program executes in
 the same process, in the same test, immediately. Editing a fixture and
-re-running `go test` is the whole loop; nothing is generated, nothing
-is linked, and the same text can be run against changed bindings
-without touching it.
+re-running `go test` is the whole loop; no generator runs, no linker
+runs, and the same text runs against changed bindings without an edit.
 
 ## How the runner works
 
@@ -48,8 +47,8 @@ nothing: the program is the test. `TestAssertFailurePropagates` pins
 that a failing assertion actually reaches the TB, so the suite cannot
 pass vacuously.
 
-Adding a test is adding a file. Scope it the way the existing ones are
-scoped, one concern per file: `http.txt`, `url.txt`, `json.txt`,
+Adding a test is adding a file. Scope it like the existing ones, one
+concern per file: `http.txt`, `url.txt`, `json.txt`,
 `fmt.txt`, `types.txt`, `structs.txt`, `variadic.txt`.
 
 ## The assert bindings
@@ -65,8 +64,8 @@ runtime binds a fixed shape instead:
 
 Every parameter has a layout class, so an assertion is one direct call,
 and the message stays optional because every trailing argument is:
-`assert.Equal(tb, want, got)` zero-fills it to `""`. `tb` is typed
-`any` and asserted to `testing.TB` inside the helper, which keeps
+`assert.Equal(tb, want, got)` zero-fills it to `""`. `tb` has type
+`any`, and the helper asserts it to `testing.TB`, which keeps
 `testing` out of the runtime's own types.
 
 This is the pattern for binding any variadic API into the hot path:
@@ -77,8 +76,8 @@ with the reflect bridge as the floor for anything else.
 
 ## The context
 
-No fixture ever writes a context. `http.NewRequestWithContext` is
-called with two arguments and the runtime fills the `context.Context`
+No fixture ever writes a context. Each call to
+`http.NewRequestWithContext` passes two arguments, and the runtime fills the `context.Context`
 parameter with the execution context, which the runner derives from
 `t.Context()`. The http fixture proves the plumbing end to end:
 
@@ -100,31 +99,31 @@ context from `tb.Context()` on both sides. All seven fixtures run
 fully on the direct-call tier, structs since composite literals landed
 on it ([changelog](changelog.md)). The measurements live in
 [inlining.md](inlining.md): table 1 is the default build, table 2 the
-build with inlining disabled, and the method (best of three
-fixed-count runs) is described there once.
+build with inlining disabled, and that page describes the method (best
+of three fixed-count runs) once.
 
 Two pools produce the allocation columns of those tables. The frame
 pool recycles
 the per-run frame of a program whose frame provably does not escape,
 and argument pooling recycles the pack slices, string boxes and
-literal blocks behind every call, under the binding contract that
-arguments are borrowed. Every fixture runs at or below its mirror's
+literal blocks behind every call, under the binding contract that a
+binding borrows its arguments. Every fixture runs at or below its mirror's
 allocation count - fmt at half its mirror's
 ([inlining.md](inlining.md)).
 For the bridge cost
 of a call the shape table cannot express, and for the work-only
 comparison without assertions, see the benchmarks in
-`fixture_bench_test.go`. For how these numbers move when inlining is
+`fixture_bench_test.go`. For how these numbers move with inlining
 enabled, the build a caller sees, see [inlining.md](inlining.md).
 
 Two details of the direct tier show up in those tables. A scalar
-whose bits fit a byte boxes into a static cell rather than a fresh
-one, the trick runtime.staticuint64s plays, which is one allocation
-off fmt and types. A stack name the program reads more than once, tb
-in every fixture, is loaded into a hidden frame field once when the
-program starts; each use is then an offset read instead of a map
-lookup, so a binding that mutates the stack mid-run is not seen by
-later uses of the same name.
+whose bits fit a byte boxes into a static cell and skips the fresh
+allocation, the trick runtime.staticuint64s plays, which removes one
+allocation from fmt and types. A stack name the program reads more
+than once, tb in every fixture, loads into a hidden frame field once
+when the program starts; each use then reads an offset from the frame
+and skips the map lookup, so later uses of the same name do not see a
+binding that mutates the stack mid-run.
 
 ## Structs by value
 
@@ -133,12 +132,12 @@ by value has no layout class, so it cannot travel between calls as a
 closure return value; what it can do is live in the frame. The frame is
 one `reflect.StructOf` allocation, so the struct is a field in it, the
 declaration's zero value is the zeroed frame, and a field read or write
-is an offset from the frame pointer. A whole-struct value only needs
-transport when it is passed to a binding, where it goes through the
-interface alias or, when the slot is written more than once, a copy:
-`TestValueStructIntoInterface` pins that a binding that retains the
-interface sees the value as it was at the call, not what a later field
-write put in the slot.
+is an offset from the frame pointer. A whole-struct value needs
+transport only when a binding receives it; it travels through the
+interface alias or, when the program writes the slot more than once,
+through a copy: `TestValueStructIntoInterface` pins that a binding that
+retains the interface sees the value from the time of the call, and not
+what a later field write put in the slot.
 
 ## Learnings
 

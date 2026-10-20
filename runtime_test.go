@@ -50,7 +50,7 @@ func TestEvalSingleQuoted(t *testing.T) {
 	}
 }
 
-// TestEvalURLVariable feeds several links from a []string through the
+// TestEvalURLVariable feeds four links from a []string through the
 // stack into the second parameter of NewRequest and checks the path of
 // every returned and scanned value.
 func TestEvalURLVariable(t *testing.T) {
@@ -354,7 +354,7 @@ func BenchmarkCostWithoutCaching(b *testing.B) {
 // Statement.call, the reflect fallback the compiler builds for
 // bindings outside the shape table. It takes the same
 // func(map[string]any) (any, error) shape and reads its variable off
-// whatever stack it is handed, so the only difference between the two
+// whatever stack it receives, so the only difference between the two
 // is reflect.Value.Call against the direct call. cost-ns/op is
 // (naive - native).
 func BenchmarkCostNaive(b *testing.B) {

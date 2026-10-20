@@ -11,8 +11,8 @@ import (
 )
 
 // TestBridgedCallStaysInTheTree replaces the whole-program fallback
-// test: a call outside the shape table no longer sends the program to
-// the reflect evaluator, it compiles to a reflect bridge and its
+// test: a call outside the shape table keeps the program off the
+// reflect evaluator; it compiles to a reflect bridge and its
 // neighbours stay direct calls. Supports reports the bridge, and the
 // bridged call still runs correctly.
 func TestBridgedCallStaysInTheTree(t *testing.T) {
@@ -63,7 +63,7 @@ func TestBridgedCallStaysInTheTree(t *testing.T) {
 
 // TestAllocationBudget pins the allocation count of the compiled
 // program against the native code it stands for, so a regression fails
-// the suite rather than only showing up in a benchmark.
+// the suite and does not only show up in a benchmark.
 func TestAllocationBudget(t *testing.T) {
 	rt := pairRuntime(t)
 	if err := rt.Supports(vmProgramSrc); err != nil {
@@ -88,8 +88,8 @@ func TestAllocationBudget(t *testing.T) {
 	// The budget is native plus one. The extra is materialising the
 	// cookie slice for the interface Encode takes: the Go compiler can
 	// prove that value does not outlive the call and keep it on the
-	// stack, while the JIT hands it to a func it reinterpreted and has
-	// to assume it escapes. Everything else matches.
+	// stack, while the JIT passes it to a func it reinterpreted and must
+	// treat it as escaping. Everything else matches.
 	t.Logf("program %.0f allocations/run, native %.0f", got, want)
 	if got > want+1 {
 		t.Errorf("program allocates %.0f/run, native %.0f, budget %.0f", got, want, want+1)
@@ -132,8 +132,8 @@ func TestBridgeArgKinds(t *testing.T) {
 
 type bridgeCtxKey struct{}
 
-// compilePairBridged is compilePair without the all-direct requirement:
-// the program is expected to hold at least one bridged call.
+// compilePairBridged is compilePair without the all-direct check:
+// the program must hold at least one bridged call.
 func compilePairBridged(t *testing.T, rt *Runtime, src string) (jit, slow CompiledFunc) {
 	t.Helper()
 	prog, err := (&Parser{}).Parse(src)
@@ -155,7 +155,7 @@ func compilePairBridged(t *testing.T, rt *Runtime, src string) (jit, slow Compil
 }
 
 // TestBridgedResultClasses runs one out-of-table call per result class
-// the bridge can hand back: string, slice, interface, float and
+// the bridge can return: string, slice, interface, float and
 // integer. Only the pointer result had coverage.
 func TestBridgedResultClasses(t *testing.T) {
 	rt := pairRuntime(t)
@@ -194,7 +194,7 @@ func TestBridgedResultClasses(t *testing.T) {
 }
 
 // TestBridgedSpread pins a variadic spread through the bridge, which is
-// the one path that goes through reflect's CallSlice: []int is not a
+// the one path that reaches reflect's CallSlice: []int is not a
 // pack the table special-cases, so the call bridges, and the spread
 // slice arrives as the variadic parameter.
 func TestBridgedSpread(t *testing.T) {

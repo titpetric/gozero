@@ -8,7 +8,7 @@ import (
 
 // TestStructNodeAllocatesPerEvaluation pins the direct tier's literal
 // allocation: two runs of one compiled &T{} must not share the struct.
-// The same property is checked through Compile in TestStructLiteral;
+// TestStructLiteral checks the same property through Compile;
 // this one requires the JIT and runs its tier directly, so a fallback
 // cannot make it pass by allocating through reflect.
 func TestStructNodeAllocatesPerEvaluation(t *testing.T) {
@@ -37,8 +37,8 @@ func TestStructNodeAllocatesPerEvaluation(t *testing.T) {
 	}
 }
 
-// shapeInner and shapeOuter give the tests a struct-typed field, which
-// the standard library types used elsewhere do not offer with exported
+// shapeInner and shapeOuter supply the tests a struct-typed field, which
+// the standard library types used elsewhere lack with exported
 // fields at both levels.
 type shapeInner struct {
 	N int64
@@ -86,7 +86,7 @@ func TestStructLiteralNestedValueField(t *testing.T) {
 // TestStructLiteralValueIntoAny checks that a value literal handed to
 // an any parameter arrives as the value type, on the JIT tier: the
 // interface's data word points at the fresh struct the literal built,
-// with the value's own itab rather than the pointer's.
+// with the value's own itab and not the pointer's.
 func TestStructLiteralValueIntoAny(t *testing.T) {
 	rt := NewRuntime()
 	var seen any

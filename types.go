@@ -10,7 +10,7 @@ import (
 // the bindings: binding http.NewRequest names string, io.Reader,
 // *http.Request and error, and walking those reaches http.Request, its
 // methods, and the types those return. Only a type no binding mentions
-// has to be registered by hand with BindType.
+// needs a manual BindType call.
 //
 // Names are reflect.Type.String(), so "int64", "*http.Request",
 // "http.Header". Two packages with the same base name would collide;
@@ -120,7 +120,7 @@ func (r *Runtime) BindType(name string, v any) error {
 }
 
 // Types lists the names a var statement can use, for working out why
-// one was not found.
+// a lookup of one fails.
 func (r *Runtime) Types() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

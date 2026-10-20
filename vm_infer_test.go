@@ -31,7 +31,7 @@ func TestLiteralTypeInference(t *testing.T) {
 }
 
 // TestConversionHint checks the x = int32(0) form: a call whose path
-// names a registered type rather than a binding fixes the literal's
+// names a registered type, and no binding, fixes the literal's
 // type at the assignment, the way a var declaration would.
 func TestConversionHint(t *testing.T) {
 	rt, seen := typeRuntime(t)
@@ -82,8 +82,8 @@ func TestConversionHintErrors(t *testing.T) {
 	}
 }
 
-// TestVarBeatsInference checks that a declared type is not overridden
-// by how the name is used: the mismatch is reported.
+// TestVarBeatsInference checks that the name's uses do not override a
+// declared type: the compiler reports the mismatch.
 func TestVarBeatsInference(t *testing.T) {
 	rt, _ := typeRuntime(t)
 	_, err := rt.Compile(`var x int64; x = 5; takesInt(x);`)

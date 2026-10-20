@@ -19,12 +19,12 @@ type Runtime struct {
 	mu       sync.RWMutex
 	compiler Compiler
 	cache    map[string]CompiledFunc
-	// types is the registry a var statement resolves against. It is
-	// filled by walking every binding, so most types never need
+	// types is the registry a var statement resolves against. A walk
+	// over every binding fills it, so most types never need
 	// registering by hand.
 	types map[string]reflect.Type
 	// log records what discovery found. Nil until SetLogger, and
-	// checked rather than defaulted so an unlogged runtime pays
+	// checked with no default so an unlogged runtime pays
 	// nothing.
 	log *slog.Logger
 	// origin names the binding the current discovery walk started from,
@@ -33,8 +33,8 @@ type Runtime struct {
 }
 
 // SetLogger attaches a logger. Discovery reports every type it
-// registers through it, at debug level, which is how a caller finds out
-// what a var statement is allowed to name and where each name came
+// registers through it, at debug level, so a caller can see which
+// names a var statement may use and where each name comes
 // from.
 func (r *Runtime) SetLogger(l *slog.Logger) {
 	r.mu.Lock()
@@ -53,8 +53,8 @@ func NewRuntime() *Runtime {
 }
 
 // Bind registers a Go function under a name, e.g.
-// Bind("NewRequest", http.NewRequest). Arguments are borrowed: they
-// are valid for the duration of the call, because the runtime pools
+// Bind("NewRequest", http.NewRequest). The function borrows its
+// arguments: they stay valid for the duration of the call, because the runtime pools
 // the memory behind packs, boxes and literal arguments and reuses it
 // after the call returns. A binding that keeps a received any, slice
 // or literal pointer copies it first, the way a type assertion
@@ -81,11 +81,11 @@ func (r *Runtime) Bind(name string, fn any) error {
 
 // BindScope registers a group of functions under a dotted prefix, so
 // BindScope("json", map[string]any{"NewEncoder": json.NewEncoder})
-// binds json.NewEncoder. It is Bind in a loop and needs no support in
+// binds json.NewEncoder. BindScope is Bind in a loop and needs no support in
 // the compiler: a dotted name is one key in the binding map, and a path
 // in the source resolves to the longest prefix that names a binding.
 //
-// Names are sorted before binding so a failure reports the same entry
+// BindScope sorts the names before binding so a failure reports the same entry
 // on every run. The first failure stops the loop; entries already bound
 // stay bound.
 func (r *Runtime) BindScope(prefix string, fns map[string]any) error {
@@ -98,7 +98,7 @@ func (r *Runtime) BindScope(prefix string, fns map[string]any) error {
 }
 
 // guard installs the panic boundary. It covers both tiers, because it
-// wraps what Compile returns rather than either implementation.
+// wraps what Compile returns, outside either implementation.
 func guard(fn CompiledFunc) CompiledFunc {
 	return func(ctx context.Context, stack map[string]any, dest any) (res any, err error) {
 		if ctx == nil {
@@ -116,7 +116,7 @@ func guard(fn CompiledFunc) CompiledFunc {
 // Supports reports whether src compiles to the direct-call tier, and
 // why it does not when it does not. Call it in a benchmark, or in a
 // test that means to measure the JIT, so an accidental fall back to the
-// reflect evaluator is a failure rather than a slow number.
+// reflect evaluator fails the test and does not pass as a slow number.
 func (r *Runtime) Supports(src string) error {
 	prog, err := (&Parser{}).Parse(src)
 	if err != nil {
@@ -149,8 +149,8 @@ func (r *Runtime) Supports(src string) error {
 }
 
 // Compile parses and compiles a program into its constructed func.
-// Results are cached per program string: the second Compile of the
-// same source is a map lookup.
+// The runtime caches results per program string: the second Compile of
+// the same source is a map lookup.
 func (r *Runtime) Compile(stmt string) (CompiledFunc, error) {
 	r.mu.RLock()
 	fn, ok := r.cache[stmt]
@@ -177,16 +177,16 @@ func (r *Runtime) compileUncached(stmt string) (CompiledFunc, error) {
 	if err != nil {
 		return nil, err
 	}
-	// The unlock is deferred so a panic inside the compiler cannot leak
-	// the read lock; a leaked one deadlocks the next cache store.
+	// The deferred RUnlock keeps a panic inside the compiler from
+	// leaking the read lock; a leaked one deadlocks the next cache store.
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.compiler.Compile(call)
 }
 
 // Eval compiles (or reuses the cached compilation of) stmt and executes
-// it against the stack. T is the expected result type and cannot be
-// inferred, so it is always instantiated explicitly:
+// it against the stack. T is the expected result type and Go cannot
+// infer it, so every call instantiates it explicitly:
 // rt.Eval[*http.Request](stmt, stack).
 func (r *Runtime) Eval[T any](stmt string, stack map[string]any) (T, error) {
 	fn, err := r.Compile(stmt)

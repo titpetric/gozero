@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-// TestNumericLiteralConversion checks that a literal takes the type of
-// the parameter it fills. The parser only produces int64 and float64,
-// so without the conversion a binding taking int could not be called at
-// all.
+// TestNumericLiteralConversion checks that a literal takes the
+// parameter type it fills. The parser only produces int64 and float64,
+// so without the conversion a program could not call a binding taking
+// int at all.
 func TestNumericLiteralConversion(t *testing.T) {
 	rt, seen := typeRuntime(t)
 	for _, tc := range []struct {
@@ -37,7 +37,7 @@ func TestNumericLiteralConversion(t *testing.T) {
 }
 
 // TestNumericLiteralRange checks that a literal the parameter cannot
-// hold is a compile error rather than a wrap.
+// hold is a compile error and never wraps.
 func TestNumericLiteralRange(t *testing.T) {
 	rt, _ := typeRuntime(t)
 	for _, tc := range []struct{ src, want string }{

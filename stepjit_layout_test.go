@@ -15,7 +15,7 @@ import (
 // TestStepJITFrameSurvivesGC forces collections between the steps'
 // stores and their reads. A frame allocated with the wrong pointer map,
 // or a store that skipped its write barrier, shows up here as a lost or
-// corrupted value rather than as a wrong benchmark.
+// corrupted value and not as a wrong benchmark.
 func TestStepJITFrameSurvivesGC(t *testing.T) {
 	rt := pairRuntime(t)
 	if err := rt.Bind("churn", func(v any) (*url.URL, error) {
@@ -23,8 +23,8 @@ func TestStepJITFrameSurvivesGC(t *testing.T) {
 			runtime.GC()
 			_ = make([]byte, 1<<15)
 		}
-		// v is reached only through the frame slot the previous step
-		// wrote, and must still be intact after the collections.
+		// Only the frame slot the previous step wrote reaches v, and
+		// v must still be intact after the collections.
 		return &url.URL{Path: fmt.Sprintf("/%d", len(fmt.Sprint(v)))}, nil
 	}); err != nil {
 		t.Fatal(err)
@@ -48,7 +48,7 @@ func TestStepJITFrameSurvivesGC(t *testing.T) {
 	}
 }
 
-// TestVariadicSliceABI pins the assumption behind spread and pack: a
+// TestVariadicSliceABI pins the ABI fact behind spread and pack: a
 // variadic function is ABI-identical to the same signature with the
 // variadic parameter as a plain slice, so casting the funcval and
 // passing a slice header is a correct call. Covers a top-level func, a

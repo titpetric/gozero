@@ -35,8 +35,8 @@ func typeRuntime(t *testing.T) (*Runtime, *any) {
 		"takesU32": func(n uint32) (*url.URL, error) { seen = n; return &url.URL{}, nil },
 		"takesF32": func(n float32) (*url.URL, error) { seen = n; return &url.URL{}, nil },
 		// The binding contract makes v borrowed: copyBoxed moves it
-		// into a fresh box before it is stored, or a pooled box would
-		// be cleared under the recorder after the run.
+		// into a fresh box before the recorder stores it, or the run
+		// would clear a pooled box under the recorder afterwards.
 		"takesAny":  func(v any) (*url.URL, error) { seen = copyBoxed(v); return &url.URL{}, nil },
 		"takesI64":  func(n int64) (*url.URL, error) { seen = n; return &url.URL{}, nil },
 		"takesBool": func(b bool) (*url.URL, error) { seen = b; return &url.URL{}, nil },
@@ -63,7 +63,7 @@ func runProgram(t *testing.T, rt *Runtime, src string) (string, error) {
 }
 
 // TestVarDeclaration checks that var puts the zero value of a named
-// type in scope and fixes the type of what is assigned to it.
+// type in scope and fixes the type that later assignments to it carry.
 func TestVarDeclaration(t *testing.T) {
 	rt, seen := typeRuntime(t)
 	for _, tc := range []struct{ name, src, want string }{
@@ -150,9 +150,9 @@ func TestVarPointerAndSliceTypes(t *testing.T) {
 }
 
 // TestScalarsJIT checks that the scalar work reaches the direct-call
-// tier rather than sending the program to the reflect evaluator: a var
+// tier and does not send the program to the reflect evaluator: a var
 // declaration, a literal assignment, a scalar read back out of a slot,
-// a scalar argument at several widths, and a scalar boxed into an
+// a scalar argument at more than one width, and a scalar boxed into an
 // interface.
 func TestScalarsJIT(t *testing.T) {
 	rt, seen := typeRuntime(t)
@@ -198,8 +198,8 @@ func TestScalarsJIT(t *testing.T) {
 // function that takes an interface.
 //
 // net/http has no NewClient. Its only exported constructors are
-// NewRequest and NewRequestWithContext, so the client side is
-// represented by the types those reach.
+// NewRequest and NewRequestWithContext, so the types those reach
+// stand for the client side.
 var constructors = map[string]any{
 	"http.NewRequest":            http.NewRequest,
 	"http.NewRequestWithContext": http.NewRequestWithContext,

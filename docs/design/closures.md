@@ -7,7 +7,7 @@ A closure is the one extension the architecture is already shaped
 for. A compiled program is a Go closure - `CompiledFunc` is a func
 value built at runtime over the bindings - and a func literal inside a
 program is a smaller instance of the thing the compiler already
-builds. The machinery exists; the open questions are what capture
+builds. The machinery exists; what remains to settle is what capture
 does to the frame, and what closures make expressible that the
 design elsewhere declines.
 
@@ -15,8 +15,8 @@ design elsewhere declines.
 
 A func literal whose body is the same straight-line statement list a
 program is, typed entirely by the parameter it fills - no return type
-or parameter type syntax needed when the target signature is known
-from the binding:
+or parameter type syntax needed when the binding fixes the target
+signature:
 
 ```go
 mux.HandleFunc("/health", func(w, r) {
@@ -47,7 +47,7 @@ as out-of-table calls do now.
 
 **Capture forces reference semantics onto by-value slots.** Go
 closures capture variables, not values; a captured name must observe
-later writes. The frame gives that almost for free - capture the
+later writes. The frame supports that almost for free - capture the
 slot's address - but an address into the frame is precisely the
 aliasing that stepjit_arg.go only permits for write-once slots.
 Every captured slot is potentially written after capture, so capture
@@ -62,7 +62,7 @@ frame including slots it never reads.
 
 **Construction moves into the run.** A compiled program is immutable
 and cached per source string; a closure closes over a per-run frame,
-so the func value must be built on every execution. One allocation
+so every execution builds the func value. One allocation
 per closure per run - the same cost the Go compiler emits for an
 escaping func literal, so parity survives, but the "compile once,
 zero construction at exec" story does not.
@@ -74,8 +74,8 @@ of rejecting a func literal in any position whose expected type is
 unknown - which the language can afford, since every position is a
 binding's parameter.
 
-**The equivalence suite doubles.** Both tiers must agree not only on
-results but on what a callee observes when it calls the closure late,
+**The equivalence suite doubles.** Both tiers must agree on results
+and on what a callee observes when it calls the closure late,
 concurrently, or more than once. Re-entrancy is new: a closure
 running while its defining program still runs shares the frame with
 it.
@@ -92,9 +92,9 @@ each(req.Cookies(), func(c) { jar.SetCookie(c) })
 
 That is Tcl: control flow as library calls, evaluation order and
 branch semantics defined by whatever the binding does, different per
-host. It is the userland control flow this design rejects in
+host. This design rejects that userland control flow in
 [conditions.md](conditions.md) and [loops.md](loops.md), and closures
-would make it available whether or not it is endorsed. The pattern
+would make it available regardless of endorsement. The pattern
 comes with the feature; the binding set is the only control over it,
 and a host that binds `iff` has chosen it.
 
@@ -111,14 +111,14 @@ mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 })
 ```
 
-The handler is imperative and it is a gozero program; only the
+The handler is imperative and a gozero program; only the
 adapter is Go. Cons:
 
 - One program per func value: a program cannot define two handlers,
-  or hand a comparator to a sort it also calls.
-- Nothing is captured: the closure's inputs travel through the stack
-  map by name, dynamically checked, instead of statically typed
-  capture.
+  or pass a comparator to a sort it also calls.
+- The program captures nothing: the closure's inputs travel through
+  the stack map by name, dynamically checked, with no statically
+  typed capture.
 - The adapter is host code per signature, though `reflect.MakeFunc`
   could generalize it as a `BindProgram(sig, src)` helper without any
   language change - the closure feature minus the syntax.
@@ -126,23 +126,23 @@ adapter is Go. Cons:
 **Named sub-programs, no capture.** A `func name(params)` form
 compiled like a top-level program, capturing nothing, values passed
 as arguments only. Removes the frame-escape and aliasing costs
-entirely. Cons: capture is most of why closures are wanted -
+entirely. Cons: capture is most of the reason for closures -
 `next.ServeHTTP` inside a middleware body wants `next` from the
 environment - and a capture-free func is just a second program with
 a calling convention.
 
 ## In other imperative settings
 
-Imperative Go leans on closures exactly where this language wants to
-go: `http.HandlerFunc`, middleware as `func(next Handler) Handler`,
+Imperative Go leans on closures exactly where this language heads:
+`http.HandlerFunc`, middleware as `func(next Handler) Handler`,
 `sort.Slice`, `t.Cleanup`, range-over-func bodies. testify is the
 counterexample: assertion-heavy test code needs no closures, and the
 fixture suite runs without them today. Handlers stay imperative
 through the adapter pattern above. Middleware is the case that needs
 full capture: its shape is a function that receives a continuation,
 and guard bindings cover the abort half only. Holding `next` and
-deciding when to call it takes a closure; the branch was never the
-missing part.
+deciding when to call it takes a closure; the missing part is the
+continuation, and the branch exists.
 
 ## Verdict
 
@@ -151,6 +151,6 @@ surface, stdlib materialization on both tiers, and they answer the
 middleware question directly. They cost capture-as-aliasing, an
 escaping frame, per-run construction, block grammar - and they make
 userland control flow expressible. The capture-free alternatives
-(`BindProgram`-style adapters) deliver most of the value as host API
-rather than language, and are the recommended first step if the
+(`BindProgram`-style adapters) deliver most of the value as host API,
+outside the language, and are the recommended first step if the
 pressure becomes real.

@@ -21,8 +21,8 @@ err = fn.Scan(&dest, nil)
 ## Syntax
 
 A script is the Go you would have written, minus what the runtime
-does implicitly: a trailing error result ends the program instead of
-being named, a `context.Context` parameter fills from the execution
+does implicitly: a trailing error result ends the program and needs no
+name, a `context.Context` parameter fills from the execution
 context, and a trailing argument left out is the zero value. The
 full surface is in [docs/syntax.md](docs/syntax.md).
 

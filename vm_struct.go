@@ -8,8 +8,8 @@ import (
 
 // compileStructLit compiles a composite literal, url.URL{Path: "/"}
 // or &http.Request{}, returning the compiled value and its static
-// type. The path must name a registered struct type. Elements are
-// keyed or positional but not mixed, as in Go; a positional list
+// type. The path must name a registered struct type. Elements use
+// keys or positions but never mix the two, as in Go; a positional list
 // fills the fields in declaration order and may stop early, the rest
 // staying zero, matching how a call fills missing arguments. Each
 // value compiles against its field's type, so a numeric literal
@@ -36,8 +36,8 @@ func (c *Compiler) compileStructLit(slots map[string]int, env map[string]reflect
 		if keyed {
 			f, ok = t.FieldByName(e.name)
 			// A promoted field is not a field of the literal's type,
-			// matching Go, which also keeps a nil embedded pointer from
-			// being written through.
+			// matching Go, which also keeps a write from going through a
+			// nil embedded pointer.
 			if !ok || f.PkgPath != "" || len(f.Index) > 1 {
 				return nil, nil, fmt.Errorf("%s has no field %s", name, e.name)
 			}

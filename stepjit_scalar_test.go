@@ -10,7 +10,7 @@ import (
 )
 
 // TestScalarFromStackJITs pins the tier for a scalar read off the
-// caller's stack, which used to send the program to reflect.
+// caller's stack: the program stays on the direct tier and off reflect.
 func TestScalarFromStackJITs(t *testing.T) {
 	rt, seen := litRuntime(t)
 	const src = `wantI64(n); json.NewEncoder(dest).Encode("ok");`
@@ -51,7 +51,7 @@ func TestScalarFromStackJITs(t *testing.T) {
 }
 
 // TestMixedScalarShapeJITs pins the tier for a call mixing a string and
-// a scalar parameter, which used to be outside the table.
+// a scalar parameter, a shape the table covers.
 func TestMixedScalarShapeJITs(t *testing.T) {
 	rt, seen := litRuntime(t)
 	const src = `u := mixed("a", 5); return u;`
@@ -73,7 +73,7 @@ func TestMixedScalarShapeJITs(t *testing.T) {
 }
 
 // scalarRuntime binds one representative of each scalar shape family
-// that had no coverage: pointer-in scalar-out getters at several
+// that had no coverage: pointer-in scalar-out getters at more than one
 // widths, scalar-in error-only results, and the mixed pairs the table
 // reaches through mixedScalarCall.
 func scalarRuntime(t *testing.T) *Runtime {

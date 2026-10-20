@@ -9,7 +9,7 @@ import (
 
 // The composite literal on the direct tier. A literal compiles to
 // stores at field offsets, the technique the frame already uses: each
-// store goes through a typed pointer, so a pointer store keeps its
+// store writes through a typed pointer, so a pointer store keeps its
 // write barrier, and the block behind &T{} comes from unsafeNew with
 // the struct's own rtype, so the collector scans it correctly.
 //
@@ -20,7 +20,7 @@ import (
 // literal that escapes.
 
 // fillFunc writes one element of a composite literal at an offset from
-// the struct's base pointer. The base is a parameter rather than a
+// the struct's base pointer. The base is a parameter and no
 // capture because the same fills serve a frame slot and a fresh
 // allocation.
 type fillFunc func(base, fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) error
@@ -172,9 +172,9 @@ func (c *jitCompiler) structNode(a *vmArg) (node, error) {
 	}}, nil
 }
 
-// structIfaceNode wraps a value literal as an interface. The fresh T
-// the literal builds is aliased as the data word rather than copied,
-// which is sound because nothing else can reach it.
+// structIfaceNode wraps a value literal as an interface. The data word
+// aliases the fresh T the literal builds and skips the copy, which is
+// sound because nothing else can reach it.
 func (c *jitCompiler) structIfaceNode(pt reflect.Type, a *vmArg) (node, error) {
 	n, err := c.structNode(a)
 	if err != nil {
@@ -236,7 +236,7 @@ func (c *jitCompiler) structAssignNode(s plannedStmt) (nodeE, error) {
 		// The frame comes back zeroed, so the first write into the slot
 		// starts from the zero value the literal promises. A slot
 		// written more than once still holds the previous value, which
-		// a fresh literal must not see, so it is cleared first; SetZero
+		// a fresh literal must not see, so the fill clears it first; SetZero
 		// is a typed clear, so the pointer fields keep their barriers.
 		var zero func(unsafe.Pointer)
 		if c.writes[s.out] > 1 {

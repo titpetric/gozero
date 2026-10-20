@@ -31,9 +31,9 @@ func vmRuntime(t *testing.T) *Runtime {
 }
 
 // TestProgramWritesThroughDest is the target program: four statements,
-// no error is named anywhere, no return, and the output arrives through
-// the pointer Scan was handed. Cookies and Encode are not bound; they
-// are reached through the result types of http.NewRequest and
+// no error named anywhere, no return, and the output arrives through
+// the pointer passed to Scan. Cookies and Encode are not bindings; the
+// program reaches them through the result types of http.NewRequest and
 // json.NewEncoder.
 func TestProgramWritesThroughDest(t *testing.T) {
 	rt := vmRuntime(t)
@@ -80,7 +80,7 @@ func TestProgramErrorBubbles(t *testing.T) {
 }
 
 // TestProgramDiscardedResult checks a statement with no left-hand side:
-// the request is dropped but its error is still checked.
+// the program discards the request but still checks its error.
 func TestProgramDiscardedResult(t *testing.T) {
 	rt := vmRuntime(t)
 	const src = `
@@ -145,7 +145,7 @@ func TestProgramValueResult(t *testing.T) {
 }
 
 // TestProgramDestOnlyFromScan checks that a program naming dest fails
-// under Exec, which has no destination to give it.
+// under Exec, which has no destination to pass it.
 func TestProgramDestOnlyFromScan(t *testing.T) {
 	rt := vmRuntime(t)
 	fn, err := rt.Compile(`json.NewEncoder(dest).Encode("x");`)

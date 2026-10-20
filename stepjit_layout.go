@@ -17,10 +17,10 @@ type sliceHdr struct {
 type layout int
 
 // scalar reports whether a class travels through the node tree as a
-// machine word rather than as a pointer, string, interface or slice.
+// machine word, as opposed to a pointer, string, interface or slice.
 func (l layout) scalar() bool { return l >= lBool }
 
-// float reports whether a scalar class is carried as a float64.
+// float reports whether a scalar class travels as a float64.
 func (l layout) float() bool { return l == lF32 || l == lF64 }
 
 func layoutOf(t reflect.Type) layout {
@@ -58,7 +58,7 @@ func layoutOf(t reflect.Type) layout {
 	case reflect.Int:
 		// int and uint are int64 and uint64 on a 64 bit platform and
 		// int32 and uint32 on a 32 bit one, so the class follows the
-		// size rather than the kind.
+		// size and ignores the kind.
 		if t.Size() == 8 {
 			return lI64
 		}

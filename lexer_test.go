@@ -188,7 +188,7 @@ func TestReturnNameJITs(t *testing.T) {
 	}
 }
 
-// TestAssignNameToName pins the error message for x = y, which used to
+// TestAssignNameToName pins the error message for x = y, so it does not
 // surface as a bare "expected '('".
 func TestAssignNameToName(t *testing.T) {
 	rt, _ := litRuntime(t)
@@ -201,7 +201,8 @@ func TestAssignNameToName(t *testing.T) {
 // TestParseAllocBudget stops the parse and compile cost creeping
 // silently: it moved 1088 to 1256 to 1416 B/op across three grammar
 // expansions with nothing watching. Measured 29 allocations; the
-// ceiling is that plus headroom for one small feature, not a target.
+// ceiling is that plus headroom for one small feature, and it sets no
+// target.
 func TestParseAllocBudget(t *testing.T) {
 	rt, _ := litRuntime(t)
 	const src = `return http.NewRequest("GET", url);`
@@ -216,10 +217,10 @@ func TestParseAllocBudget(t *testing.T) {
 	}
 }
 
-// TestStringEscapes pins escape interpretation. Before this, the byte
-// after a backslash was appended verbatim, so "a\nb" silently became
-// "anb": the named escapes are interpreted, and an unknown one is a
-// parse error rather than a quiet mangle.
+// TestStringEscapes pins escape interpretation. Appending the byte
+// after a backslash verbatim silently turns "a\nb" into "anb": the
+// lexer interprets the named escapes, and an unknown one is a parse
+// error and no quiet mangle.
 func TestStringEscapes(t *testing.T) {
 	rt, seen := litRuntime(t)
 	for _, tc := range []struct{ src, want string }{

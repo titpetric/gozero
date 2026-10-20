@@ -5,27 +5,28 @@ import (
 	"reflect"
 )
 
-// The multi-statement VM. A program is a list of calls whose results
-// are bound to names; there are no operators, so every value is a
+// The multi-statement VM. A program is a list of calls that bind their
+// results to names; there are no operators, so every value is a
 // literal, a name, or the result of another call.
 //
 // Two rules shape the compiled form:
 //
-// A trailing error result is never a value. It is stripped from the
-// result list at compile time and checked after every call, so
+// A trailing error result is never a value. The compiler strips it from
+// the result list and checks it after every call, so
 // "req := http.NewRequest(...)" binds one name to a two-result call and
-// a failure returns from Exec or Scan on the spot. No program text
+// a failure returns from Exec or Scan at that statement. No program text
 // mentions an error.
 //
 // Every argument is optional. A parameter the statement does not supply
-// is filled with the zero value of its type, which is how
-// http.NewRequest is called with two arguments and a nil body.
+// takes the zero value of its type; http.NewRequest with two arguments
+// receives a nil body that way.
 //
-// Names bound by the program carry a static type, so methods on them
-// are resolved against that type when the statement compiles.
-// json.NewEncoder is bound; Encode is not, and is reached through the
-// *json.Encoder the binding returns. Names coming from the caller's
-// stack, including dest, are opaque and are checked when they are read.
+// Names the program binds carry a static type, so the compiler resolves
+// methods on them against that type when the statement compiles.
+// json.NewEncoder is a binding; Encode is not, and the program reaches
+// it through the *json.Encoder the binding returns. Names coming from
+// the caller's stack, including dest, are opaque and the VM checks them
+// when it reads them.
 // nilAs is the value the nil literal takes for a parameter type:
 // the zero value when the type can hold nil, an error when it cannot.
 func nilAs(pt reflect.Type) (reflect.Value, error) {
@@ -65,14 +66,14 @@ func literalValue(t reflect.Type, a arg) (reflect.Value, error) {
 	return literalAs(t, a)
 }
 
-// literalAs converts a numeric literal to the type of the parameter it
-// fills. The parser only produces int64 and float64, so without this a
-// binding taking int, int32 or float32 could not be given a literal at
+// literalAs converts a numeric literal to the parameter type it fills.
+// The parser only produces int64 and float64, so without this a
+// binding taking int, int32 or float32 could not receive a literal at
 // all. The value must be representable: a literal that does not fit is
-// a compile error, not a wrap.
+// a compile error, and never wraps.
 //
 // An empty interface parameter takes the literal at its written width,
-// int64 or float64, which is what the parser produced.
+// int64 or float64, as the parser produced it.
 func literalAs(pt reflect.Type, a arg) (reflect.Value, error) {
 	if pt.Kind() == reflect.Interface {
 		if pt.NumMethod() != 0 {
@@ -120,8 +121,8 @@ func literalAs(pt reflect.Type, a arg) (reflect.Value, error) {
 }
 
 // fieldOf resolves name as an exported struct field on t,
-// dereferencing a pointer to a struct. deref reports whether the value
-// has to be dereferenced before the field is read.
+// dereferencing a pointer to a struct. deref reports whether reading
+// the field first needs a dereference of the value.
 func fieldOf(t reflect.Type, name string) (f reflect.StructField, deref bool, ok bool) {
 	st := t
 	if st.Kind() == reflect.Pointer {

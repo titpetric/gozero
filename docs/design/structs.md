@@ -5,13 +5,13 @@ date: "2026-09-10T12:00:00+02:00"
 
 Every type a program can name today comes from the host: the
 bindings' signatures, the discovery walk behind them, or `BindType`.
-This document asks what it would cost to let a program declare its
+This document weighs what it would cost to let a program declare its
 own struct types, under the standing constraints: Go syntax, stdlib
-only, no code generation. The claims about `reflect.StructOf` below
-are probed, not assumed: structurally identical calls return the
+only, no code generation. Probes back the claims about
+`reflect.StructOf` below: structurally identical calls return the
 identical canonical type, the type prints as the unnamed struct
 literal, an unnamed struct is assignable to a named host type with
-the same fields, and field tags are supported.
+the same fields, and field tags work.
 
 ## How it would look
 
@@ -49,7 +49,7 @@ type Reply struct {
 **The grammar gains a block form.** `type name struct { ... }` is
 the first multi-line declaration: brace tracking, one field per
 line, optional tags (a raw-string token the lexer does not have).
-The cost is bounded in a way control-flow blocks are not - fields,
+The cost has a bound that control-flow blocks lack - fields,
 not statements, with no nesting beyond the braces - but the
 line-oriented parser still grows its first block.
 
@@ -67,8 +67,8 @@ never collected. `StructOf` canonicalizes - identical shapes return
 the identical type - and recompiling the same program costs nothing,
 but every distinct shape a program mints stays in the process for
 its lifetime. The binding set stops being the whole sandbox
-boundary: today a program cannot allocate anything the host did not
-provide a constructor for; with declarations, program text controls
+boundary: today a program cannot create anything the host did not
+bind a constructor for; with declarations, program text controls
 permanent process state. A host compiling untrusted sources would need a
 shape budget the runtime cannot enforce for it.
 
@@ -77,8 +77,8 @@ body, which is [closures.md](closures.md) territory, and
 `StructOf` does not generate wrapper methods for embedded fields,
 so embedding does not promote behaviour either. Declared structs
 carry data between bindings and into encoders; anything with
-behaviour stays a host type. This is a hard boundary, not a
-first-version gap.
+behaviour stays a host type. This is a hard boundary that a later
+version keeps in place.
 
 **Structural assignability cuts both ways.** An unnamed struct with
 the same fields is assignable to a named host parameter, so a
@@ -101,7 +101,7 @@ the program can spell.
   table need no changes.
 - Memory: the permanent type, its field metadata and GC program,
   per distinct shape per process lifetime. This is the one overhead
-  that scales with program text rather than with execution.
+  that scales with program text and stays flat with execution.
 
 ## Alternatives
 
@@ -110,9 +110,9 @@ host declares the shape, binds anything that mentions it, and the
 program uses it. Cons:
 
 - A new shape means recompiling the host. The fixture story loses
-  half its claim: a new test needs a rebuild not only for an
-  unbound API but for an unshaped output.
-- The host must anticipate every DTO its programs want to emit.
+  half its claim: a new test needs a rebuild for an unbound API and
+  for an unshaped output alike.
+- The host must declare in advance every DTO its programs emit.
 
 **Maps for ad-hoc shapes.** A `map[string]string` or
 `map[string]any` built by bindings covers unstructured output.
@@ -127,13 +127,13 @@ and a binding runs after.
 ## In other imperative settings
 
 The realistic use is output shaping. A Go `http.Handler` declares its
-response struct next to the handler and hands it to `json.Encode`;
+response struct next to the handler and passes it to `json.Encode`;
 that is the one imperative pattern the current language cannot
 mirror without host help. Tests do not need it: the fixture suite
 asserts against stdlib types and formatted strings, and has never
 declared a type. Shell, the language's closest precedent, has no
 type declarations at all and shapes its records as text; jq sits on
-the other side, shaping JSON with literals rather than
+the other side, shaping JSON with literals and no
 declarations, which is closer to what a maps-based alternative
 would feel like.
 

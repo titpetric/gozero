@@ -11,18 +11,18 @@ import (
 //	stmt    := "var" name typeref term
 //	         | "return" [ arg ] term
 //	         | [ name { "," name } ( ":=" | "=" ) ] rhs term
-//	term    := ";" | EOL | EOF
 //	rhs     := expr | string | number | "true" | "false" | "nil" | composite
 //	typeref := { "*" | "[]" } path
 //	expr    := path "(" [ args ] ")" { "." ident "(" [ args ] ")" }
 //	path    := ident { "." ident }
 //	args    := arg { "," arg }
 //	arg     := string | number | path | expr | composite
-//	composite := [ "&" ] path "{" [ elem { "," elem } [ "," ] ] "}"
 //	elem    := [ ident ":" ] arg
+//	composite := [ "&" ] path "{" [ elem { "," elem } [ "," ] ] "}"
+//	term    := ";" | EOL | EOF
 
-// Parser turns a program into a list of statements. A path is resolved
-// by the compiler, not here: http.NewRequest is one bound name,
+// Parser turns a program into a list of statements. The compiler
+// resolves a path, and the parser does not: http.NewRequest is one bound name,
 // req.Cookies is a method on the value held by req, and req.Header is
 // a struct field on it; the parser cannot tell the three apart without
 // the bindings and the types. Strings are single- or double-quoted,
@@ -32,7 +32,7 @@ type Parser struct {
 	src string
 	pos int
 	// nl records that skipping whitespace crossed a newline since the
-	// last token byte was consumed, which is what lets the end of a
+	// parser consumed the last token byte; that flag lets the end of a
 	// line close a statement the way a semicolon does.
 	nl bool
 }
@@ -72,7 +72,7 @@ const (
 )
 
 // structElem is one element of a composite literal: the field name
-// when the element is keyed, empty when it is positional, and the
+// for a keyed element, empty for a positional one, and the
 // value.
 type structElem struct {
 	name string
@@ -116,21 +116,21 @@ type callExpr struct {
 // varType describes what it does; a bare "return;" has none of them.
 type stmt struct {
 	lhs    []string // names bound to the results, empty to discard
-	define bool     // ":=" rather than "="
+	define bool     // ":=", and false for "="
 	ret    bool     // a return statement
 	call   *callExpr
 
-	// lit is set when the right-hand side is a literal rather than a
+	// lit holds a literal right-hand side, one with no
 	// call, "x = 123". There is no call to take a type from, so the
 	// compiler infers one.
 	lit *arg
 
-	// varName and varType are set by a var statement, which puts the
+	// varName and varType come from a var statement, which puts the
 	// zero value of a named type in scope.
 	varName string
 	varType string
 
-	// retVal is a return statement's value when it is not a call:
+	// retVal is a return statement's value when that value is not a call:
 	// "return x;", "return req.Header;", "return 5;".
 	retVal *arg
 
@@ -150,12 +150,12 @@ type program struct {
 // This is the form the JIT shape table matches, and the form every
 // statement had before programs grew past one line.
 //
-// Only the argument kinds compileStatement fills are admitted. It used
-// to reject just argCall and argStruct, so "return f(true);" and
-// "return f(nil);" reached the single-statement compiler, which calls
-// Type on an invalid reflect.Value for a kind outside its switch:
-// Compile panicked instead of returning. The program compiler handles
-// every kind, so anything else routes there.
+// It admits only the argument kinds compileStatement fills. Rejecting
+// just argCall and argStruct would let "return f(true);" and
+// "return f(nil);" reach the single-statement compiler, which calls
+// Type on an invalid reflect.Value for a kind outside its switch, and
+// Compile would panic with no error returned. The program compiler
+// covers every kind, so anything else routes there.
 func (p *program) flatCall() (*callExpr, bool) {
 	if len(p.stmts) != 1 {
 		return nil, false
@@ -220,8 +220,8 @@ func (p *Parser) stmt() (stmt, error) {
 		if p.terminated() {
 			return s, nil
 		}
-		// The call form is tried first so "return f(x);" parses its
-		// path once; only when that fails is the value form read.
+		// The parser tries the call form first so "return f(x);" parses
+		// its path once; only when that fails does it read the value form.
 		save := p.pos
 		if call, err := p.expr(); err == nil {
 			s.call = call
@@ -244,8 +244,8 @@ func (p *Parser) stmt() (stmt, error) {
 	}
 
 	// A dotted path followed by a single "=" is a field assignment.
-	// It is sniffed before the assignment list, which only reads bare
-	// names; a path followed by "(" is a call and rewinds.
+	// The parser checks for it before the assignment list, which only
+	// reads bare names; a path followed by "(" is a call and rewinds.
 	fieldSave := p.pos
 	if p.ident() != "" && p.peek() == '.' {
 		p.pos = fieldSave
@@ -274,9 +274,9 @@ func (p *Parser) stmt() (stmt, error) {
 	p.pos = fieldSave
 
 	// A statement is a call, optionally preceded by the names its
-	// results bind to. The names are only known to be names once the
-	// assignment operator is seen, so the position is saved and the
-	// scan restarts as a bare call when it is not.
+	// results bind to. The names only count as names once the parser
+	// meets the assignment operator, so it saves the position and
+	// restarts the scan as a bare call when the operator is absent.
 	save := p.pos
 	lhs, define, ok := p.assignList()
 	if !ok {
@@ -285,8 +285,8 @@ func (p *Parser) stmt() (stmt, error) {
 	}
 
 	// The right-hand side is one arg: a call is the statement, a
-	// literal assigns, and a bare name is rejected here with its own
-	// message rather than surfacing as "expected '('".
+	// literal assigns, and the parser rejects a bare name here with its
+	// own message, which reads better than "expected '('".
 	if len(lhs) > 0 {
 		save := p.pos
 		a, err := p.arg()
@@ -316,7 +316,7 @@ func (p *Parser) stmt() (stmt, error) {
 	return stmt{lhs: lhs, define: define, call: call}, nil
 }
 
-// assignList scans "a, b :=" or "a =" and reports whether one was
+// assignList scans "a, b :=" or "a =" and reports whether one is
 // there. It never returns an error: anything that does not match is the
 // caller's cue to rewind and read a bare call.
 func (p *Parser) assignList() ([]string, bool, bool) {

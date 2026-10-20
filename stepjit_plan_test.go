@@ -10,13 +10,13 @@ import (
 
 // TestPlanInlineLeavesTheTreeAlone guards the interaction between the
 // tiers. planInline decides a value can travel as a return value
-// instead of through a slot, which drops the statement that produced
+// and skip the slot, which drops the statement that produced
 // it. That decision lives in a side table: if it edited the call tree,
 // the reflect evaluator, which runs the same tree when the whole
 // program declines, would see the producer both spliced into its
 // reader and standing as its own statement, and run it twice. The
 // bridge has the mirror obligation: a bridged reader must follow the
-// splice to the producer's node rather than reading the dropped slot.
+// splice to the producer's node and never read the dropped slot.
 func TestPlanInlineLeavesTheTreeAlone(t *testing.T) {
 	rt := pairRuntime(t)
 	calls := 0
@@ -79,15 +79,15 @@ func TestPlanInlineLeavesTheTreeAlone(t *testing.T) {
 	}
 }
 
-// TestReadCountSeesFieldReads guards the analysis that decides whether a
-// producer can be spliced into its reader and its slot dropped.
+// TestReadCountSeesFieldReads guards the analysis that decides whether
+// planInline can splice a producer into its reader and drop its slot.
 //
 // req.Header is a read of req. Missing it undercounts, and a name read
-// once directly and once through a field then looked read-once: the
-// producer was spliced into the direct read and its statement dropped,
-// leaving the field read pointing at a slot nothing writes. It failed
-// safe only because the argument compiler happened to report the
-// missing slot, which is not a guarantee.
+// once directly and once through a field then looks read-once: the
+// splice moves the producer into the direct read and drops its
+// statement, leaving the field read pointing at a slot nothing writes.
+// That fails safe only because the argument compiler happens to report
+// the missing slot, which nothing guarantees.
 func TestReadCountSeesFieldReads(t *testing.T) {
 	rt := pairRuntime(t)
 	if err := rt.Bind("both", func(r *http.Request, h *url.URL) (*url.URL, error) {

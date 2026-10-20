@@ -6,7 +6,7 @@ date: "2026-09-09T00:00:00+02:00"
 Expressions are the extension the other three keep pointing at:
 conditions want `==`, loops want `i < n`, and both documents defer
 here. This one answers directly. The machinery is the cheap part;
-the compromise is that operators give the language a semantic
+the compromise is that operators add to the language a semantic
 surface of its own, and [DESIGN.md](../DESIGN.md) records that the
 language must never grow one.
 
@@ -23,8 +23,8 @@ On the JIT tier, operators are cheap. The node types
 already carry every scalar as `uint64` bits (`nodeN`) or `float64`
 (`nodeF`), so an operator is a combinator: two `nodeN` in, one
 `nodeN` out, a native `+` in the middle. No shape table growth, no
-reflect, no new layout classes - the scalar classes are closed under
-arithmetic. String concatenation is `nodeS x nodeS -> nodeS`.
+reflect, no new layout classes - arithmetic keeps every scalar class
+within itself. String concatenation is `nodeS x nodeS -> nodeS`.
 Comparisons produce `lBool`, which exists. The reflect evaluator
 mirrors each with `reflect.Value` arithmetic. A few dozen small
 closures per tier.
@@ -33,10 +33,10 @@ closures per tier.
 
 **The Go spec, reimplemented by hand.** The type system today is the
 bindings' own `reflect.Type`s; nothing in the compiler defines what a
-type means, only where one is required. Operators change that. The
+type means, only where a binding demands one. Operators change that. The
 compiler must now own:
 
-- Untyped constants: `x := 5` currently types from context or
+- Untyped constants: `x := 5` today types from context or
   defaults; `5 + u32Field` requires Go's untyped-constant conversion
   and representability rules, per operator, per width.
 - Overflow and truncation across 12 scalar widths, signed and
@@ -52,7 +52,7 @@ compiler must now own:
 
 This is a re-derivation of go/types and go/constant semantics without
 using them, and "no go/types" is a recorded gate. Every divergence is
-a bug that looks like a wrong value, not an error.
+a bug that looks like a wrong value and raises no error.
 
 **Each operator implies the next.** `==` alone is not a stopping
 point: `!=`, `!`, `&&` and `||` follow, and short-circuit evaluation
@@ -69,7 +69,7 @@ non-call semantics is "an error ends it". Division by zero, shift
 overflow and uncomparable `==` add panic sites that belong to the
 language, not to a binding; `*PanicError` would start carrying
 gozero's own arithmetic faults, and the claim that a program can
-only do what a binding does no longer covers panics.
+only do what a binding does would stop covering panics.
 
 ## Alternatives
 

@@ -31,9 +31,9 @@ func TestProgramChainedAndNested(t *testing.T) {
 	}
 }
 
-// TestProgramOmittedArgument checks the third parameter of
-// http.NewRequest being filled with its zero value: the request is
-// built with a nil body.
+// TestProgramOmittedArgument checks that the third parameter of
+// http.NewRequest takes its zero value: the request carries a nil
+// body.
 func TestProgramOmittedArgument(t *testing.T) {
 	rt := vmRuntime(t)
 	fn, err := rt.Compile(`return http.NewRequest("GET", "https://example.com/x");`)
@@ -53,7 +53,7 @@ func TestProgramOmittedArgument(t *testing.T) {
 }
 
 // TestProgramUnknownMethod checks that a method missing from the result
-// type is a compile error, not an execution one.
+// type is a compile error, and the program never starts.
 func TestProgramUnknownMethod(t *testing.T) {
 	rt := vmRuntime(t)
 	_, err := rt.Compile(`
@@ -68,8 +68,8 @@ func TestProgramUnknownMethod(t *testing.T) {
 
 // TestInterfaceMethodCall checks a method resolved on an
 // interface-typed name. MethodByName on an interface type returns a
-// zero Func, which used to reach compileCall and panic; the compiler
-// now synthesizes the dispatch with ifaceMethodFunc.
+// zero Func, which would panic in compileCall; the compiler
+// synthesizes the dispatch with ifaceMethodFunc.
 func TestInterfaceMethodCall(t *testing.T) {
 	rt := NewRuntime()
 	if err := rt.Bind("ctxOf", func(ctx context.Context) context.Context { return ctx }); err != nil {
@@ -94,7 +94,7 @@ func TestInterfaceMethodCall(t *testing.T) {
 
 	// Err returns only an error, so the error contract applies: on a
 	// cancelled context the statement ends the program with the
-	// cancellation cause instead of binding a value.
+	// cancellation cause and binds no value.
 	cancel()
 	if _, err := rt.EvalContext[any](ctx, `ctxOf().Err();`, nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
@@ -103,7 +103,7 @@ func TestInterfaceMethodCall(t *testing.T) {
 
 // TestInterfaceMethodOnNil pins Go parity for a method call on a nil
 // interface: a panic inside reflect, arriving as *PanicError through
-// the guard rather than unwinding the caller.
+// the guard, leaving the caller's stack intact.
 func TestInterfaceMethodOnNil(t *testing.T) {
 	rt := NewRuntime()
 	if err := rt.Bind("nilWriter", func() io.Writer { return nil }); err != nil {
@@ -251,12 +251,12 @@ func TestContextAutoFill(t *testing.T) {
 // slice, and the errors around a misplaced spread.
 func TestVariadic(t *testing.T) {
 	rt := featRuntime(t)
-	// The tier is asserted for every legal form with the result named:
+	// The test asserts the tier for every legal form with the result named:
 	// a silent fall back to the reflect evaluator would leave the pack
 	// and spread nodes untested while the test still passed. A call
 	// returned directly (return path.Join(...)) does not reach the JIT
 	// at all, because a returned value needs a slot; that is a known
-	// planner gap, not a variadic one.
+	// planner gap, unrelated to variadic calls.
 	for _, src := range []string{
 		`s := path.Join("a", "b", "c"); return s;`,
 		`parts := strings.Fields("x y z"); s := path.Join(parts...); return s;`,

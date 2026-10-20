@@ -75,7 +75,7 @@ func TestCompiler_Compile(t *testing.T) {
 }
 
 // TestCompilerFlatReturnArgKinds pins the fix for a compile-time
-// panic: a flat "return f(x);" whose argument was nil or a bool
+// panic: a flat "return f(x);" with a nil or bool argument
 // reached the single-statement compiler, which handles only strings,
 // numbers and names and called Type on an invalid reflect.Value for
 // anything else. The table walks every argument kind the parser
@@ -135,8 +135,8 @@ var bytesNewBufferString = bytes.NewBufferString
 
 // testFixtures is the handwritten side of the comparison: each method
 // is the Go a fixture program stands for, doing the same work and the
-// same assertions. ctx is built once before the measured loop, the
-// same way the vm side's execution context is: a per-iteration
+// same assertions. The benchmark builds ctx once before the measured
+// loop, the same way as the vm side's execution context: a per-iteration
 // context.WithValue on one side only showed up as a one-allocation
 // difference that belonged to the harness, not to either
 // implementation.

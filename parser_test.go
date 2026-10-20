@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-// TestParser checks that one Parser value can be reused: Parse resets
+// TestParser checks that one Parser value serves more than one parse: Parse resets
 // the position, so a second program does not see the first one's tail.
 func TestParser(t *testing.T) {
 	p := &Parser{}
@@ -60,7 +60,7 @@ func TestParser_Parse(t *testing.T) {
 	}
 
 	// A one-statement call is a flat call; a two-statement program is
-	// not, which is what routes it to the VM.
+	// not, and that difference routes it to the VM.
 	prog, err := (&Parser{}).Parse(`return f("x");`)
 	if err != nil {
 		t.Fatal(err)
@@ -76,7 +76,7 @@ func TestParser_Parse(t *testing.T) {
 		t.Error("a two-statement program should not report as flat")
 	}
 	// An argument kind the single-statement compiler cannot fill routes
-	// to the program compiler instead of panicking it.
+	// to the program compiler and never panics it.
 	for name, src := range map[string]string{
 		"bool":   `return f(true);`,
 		"nil":    `return f(nil);`,

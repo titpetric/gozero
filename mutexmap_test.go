@@ -102,8 +102,9 @@ func TestConcurrencyPrograms(t *testing.T) {
 
 // BenchmarkConcurrency measures a write and a read of shared state,
 // native against the compiled program, through a mutex-protected map.
-// The programs are uncontended: the question is the per-operation cost
-// of the API from the language, not lock behaviour under load.
+// The programs run without contention: the benchmark measures the
+// per-operation cost of the API from the language, and lock behaviour
+// under load stays out of scope.
 func BenchmarkConcurrency(b *testing.B) {
 	b.Run("mutex/native", func(b *testing.B) {
 		mm := NewMutexMap()

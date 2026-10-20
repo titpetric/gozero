@@ -11,7 +11,7 @@ import (
 
 // unsafeNew is the allocator reflect.New itself calls. Going straight
 // to it skips reflect.New's pointer-type lookup. The argument is the
-// frame struct's rtype, so the block comes back with the right size and
+// frame struct's rtype, so the returned block has the right size and
 // pointer map and the collector scans the slots correctly.
 //
 //go:linkname unsafeNew reflect.unsafe_New
@@ -20,7 +20,7 @@ func unsafeNew(rtype unsafe.Pointer) unsafe.Pointer
 // typedmemclr is the typed clear reflect.Value.SetZero performs,
 // without building the Value: the pointer fields keep their write
 // barriers because the rtype carries the pointer map. Used to reset
-// a pooled frame. Like unsafeNew, it is a pull linkname to an
+// a pooled frame. Like unsafeNew, typedmemclr is a pull linkname to an
 // internal symbol and a toolchain bump can break it.
 //
 //go:linkname typedmemclr reflect.typedmemclr
@@ -28,21 +28,22 @@ func typedmemclr(rtype unsafe.Pointer, ptr unsafe.Pointer)
 
 // The step JIT compiles a program into a tree of typed closures.
 //
-// Calls are made through layout classes, not types. A parameter or
+// Calls go through layout classes, not types. A parameter or
 // result is one of four shapes: pointer-shaped (one word), string (two),
 // interface (two) or slice (three). A bound func whose classes match a
-// shape in the table is reinterpreted as the shape type and called
-// directly, exactly as jit.go does for a single statement.
+// shape in the table becomes the shape type through a reinterpreting
+// cast and runs as a direct call, exactly as jit.go does for a single
+// statement.
 //
 // A value flows from the call that produces it to the call that
 // consumes it as the return value of a closure, so it lives in a Go
 // local and needs no storage of its own. Only a name read by a later
 // statement gets a frame slot, and a program with no such name
-// allocates nothing beyond what its bindings allocate.
+// adds no allocation beyond what its bindings make.
 //
 // Interface arguments carry a precomputed itab. Both the concrete type
-// and the interface type are known when the program compiles, and an
-// itab depends on nothing else, so the pair is built once with reflect
+// and the interface type exist when the program compiles, and an
+// itab depends on nothing else, so reflect builds the pair once
 // and only the data word varies per call.
 //
 // A program JITs whole or not at all. One call outside the table sends
@@ -87,14 +88,14 @@ type (
 	nodeE func(f unsafe.Pointer, ctx context.Context, stack map[string]any, dest any) error
 
 	// nodeN carries every integer and bool class as the bits of its own
-	// width, zero-extended. One closure type covers all of them because
-	// the exact Go type is only needed where the call is made, and the
+	// width, zero-extended. One closure type covers every one of them because
+	// only the call site needs the exact Go type, and the
 	// shape case there casts back. nodeF does the same for floats.
 	nodeN func(f unsafe.Pointer, ctx context.Context, stack map[string]any, dest any) (uint64, error)
 	nodeF func(f unsafe.Pointer, ctx context.Context, stack map[string]any, dest any) (float64, error)
 )
 
-// node is one compiled expression. Exactly one closure is set, named by
+// node is one compiled expression. Exactly one closure holds a value, named by
 // class; lNone marks a call with no result, which only E carries.
 type node struct {
 	class layout
@@ -116,11 +117,11 @@ type jitProgram struct {
 	frameRT   unsafe.Pointer // nil when the program needs no slots
 	stmts     []nodeE
 
-	// pool recycles frames between runs. It is only set when the
-	// compiler proved no pointer into the frame leaves a run: an
-	// aliased interface argument or an addressed receiver hands the
+	// pool recycles frames between runs. The compiler sets it only
+	// after proving no pointer into the frame leaves a run: an
+	// aliased interface argument or an addressed receiver passes the
 	// callee a frame pointer it may keep, and such a program
-	// allocates fresh. A reused frame is cleared on the way out of
+	// allocates fresh. getFrame clears a reused frame on the way out of
 	// the pool, so every run still starts from the zero frame the
 	// declarations and literal builders rely on.
 	pool *sync.Pool
@@ -131,7 +132,7 @@ type jitProgram struct {
 
 	// retType and retOff describe the slot a trailing "return expr;"
 	// leaves its value in. retType is nil when the program has no
-	// value, which is the common case: the output goes through dest.
+	// value, which is the common case: the output travels through dest.
 	retType reflect.Type
 	retOff  uintptr
 }
@@ -168,8 +169,8 @@ func (p *jitProgram) finish(f unsafe.Pointer) {
 	p.putFrame(f)
 }
 
-// getFrame takes a frame from the pool or allocates one. A pooled
-// frame is cleared with the typed clear, which keeps the write
+// getFrame takes a frame from the pool or allocates one. The typed
+// clear wipes a pooled frame and keeps the write
 // barriers on its pointer fields; a fresh allocation comes back
 // zeroed already. An unsafe.Pointer is pointer-shaped, so boxing it
 // through the pool's any allocates nothing.
@@ -203,9 +204,9 @@ type jitCompiler struct {
 	slotOf map[int]int // vmProgram slot -> frame field index
 	types  []reflect.Type
 	offs   []uintptr
-	// bridged names the calls that compile to a reflect bridge rather
-	// than a direct call. The program still runs on this tier; Supports
-	// reports them so a benchmark knows which statements pay reflect.
+	// bridged names the calls that compile to a reflect bridge and not
+	// to a direct call. The program still runs on this tier; Supports
+	// reports them so a benchmark can name the statements that pay reflect.
 	bridged []string
 	// writes counts the assignments to each slot. A slot written more
 	// than once cannot back an interface argument, because the argument
@@ -216,9 +217,9 @@ type jitCompiler struct {
 	// aliasing hazard as a rewritten slot, since a pointer method may
 	// write through it.
 	addr map[int]bool
-	// frameEscapes records that some node hands a pointer into the
+	// frameEscapes records that some node passes a pointer into the
 	// frame to a callee: an aliased interface argument or an
-	// addressed receiver. A frame that escapes cannot be pooled.
+	// addressed receiver. A frame that escapes stays out of the pool.
 	frameEscapes bool
 	// The argument pools of the program's calls, planned by planPools
 	// in stepjit_pool.go: pack slices by call, literal blocks and
@@ -228,24 +229,24 @@ type jitCompiler struct {
 	blockOf   map[*vmArg]*sitePool
 	strboxOf  map[*vmArg]*sitePool
 	poolSites []*sitePool
-	// pendingStrBox hands a string-box site from argNode, which knows
+	// pendingStrBox carries a string-box site from argNode, which holds
 	// the argument's identity, to toIface, which builds the box.
 	// Compilation of one program is single-threaded, so a plain field
 	// carries it across the one call.
 	pendingStrBox *sitePool
 	// splices maps an argument that reads a name to the call that
 	// produced it, where planInline decided the value can travel as a
-	// return value instead of through a slot. It is a side table rather
-	// than an edit of the call tree, because the same tree is what the
+	// return value and skip the slot. splices is a side table and leaves
+	// the call tree unedited, because the same tree is what the
 	// reflect evaluator runs when the JIT declines: rewriting it would
 	// leave the producer both spliced in and still a statement, and the
 	// fallback would run it twice.
 	splices map[*vmArg]*vmCall
 	// stackFields maps a stack name read more than once to the hidden
-	// frame field its value is loaded into when the program starts.
-	// Each read is then an offset from the frame pointer instead of a
-	// map lookup, which means the name is read once per execution: a
-	// binding that mutates the stack mid-run is not seen by later uses.
+	// frame field the program loads its value into when it starts.
+	// Each read is then an offset from the frame pointer and no
+	// map lookup, so the program reads the name once per execution:
+	// later uses miss a binding's mid-run mutation of the stack.
 	stackFields map[string]int
 }
 
@@ -277,10 +278,10 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 			return nil, fmt.Errorf("a name has no type")
 		}
 		// A type with no layout class, a struct held by value, still
-		// gets a frame field: the frame is typed storage and holds
+		// gets a frame field: the frame, as storage with a type, holds
 		// anything. Only the uses that must carry the value between
 		// calls need a class, and those fail per use, where the call
-		// bridges. A field read is an offset, not a transport.
+		// bridges. A field read is an offset and needs no class.
 		c.slotOf[slot] = len(c.types)
 		c.types = append(c.types, t)
 	}
@@ -301,7 +302,7 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 	}
 
 	// The argument pools claim their scratch
-	// fields before the frame is laid out.
+	// fields before the frame layout runs.
 	c.planPools(plan)
 
 	jp := &jitProgram{}

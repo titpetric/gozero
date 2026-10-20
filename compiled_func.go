@@ -11,20 +11,20 @@ import (
 // otherwise the reflect path. The result is the callee's return value
 // boxed into an any; a pointer result boxes without an allocation.
 //
-// It is a defined type rather than a plain func so that Exec and Scan
-// can hang off it as generic methods.
+// CompiledFunc is a defined type, and a plain func would leave Exec and
+// Scan nowhere to hang as generic methods.
 type CompiledFunc func(ctx context.Context, stack map[string]any, dest any) (any, error)
 
 // Exec runs a compiled statement against a stack and returns the result
-// as T. Like Eval, T appears only in the result and is instantiated
-// explicitly.
+// as T. Like Eval, T appears only in the result and the caller
+// instantiates it explicitly.
 func (fn CompiledFunc) Exec[T any](stack map[string]any) (T, error) {
 	return fn.ExecContext[T](context.Background(), stack)
 }
 
 // ExecContext is Exec with an execution context. A binding parameter of
 // type context.Context the program does not pass explicitly receives
-// this context rather than a zero value.
+// this context in place of a zero value.
 func (fn CompiledFunc) ExecContext[T any](ctx context.Context, stack map[string]any) (T, error) {
 	var zero T
 	out, err := fn(ctx, stack, nil)
@@ -39,15 +39,16 @@ func (fn CompiledFunc) ExecContext[T any](ctx context.Context, stack map[string]
 }
 
 // Scan runs a compiled program with dest bound to the name "dest", and
-// copies the program's value into dest when it has one. A *T value is
-// dereferenced, so a *http.Request result scans into a caller-allocated
-// http.Request without an interface. T is inferred from dest.
+// copies the program's value into dest when it has one. Scan
+// dereferences a *T value, so a *http.Request result scans into a
+// caller-allocated http.Request without an interface. Go infers T from
+// dest.
 //
 // dest travels in both directions. A program that ends in a value
 // assigns it here; a program that only passes dest to a binding, as
 // json.NewEncoder(dest) does, has already written through the pointer
-// by the time this returns. A program with no value therefore leaves
-// dest exactly as the bindings left it, rather than zeroing it.
+// by the time this returns. A program with no value leaves dest
+// exactly as the bindings left it, and Scan does not zero it.
 func (fn CompiledFunc) Scan[T any](dest *T, stack map[string]any) error {
 	if dest == nil {
 		return fmt.Errorf("scan: dest must be a non-nil *%T", *new(T))

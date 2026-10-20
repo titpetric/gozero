@@ -6,9 +6,9 @@ date: "2026-09-09T00:00:00+02:00"
 gozero is a subset of Go's statement syntax: every gozero snippet in
 this document is legal Go, minus the declarations Go would need
 around it. What the language removes it replaces with an implicit
-rule, so the same behaviour is usually a line shorter than the Go it
-mirrors. Each section pairs the two side by side, Go on the left;
-gozero is fenced as Go, because it is one. How the compiled form
+rule, so the same behaviour runs a line shorter than the Go it
+mirrors in the common case. Each section pairs the two side by side,
+Go on the left; the gozero fences carry the Go tag, because gozero is Go. How the compiled form
 runs is [DESIGN.md](DESIGN.md); this document is the surface.
 
 The snippets run against the fixture bindings: `http.NewRequest`,
@@ -52,10 +52,10 @@ assert.Equal(tb, "https", u.Scheme)
 
 Strings are single- or double-quoted. A number without a decimal
 point is an int64 and one with is a float64, until an assignment or a
-parameter gives it another type. `dest`, `true`, `false`, `nil`,
-`var` and `return` are reserved, and a name cannot shadow a binding:
-`url := ...` with `url.Parse` bound is a compile error, because the
-name could never be read back.
+parameter sets another type. The language reserves `dest`, `true`,
+`false`, `nil`, `var` and `return`, and a name cannot shadow a binding:
+`url := ...` with `url.Parse` bound is a compile error, because no
+statement could read the name back.
 
 ## Declarations and assignment
 
@@ -64,9 +64,9 @@ an explicit type, and `=` assigns to a name one of those declared. A
 plain `=` on an undeclared name is a compile error
 (`x is not defined, use := or var`), and a `:=` that declares
 nothing new is too (`no new variables on left side of :=`). The
-initial prototype let a literal define its name with `=`; that form
-is gone, so a typo in an assignment target is an error instead of a
-silent second name.
+initial prototype let a literal define its name with `=`; the
+language drops that form, so a typo in an assignment target is an
+error and never a silent second name.
 
 <table>
 <tr>
@@ -116,8 +116,8 @@ covers.
 
 ## Implicit error checks
 
-A trailing error result is never a value. It is stripped from the
-result list at compile time and checked after every call; a non-nil
+A trailing error result is never a value. The compiler strips it from
+the result list and the program checks it after every call; a non-nil
 error ends the program and comes back from `Exec` or `Scan`. No
 program text mentions an error, which removes the three lines Go
 spends on each one:
@@ -164,11 +164,10 @@ language's only conditional.
 ## Implicit context passing
 
 A binding parameter of type `context.Context` the program does not
-pass is filled with the execution context, so cancellation and
+pass receives the execution context, so cancellation and
 deadlines flow from `ExecContext` into the bindings without the
 program mentioning them. A written argument that is statically a
-context overrides the fill, which is how a program passes one it
-made on purpose.
+context overrides the fill, so a program can pass one it made itself.
 
 <table>
 <tr>
@@ -206,7 +205,7 @@ program observes the value the test attached before calling
 
 Every trailing argument is optional and zero-fills: `""` for a
 string, `nil` for a pointer or interface, zero for a scalar. That is
-how `http.NewRequest` is called without its body, and how a message
+how a program calls `http.NewRequest` without its body, and how a message
 parameter on an assert binding is optional without being variadic:
 
 <table>
@@ -287,8 +286,8 @@ u.Path = "/rewritten"
 ## Composite literals
 
 `T{}` and `&T{}` build structs, keyed or positional, nested, with
-calls as elements and a trailing comma allowed, as in Go. The value
-is built fresh on every run and is addressable, so its fields assign
+calls as elements and a trailing comma allowed, as in Go. Every run
+builds the value fresh, and the value is addressable, so its fields assign
 afterwards. The type name is any type discovery registered
 (`testdata/structs.txt`):
 
@@ -371,9 +370,9 @@ joined := path.Join(parts...)
 
 Names the program never binds resolve against the stack map the host
 passes to `Exec`; an unset or nil entry reads as the parameter's zero
-value, and a set entry is type-checked when it is read, because only
-then is its type known. `dest` is reserved for the pointer `Scan`
-was handed, so a program writes its output into a variable the host
+value, and the program type-checks a set entry on read, because its
+type exists only then. `dest` names the pointer passed to `Scan`, so
+a program writes its output into a variable the host
 owns:
 
 <table>
@@ -451,7 +450,7 @@ assert.Equal(tb, "POST", req.Method)
 
 The same shape carries to an `http.Handler` body, which is a straight
 line of build, encode, write; the host adapts the compiled program to
-the signature and hands the writer and request in on the stack:
+the signature and passes the writer and request in on the stack:
 
 <table>
 <tr>
@@ -487,10 +486,9 @@ Middleware-style guarding works through the error contract: a bound
 the program before the next statement, the way `set -e` ends a shell
 script.
 
-What the syntax deliberately leaves out - conditionals, loops,
-closures, operator expressions and struct type declarations - and
-what each would cost the design is researched feature by feature in
-[design/](design/): [conditions](design/conditions.md),
+What the syntax leaves out - conditionals, loops, closures, operator
+expressions and struct type declarations - and what each would cost
+the design has its research, feature by feature, in [design/](design/): [conditions](design/conditions.md),
 [loops](design/loops.md), [closures](design/closures.md),
 [expressions](design/expressions.md),
 [structs](design/structs.md). Channel receive and send started

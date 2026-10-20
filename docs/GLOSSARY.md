@@ -11,17 +11,17 @@ reference each other by name.
 
 One request for heap memory. Benchmarks report allocations per
 operation as `allocs/op` and bytes per operation as `B/op`. An
-allocation costs time when it is made and costs time again when the
-garbage collector later scans and frees it.
+allocation costs time when the program makes it and costs time again
+when the garbage collector later scans and frees it.
 
 ## aliasing
 
-Passing a pointer to existing storage instead of a copy of the
+Passing a pointer to existing storage in place of a copy of the
 value. In gozero, an interface argument can point directly at a
-frame slot instead of at a copied cell, which saves the copy's
+frame slot and skip the copied cell, which saves the copy's
 allocation. The alias is only safe while the storage outlives every
-holder of the pointer, so an aliased frame cannot be pooled and an
-aliased slot cannot be rewritten.
+holder of the pointer, so the frame pool cannot take an aliased frame
+and no statement can rewrite an aliased slot.
 
 ## binding
 
@@ -51,8 +51,8 @@ var w any = p     // no boxing: w = {type: *Request, data: p}
 
 Boxing appears in benchmark output as one allocation per boxed
 value. gozero avoids boxing where it can: constants box once at
-compile time, small integers point into a static table instead of a
-fresh cell, and an eligible frame slot is aliased instead of copied.
+compile time, small integers point into a static table and need no
+fresh cell, and an argument aliases an eligible frame slot and skips the copy.
 
 ## borrowed argument
 
@@ -68,7 +68,7 @@ their values directly and need no copy.
 ## direct-call tier
 
 The fastest of the three execution tiers. A bound function whose
-signature matches an entry in the shape table is called as a plain
+signature matches an entry in the shape table runs as a plain
 Go call, with no reflection. The other two tiers are the reflect
 bridge and the reflect evaluator.
 
@@ -77,8 +77,8 @@ bridge and the reflect evaluator.
 A pointer escapes when it outlives the scope that created it, which
 forces the pointed-to memory onto the heap and blocks reuse. The
 frame pool depends on an escape proof: the compiler marks every node
-that hands a frame pointer to a callee, and only a frame with no
-such node is recycled.
+that passes a frame pointer to a callee, and the pool recycles only
+a frame with no such node.
 
 ## fixture
 
@@ -98,8 +98,8 @@ scans it correctly. A program with no multi-use names has no frame.
 
 A `sync.Pool` that recycles a program's frames between runs, saving
 the per-run frame allocation. Only a program whose frame provably
-never escapes gets a pool; a reused frame is cleared back to zero
-before the next run.
+never escapes gets a pool; the pool clears a reused frame back to
+zero before the next run.
 
 ## itab
 
@@ -113,7 +113,7 @@ happens per call.
 
 Just-in-time compilation: translating a program into a faster
 executable form at run time. gozero's JIT produces a tree of typed
-Go closures rather than machine code; the speed comes from replacing
+Go closures, no machine code; the speed comes from replacing
 per-call reflection with direct calls through the shape table.
 
 ## layout class
@@ -121,7 +121,7 @@ per-call reflection with direct calls through the shape table.
 The ABI category of a type: pointer-shaped (one word), string (two
 words), interface (two words), slice (three words), or one scalar
 class per width. Two types in the same layout class pass through
-registers identically, which is what lets one shape-table entry
+registers identically, and that lets one shape-table entry
 serve every function with the same class signature.
 
 ## mirror
@@ -142,8 +142,8 @@ that one call only.
 ## reflect evaluator
 
 The slowest and most general execution tier, and the reference
-implementation the JIT is tested against. Every value travels as a
-`reflect.Value`, and every call goes through `reflect.Value.Call`.
+implementation the JIT tests check against. Every value travels as a
+`reflect.Value`, and every call runs through `reflect.Value.Call`.
 A program falls back to this tier as a whole when the JIT cannot
 compile it.
 
@@ -158,23 +158,23 @@ outside the table sends that call to the reflect bridge.
 ## slot
 
 The storage for one named value in a program, held as a field of the
-frame. A name that is produced and consumed once travels as a Go
-return value instead and needs no slot; the planner removes such
-slots before the frame is laid out.
+frame. A name that one statement produces and one statement consumes
+travels as a Go return value and needs no slot; the planner removes
+such slots before the compiler lays out the frame.
 
 ## splice
 
-The planner optimization that removes a slot: when a statement's
-single result is read exactly once by the next statement, the
-producing call is moved into the consuming call's argument tree, and
+The planner optimization that removes a slot: when the next statement
+reads a statement's single result exactly once, the planner moves
+the producing call into the consuming call's argument tree, and
 the value travels as a closure return value.
 
 ## stack map
 
 The `map[string]any` a host passes to `Exec`. Names a program never
-binds resolve against the stack map at execution time; their types
-are checked when read, because the map's values carry no static
-type. The stack map is unrelated to the call stack.
+binds resolve against the stack map at execution time; the runtime checks
+their types on read, because the map's values carry no static
+type. The stack map has no relation to the call stack.
 
 ## tier
 
@@ -185,7 +185,7 @@ direct-call tier and why.
 
 ## zero value
 
-The value Go gives every type before assignment: `0`, `""`, `nil`,
+The value every Go type holds before assignment: `0`, `""`, `nil`,
 or a struct of zero fields. gozero fills omitted trailing arguments
-with the parameter's zero value, and a pooled frame is cleared back
+with the parameter's zero value, and the pool clears a pooled frame back
 to zero before reuse so declarations start from it.

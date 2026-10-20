@@ -5,14 +5,14 @@ import (
 	"reflect"
 )
 
-// Literal typing. A literal has no type of its own beyond the width
+// Literal typing. A literal has no own type beyond the width
 // the parser produced, so the compiler works one out: a conversion
 // hint fixes it at the assignment, and inference reads it off the
 // first binding parameter the program passes the name to.
 
 // conversionType reports whether a call is a conversion hint: no
 // method chain, and a path that names a registered type. A binding
-// wins over a type of the same name, which keeps every program that
+// wins over a same-named type, which keeps every program that
 // compiled before hints existed meaning what it meant.
 func (c *Compiler) conversionType(e *callExpr) (reflect.Type, bool) {
 	if len(e.chain) != 0 {
@@ -25,9 +25,9 @@ func (c *Compiler) conversionType(e *callExpr) (reflect.Type, bool) {
 	return c.lookupType(name)
 }
 
-// conversionArg is the single literal a conversion hint wraps. A name
-// or a nested call is rejected: a value already has a type, and the
-// hint exists to give one to a literal that has none.
+// conversionArg is the single literal a conversion hint wraps. It
+// rejects a name or a nested call: a value already has a type, and the
+// hint exists to type a literal that has none.
 func conversionArg(e *callExpr) (arg, error) {
 	if len(e.args) != 1 {
 		return arg{}, fmt.Errorf("a conversion takes exactly one argument, got %d", len(e.args))
@@ -43,10 +43,10 @@ func conversionArg(e *callExpr) (arg, error) {
 	return arg{}, fmt.Errorf("a conversion takes a literal")
 }
 
-// inferLiteralType picks the type of a name a literal is assigned to,
-// when no var statement fixed it. The first place the program passes
-// the name to a binding decides, because that is the only type the
-// value has to satisfy. Failing that the literal keeps the width the
+// inferLiteralType picks the static type for a name that takes a
+// literal, when no var statement fixed it. The first place the program
+// passes the name to a binding decides, because that is the only type
+// the value has to fit. Failing that the literal keeps the width the
 // parser gave it.
 func (c *Compiler) inferLiteralType(prog *program, name string, lit arg) reflect.Type {
 	for si := range prog.stmts {
@@ -71,9 +71,9 @@ func (c *Compiler) inferLiteralType(prog *program, name string, lit arg) reflect
 	return reflect.TypeFor[int64]()
 }
 
-// useType is the parameter type a call gives to name, looking through
-// nested calls. Only a call whose whole path is a binding is
-// considered: a method's receiver type may itself depend on a type not
+// useType is the parameter type a call assigns to name, looking through
+// nested calls. It considers only a call whose whole path is a binding:
+// a method's receiver type may itself depend on a type not
 // worked out yet.
 func (c *Compiler) useType(e *callExpr, name string) reflect.Type {
 	if b, ok := c.bindings[joinPath(e.path)]; ok && len(e.chain) == 0 {
@@ -100,7 +100,7 @@ func (c *Compiler) useType(e *callExpr, name string) reflect.Type {
 			}
 			if a.kind == argVar && a.str == name {
 				// An empty interface accepts anything, so it says
-				// nothing about what the name should be.
+				// nothing about the name's type.
 				if pt.Kind() == reflect.Interface && pt.NumMethod() == 0 {
 					return nil
 				}
@@ -128,7 +128,7 @@ func (c *Compiler) useType(e *callExpr, name string) reflect.Type {
 	return nil
 }
 
-// staticType is the compile-time type of an argument when it has one:
+// staticType is an argument's compile-time type when it has one:
 // a program-bound name. Everything else answers nil, which for the
 // context rule means auto-fill.
 func (c *Compiler) staticType(env map[string]reflect.Type, a arg) reflect.Type {

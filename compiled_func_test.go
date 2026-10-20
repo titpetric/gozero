@@ -48,7 +48,7 @@ func TestCompiledFunc_Exec(t *testing.T) {
 	if req.URL.Path != "/exec" {
 		t.Errorf("path = %q, want /exec", req.URL.Path)
 	}
-	// T not matching the result is an error, not a zero value.
+	// T not matching the result returns an error and no zero value.
 	if _, err := fn.Exec[string](nil); err == nil {
 		t.Error("expected a type mismatch asking for a string")
 	}
@@ -132,7 +132,7 @@ func TestCompiledFunc_ScanBranches(t *testing.T) {
 		t.Errorf("scanned %v, want the request pointer", ptr)
 	}
 
-	// A nil pointer result zeroes a value dest rather than faulting.
+	// A nil pointer result zeroes a value dest without faulting.
 	fn, err = rt.Compile(`r := nilReq(); return r`)
 	if err != nil {
 		t.Fatal(err)
@@ -266,7 +266,7 @@ func fixtureRuntime(tb testing.TB) *Runtime {
 }
 
 // TestFixtures runs every testdata/*.txt program as a subtest. A
-// fixture asserts its own results through the tb it is handed; this
+// fixture asserts its own results through the tb the runner passes; this
 // runner only compiles, executes, and reports the tier.
 func TestFixtures(t *testing.T) {
 	files, err := filepath.Glob(filepath.Join("testdata", "*.txt"))
@@ -303,8 +303,8 @@ func TestFixtures(t *testing.T) {
 	}
 }
 
-// recordingTB captures assertion failures so a fixture-style failing
-// program can be shown to fail rather than pass silently.
+// recordingTB captures assertion failures so a test can show that a
+// fixture-style failing program fails and does not pass silently.
 type recordingTB struct {
 	testing.TB
 	failed bool
@@ -313,7 +313,7 @@ type recordingTB struct {
 func (r *recordingTB) Errorf(string, ...any) { r.failed = true }
 
 // TestAssertFailurePropagates checks the fixture mechanism itself: a
-// failing assert.Equal must mark the TB the program was handed.
+// failing assert.Equal must mark the TB the program receives.
 func TestAssertFailurePropagates(t *testing.T) {
 	rt := fixtureRuntime(t)
 	fn, err := rt.Compile(`assert.Equal(tb, "want", "got");`)

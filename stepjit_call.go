@@ -8,10 +8,10 @@ import (
 )
 
 // exprNode compiles one call and its arguments. A call the shape table
-// cannot express compiles to a reflect bridge instead of failing the
-// program: one call pays reflect.Value.Call, its neighbours stay
-// direct. The vmCall tree was already type-checked by the program
-// compiler, so a miss here is a capability gap, never a type error.
+// cannot express compiles to a reflect bridge and the program still
+// compiles: one call pays reflect.Value.Call, its neighbours stay
+// direct. The program compiler type-checks the vmCall tree before this
+// runs, so a miss here is a capability gap, never a type error.
 func (c *jitCompiler) exprNode(call *vmCall) (node, error) {
 	n, err := c.directNode(call)
 	if err == nil {
@@ -27,7 +27,7 @@ func (c *jitCompiler) directNode(call *vmCall) (node, error) {
 	// A variadic function is ABI-identical to the same signature with
 	// the variadic parameter as a plain slice: the callee receives the
 	// slice header either way, verified in TestVariadicSliceABI. A
-	// spread call passes the slice it was given; a packed call builds
+	// spread call passes the slice it receives; a packed call builds
 	// one from its element nodes, which is the allocation the Go
 	// compiler makes at an escaping call site.
 	fixed := ft.NumIn()
@@ -80,9 +80,9 @@ func (c *jitCompiler) directNode(call *vmCall) (node, error) {
 
 // packNode builds the variadic slice from the element nodes, for the
 // element types worth special-casing: []any and []string cover the
-// printf and assert families. Anything else bridges. The slice is
-// allocated per call because the callee may keep it, which is the same
-// escape the Go compiler assumes at a call site whose arguments escape.
+// printf and assert families. Anything else bridges. Each call
+// allocates the slice because the callee may keep it, the same escape
+// the Go compiler plans for at a call site whose arguments escape.
 func (c *jitCompiler) packNode(call *vmCall, st reflect.Type, elems []*vmArg) (node, error) {
 	et := st.Elem()
 	cl := layoutOf(et)
@@ -98,7 +98,7 @@ func (c *jitCompiler) packNode(call *vmCall, st reflect.Type, elems []*vmArg) (n
 		nodes[i] = n
 	}
 	// The binding contract lets the pack reuse a pooled backing
-	// array instead of allocating one per call; the slice the callee
+	// array and skip the per-call allocation; the slice the callee
 	// receives is dead when the call returns, and finish repools it.
 	// takeBacking is nil for an ordinary call, and the pack allocates
 	// fresh.
@@ -165,10 +165,10 @@ func (c *jitCompiler) packNode(call *vmCall, st reflect.Type, elems []*vmArg) (n
 }
 
 // bridgeNode compiles a call to one reflect.Value.Call, its arguments
-// resolved against the same frame the direct calls use. A slot argument
-// is read in place through reflect.NewAt, so the bridge shares state
-// with its JIT'd neighbours rather than needing the reflect
-// evaluator's slot array.
+// resolved against the same frame the direct calls use. The bridge
+// reads a slot argument in place through reflect.NewAt, so it shares
+// state with its JIT'd neighbours and needs no reflect evaluator slot
+// array.
 func (c *jitCompiler) bridgeNode(call *vmCall) (node, error) {
 	getters := make([]func(unsafe.Pointer, context.Context, map[string]any, any) (reflect.Value, error), len(call.args))
 	for i, a := range call.args {
@@ -218,8 +218,8 @@ func (c *jitCompiler) bridgeNode(call *vmCall) (node, error) {
 	if call.errIdx == 0 {
 		resIdx = 1
 	}
-	// The result value's words are read out of a typed cell, which is
-	// the boxing reflect did anyway.
+	// pick reads the result value's words out of a typed cell, the
+	// same boxing reflect does anyway.
 	pick := func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (unsafe.Pointer, error) {
 		out, err := invoke(fr, ctx, st, d)
 		if err != nil {
@@ -320,7 +320,7 @@ func (c *jitCompiler) bridgeArg(a *vmArg) (func(unsafe.Pointer, context.Context,
 		if !st.AssignableTo(a.typ) {
 			return nil, fmt.Errorf("cannot use %s as %s", st, a.typ)
 		}
-		// The frame is typed storage, so the value is read in place.
+		// The frame stores typed values, so the getter reads in place.
 		return func(fr unsafe.Pointer, _ context.Context, _ map[string]any, _ any) (reflect.Value, error) {
 			return reflect.NewAt(st, unsafe.Add(fr, off)).Elem(), nil
 		}, nil

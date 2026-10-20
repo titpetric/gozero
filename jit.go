@@ -13,8 +13,8 @@ import (
 // of the types, not their names: io.Reader and struct{ tab, data
 // unsafe.Pointer } are the same two pointer words, *http.Request and
 // unsafe.Pointer the same one, string is string. A bound func whose
-// signature matches a shape in the table is reinterpreted as the shape
-// type via unsafe and called directly - no reflect.Value.Call, no
+// signature matches a shape in the table becomes the shape type via an
+// unsafe reinterpretation and runs as a direct call - no reflect.Value.Call, no
 // argument frame, no results slice, zero allocations on top of the
 // callee's own.
 //
@@ -70,15 +70,15 @@ var strType = reflect.TypeOf("")
 // ifaceConv turns a stack value into the two words of a specific
 // interface type, reporting whether the value implements it.
 //
-// The words cannot be assembled by hand. An empty interface holds a
-// *rtype where a non-empty one holds an *itab, and the itab for a
-// (concrete, interface) pair is built and cached by the runtime; there
+// Hand assembly of the words cannot work. An empty interface holds a
+// *rtype where a non-empty one holds an *itab, and the runtime builds
+// and caches the itab for a (concrete, interface) pair; there
 // is no exported way to reach it. A type assertion is that lookup, so
 // each converter asserts to its own interface type in ordinary Go and
 // reinterprets the result. The assertion is the only part that has to
-// know the type statically, which is why this is a table keyed by
-// reflect.Type rather than a generic function: the parameter type is
-// only known at compile time of the statement, as a reflect.Type.
+// know the type statically, so this is a table keyed by reflect.Type
+// and no generic function: the parameter type exists only at compile
+// time of the statement, as a reflect.Type.
 type ifaceConv func(v any) (ifacePair, bool)
 
 func convTo[I any](v any) (ifacePair, bool) {
@@ -91,7 +91,7 @@ func convTo[I any](v any) (ifacePair, bool) {
 
 // ifaceConvs is the set of interface parameter types the JIT can fill
 // from the stack. A parameter whose type is absent falls to the reflect
-// tier. Extending it is one more entry.
+// tier. An extension adds one more entry.
 //
 // any is in the table because an eface argument is already the two
 // words the callee wants; the assertion in convTo[any] always succeeds
@@ -132,7 +132,7 @@ func (a *ifaceArg) get(stack map[string]any) (ifacePair, error) {
 // semantics as __get (unset or nil fills "", a non-string is an error).
 type strArg struct {
 	name string // variable name; "" for a literal
-	val  string // literal value
+	val  string // the value of a literal
 }
 
 func (a *strArg) get(stack map[string]any) (string, error) {

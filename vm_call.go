@@ -5,30 +5,31 @@ import (
 	"reflect"
 )
 
-// The multi-statement VM. A program is a list of calls whose results
-// are bound to names; there are no operators, so every value is a
+// The multi-statement VM. A program is a list of calls that bind their
+// results to names; there are no operators, so every value is a
 // literal, a name, or the result of another call.
 //
 // Two rules shape the compiled form:
 //
-// A trailing error result is never a value. It is stripped from the
-// result list at compile time and checked after every call, so
+// A trailing error result is never a value. The compiler strips it from
+// the result list and checks it after every call, so
 // "req := http.NewRequest(...)" binds one name to a two-result call and
-// a failure returns from Exec or Scan on the spot. No program text
+// a failure returns from Exec or Scan at that statement. No program text
 // mentions an error.
 //
 // Every argument is optional. A parameter the statement does not supply
-// is filled with the zero value of its type, which is how
-// http.NewRequest is called with two arguments and a nil body.
+// takes the zero value of its type; http.NewRequest with two arguments
+// receives a nil body that way.
 //
-// Names bound by the program carry a static type, so methods on them
-// are resolved against that type when the statement compiles.
-// json.NewEncoder is bound; Encode is not, and is reached through the
-// *json.Encoder the binding returns. Names coming from the caller's
-// stack, including dest, are opaque and are checked when they are read.
+// Names the program binds carry a static type, so the compiler resolves
+// methods on them against that type when the statement compiles.
+// json.NewEncoder is a binding; Encode is not, and the program reaches
+// it through the *json.Encoder the binding returns. Names coming from
+// the caller's stack, including dest, are opaque and the VM checks them
+// when it reads them.
 // compileExpr compiles a call and the methods chained onto it,
-// returning the outermost call and the static type of its first
-// non-error result.
+// returning the outermost call and its first non-error result's
+// static type.
 func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type, e *callExpr) (*vmCall, reflect.Type, error) {
 	var (
 		curr     *vmCall
@@ -64,8 +65,8 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 	}
 
 	// Arguments written in the source belong to the last name in the
-	// path. Everything before it is called with no arguments, which is
-	// legal because every argument is optional.
+	// path. Everything before it runs with no arguments, which Go
+	// semantics here permit because every argument is optional.
 	links := make([]link, 0, len(methods)+len(e.chain))
 	for i, m := range methods {
 		l := link{name: m}
@@ -163,8 +164,8 @@ func addrOf(t reflect.Type, a *vmArg) (*vmArg, error) {
 	if root.kind != vaSlot {
 		return nil, fmt.Errorf("the value is not addressable, bind it to a name first")
 	}
-	// Built fresh rather than copied: vmArg carries an atomic cache
-	// that must not be copied.
+	// Built fresh, never copied: vmArg carries an atomic cache that a
+	// copy would break.
 	return &vmArg{
 		kind: a.kind, slot: a.slot, name: a.name,
 		src: a.src, index: a.index, deref: a.deref,
@@ -195,7 +196,7 @@ func ifaceMethodFunc(t reflect.Type, m reflect.Method) reflect.Value {
 	variadic := mt.IsVariadic()
 	return reflect.MakeFunc(reflect.FuncOf(in, out, variadic), func(args []reflect.Value) []reflect.Value {
 		if variadic {
-			// MakeFunc hands the variadic tail packed as a slice.
+			// MakeFunc passes the variadic tail packed as a slice.
 			return args[0].Method(idx).CallSlice(args[1:])
 		}
 		return args[0].Method(idx).Call(args[1:])
@@ -217,10 +218,10 @@ func (c *Compiler) compileCall(slots map[string]int, env map[string]reflect.Type
 	}
 
 	// Parameters and written arguments advance independently: a
-	// context.Context parameter is filled from the execution context
-	// and consumes no argument, unless the argument standing at that
-	// position is itself statically a context, which is how a program
-	// passes one it made on purpose.
+	// context.Context parameter takes the execution context and
+	// consumes no argument, unless the argument standing at that
+	// position is itself statically a context: a program passes a
+	// context it made that way.
 	fixed := ft.NumIn()
 	if ft.IsVariadic() {
 		fixed--
@@ -260,8 +261,8 @@ func (c *Compiler) compileCall(slots map[string]int, env map[string]reflect.Type
 			return nil, fmt.Errorf("compile: %s takes %d arguments, got %d", name, params, len(src))
 		}
 	case len(rest) == 1 && rest[0].spread:
-		// f(xs...): the slice is passed whole and the invocation goes
-		// through CallSlice.
+		// f(xs...): the call passes the slice whole and the invocation
+		// uses CallSlice.
 		st := ft.In(fixed)
 		a, err := c.compileArg(slots, env, name, j, st, unspread(rest[0]))
 		if err != nil {
@@ -373,8 +374,8 @@ func (c *Compiler) compileArg(slots map[string]int, env map[string]reflect.Type,
 			}
 			return &vmArg{kind: vaSlot, slot: slot, name: a.str, typ: pt, iface: -1}, nil
 		}
-		// Not bound by the program, so it comes off the caller's stack
-		// and its type is only known when it is read.
+		// The program does not bind it, so it comes off the caller's
+		// stack and its type stays unknown until the VM reads it.
 		return &vmArg{kind: vaStack, name: a.str, typ: pt, iface: -1}, nil
 	}
 	if !v.IsValid() {

@@ -38,7 +38,7 @@ func (c *jitCompiler) stmtNode(s plannedStmt, jp *jitProgram) (nodeE, error) {
 		}
 	}
 	if s.out < 0 {
-		// The result is dropped, but the call still runs and its error
+		// Nothing keeps the result, but the call still runs and its error
 		// still ends the program.
 		return c.dropped(n)
 	}
@@ -285,7 +285,7 @@ func (c *jitCompiler) fieldSetNode(fs *vmFieldSet) (nodeE, error) {
 }
 
 // dropped wraps a node whose value nothing binds, reporting a class
-// that cannot be run rather than returning a nil closure.
+// that has no runnable form and never returning a nil closure.
 func (c *jitCompiler) dropped(n node) (nodeE, error) {
 	if e := dropNode(n); e != nil {
 		return e, nil

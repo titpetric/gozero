@@ -58,10 +58,10 @@ func TestStepJITMatchesReflect(t *testing.T) {
 	rt := pairRuntime(t)
 
 	// A pointer slot filling an interface parameter takes the direct
-	// path; a slice slot takes the indirect one. Both are covered by
-	// recording what the callee actually received.
-	// Describing the value rather than storing it proves the callee can
-	// read through the interface it was handed: a wrong itab or data
+	// path; a slice slot takes the indirect one. Recording what the
+	// callee actually received covers both.
+	// Describing the value and not storing it proves the callee can
+	// read through the interface it receives: a wrong itab or data
 	// word would fault or produce nonsense here, where comparing
 	// pointers would only compare two different allocations.
 	var seen []string
@@ -250,7 +250,7 @@ func TestSupportsReportsTheReason(t *testing.T) {
 }
 
 // TestPanicBoundary checks that a panic raised inside a binding comes
-// back as an error rather than unwinding through the JIT's raw stores,
+// back as an error and does not unwind through the JIT's raw stores,
 // on both tiers.
 func TestPanicBoundary(t *testing.T) {
 	for _, tc := range []struct{ name, src string }{
@@ -353,10 +353,10 @@ func TestFramePoolGate(t *testing.T) {
 }
 
 // TestJITTierIsConcurrent is the direct-call mirror of the reflect
-// test: the program is asserted onto the JIT, reads a stack name three
-// times so the hoisted frame field is exercised, and writes a field.
-// The frame is per-run; nothing here may be shared between goroutines
-// but the compiled closures themselves.
+// test: the program must land on the JIT, reads a stack name three
+// times so the hoisted frame field runs, and writes a field.
+// The frame is per-run; goroutines here may share nothing but the
+// compiled closures themselves.
 func TestJITTierIsConcurrent(t *testing.T) {
 	rt := NewRuntime()
 	for name, fns := range map[string]map[string]any{

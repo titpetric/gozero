@@ -54,8 +54,8 @@ func (c *jitCompiler) countStackReads(plan *jitPlan) map[string]int {
 	return counts
 }
 
-// plannedStmt is one statement after inlining, with the slot its result
-// is stored to.
+// plannedStmt is one statement after inlining, with the slot that
+// receives its result.
 type plannedStmt struct {
 	call *vmCall
 	out  int // frame slot, -1 to discard
@@ -82,13 +82,13 @@ type jitPlan struct {
 	retSlot int
 }
 
-// planInline drops a statement whose single result is read exactly once
-// by a later statement, splicing the call into the reader's argument
+// planInline drops a statement whose single result a later statement
+// reads exactly once, splicing the call into the reader's argument
 // tree. The value then travels as a closure's return value and needs no
 // slot at all.
 //
 // The splice only happens when every argument the reader evaluates
-// before it is free of side effects, which keeps the order of calls the
+// before the spliced one has no side effects, which keeps the order of calls the
 // source wrote. A receiver is argument zero and always qualifies, so a
 // method chain written across statements collapses exactly as the same
 // chain written on one line does.
@@ -109,9 +109,9 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 			// Only a name that already has a slot returns on this
 			// tier. A field read, a literal or a stack name in return
 			// position is rare enough that the reflect evaluator keeps
-			// it; what must not happen is the statement being skipped,
-			// which would silently return nil where reflect returns
-			// the value.
+			// it; the JIT must never skip the statement, since that
+			// would silently return nil where reflect returns the
+			// value.
 			if s.retArg.kind != vaSlot {
 				return nil, fmt.Errorf("a returned expression is not in the table")
 			}
@@ -192,10 +192,10 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 	if retSlot >= 0 {
 		live[retSlot] = true
 	}
-	// A var declaration puts a name in scope whether or not anything
-	// assigns it, so its slot is live from the start. The frame comes
-	// back zeroed, which is exactly the zero value the declaration
-	// promises, so there is nothing to run for it.
+	// A var declaration puts a name in scope even when nothing
+	// assigns it, so its slot is live from the start. The frame starts
+	// zeroed, matching the zero value the declaration promises, so
+	// there is nothing to run for it.
 	for _, in := range p.inits {
 		live[in.slot] = true
 		writes[in.slot]++
@@ -222,11 +222,11 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 	return &jitPlan{stmts: stmts, live: live, writes: writes, splices: splices, retSlot: retSlot}, nil
 }
 
-// countReads tallies how many times each name is read, which decides
-// whether its producer can be spliced into the reader and the slot
-// dropped. It descends through a field, because req.Header is a read of
+// countReads tallies the reads of each name, which decides whether
+// planInline can splice its producer into the reader and drop the
+// slot. It descends through a field, because req.Header is a read of
 // req: missing those undercounts, and a name read once directly and
-// once through a field would have its producer spliced away while the
+// once through a field would lose its producer to a splice while the
 // field read still pointed at the dropped slot.
 func countReads(reads map[int]int, c *vmCall) {
 	for _, a := range c.args {
@@ -235,8 +235,8 @@ func countReads(reads map[int]int, c *vmCall) {
 }
 
 // countArgReads walks one argument for countReads. A composite
-// literal's elements read names like any argument does, so a producer
-// must not be spliced away while an element still points at its slot.
+// literal's elements read names like any argument does, so planInline
+// must keep a producer while an element still points at its slot.
 func countArgReads(reads map[int]int, a *vmArg) {
 	for a.kind == vaField {
 		a = a.src
@@ -276,8 +276,8 @@ func findSplice(c *vmCall, slot int, splices map[*vmArg]*vmCall) *vmArg {
 	return nil
 }
 
-// subCall is the call an argument evaluates, whether it was written
-// nested or spliced in by planInline.
+// subCall returns the call an argument evaluates, whether the source
+// nests it or planInline splices it in.
 func subCall(splices map[*vmArg]*vmCall, a *vmArg) *vmCall {
 	for a.kind == vaField {
 		a = a.src

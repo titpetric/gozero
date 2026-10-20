@@ -10,7 +10,7 @@ import (
 
 // typeRef reads a type as written in a var statement: a dotted name,
 // with any number of pointer and slice prefixes. The spelling matches
-// reflect.Type.String(), which is what the registry is keyed by.
+// reflect.Type.String(), the key the registry uses.
 func (p *Parser) typeRef() (string, error) {
 	prefix := ""
 	for {
@@ -119,7 +119,7 @@ func (p *Parser) arg() (arg, error) {
 // opening brace. An element is "Field: value" or a bare value; the
 // compiler checks the two forms are not mixed, because only it can
 // name the fields. A trailing comma before the closing brace is
-// legal, as it is in Go.
+// legal, as in Go.
 func (p *Parser) composite(path []string, addr bool) (arg, error) {
 	a := arg{kind: argStruct, path: path, addr: addr}
 	for {

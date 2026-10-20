@@ -9,7 +9,7 @@ import (
 // Argument pooling. The binding contract (see Bind) makes every
 // call's arguments borrowed: valid for the duration of the call, with
 // the callee copying anything it keeps. The memory behind them is
-// therefore dead the moment the call returns. Three allocation kinds
+// dead the moment the call returns. Three allocation kinds
 // qualify, each with a fixed shape known at compile time:
 //
 //   - the variadic pack slice a packed call builds
@@ -23,7 +23,7 @@ import (
 // pooled block carries no references and comes back zeroed. The
 // plan is a side table keyed by call and argument identity, so a
 // site the node builder does not reach (a call that bridges, an
-// argument that aliases instead of boxing) leaves its scratch unused,
+// argument that aliases and skips boxing) leaves its scratch unused,
 // which costs one idle pointer field and nothing else.
 
 // poolSite is one pooled allocation: the scratch field's offset and
@@ -35,7 +35,7 @@ type poolSite struct {
 
 // sitePool is one site's pool plus the metadata its node and release
 // need. field is the scratch field's index; the offset exists once
-// the frame is laid out.
+// the frame layout runs.
 type sitePool struct {
 	pool  *sync.Pool
 	rt    unsafe.Pointer // rtype of the pooled block, for the typed clear
@@ -43,8 +43,8 @@ type sitePool struct {
 }
 
 // take returns a cleared block: fresh from the allocator, or reused
-// from the pool. Blocks are cleared on release, so both paths hand
-// back zeroed memory.
+// from the pool. Release clears every block, so both paths return
+// zeroed memory.
 func (s *sitePool) take() unsafe.Pointer {
 	if v := s.pool.Get(); v != nil {
 		return v.(unsafe.Pointer)
@@ -78,10 +78,10 @@ func (c *jitCompiler) newPoolSite(t reflect.Type) *sitePool {
 // planPools walks the planned statements and records every pooled
 // site of every call: pack slices by call, literal blocks and
 // certain string boxes by argument. The walk mirrors the
-// node builders loosely on purpose: a site recorded here that the
+// node builders loosely: a site recorded here that the
 // builder never uses is an idle scratch field, and a boxing site the
-// plan misses allocates fresh, so a mismatch in either direction is
-// unpooled, never unsound.
+// plan misses allocates fresh, so a mismatch in either direction
+// skips the pool and stays sound.
 func (c *jitCompiler) planPools(plan *jitPlan) {
 	var walkCall func(*vmCall)
 	var walkArg func(a *vmArg, pt reflect.Type)
@@ -167,8 +167,8 @@ func (c *jitCompiler) argBoxesString(a *vmArg) bool {
 
 var anyType = reflect.TypeFor[any]()
 
-// armStrBox hands the argument's string-box site to the next toIface
-// call, which is made immediately by the caller. See pendingStrBox.
+// armStrBox passes the argument's string-box site to the next toIface
+// call, which the caller makes immediately. See pendingStrBox.
 func (c *jitCompiler) armStrBox(a *vmArg) {
 	if site, ok := c.strboxOf[a]; ok {
 		c.pendingStrBox = site

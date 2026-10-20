@@ -7,7 +7,7 @@ import (
 
 // TestPanicError checks the boundary: a panic inside a binding comes
 // back from Exec as a *PanicError carrying the recovered value and the
-// stack, rather than unwinding into the caller.
+// stack, and does not unwind into the caller.
 func TestPanicError(t *testing.T) {
 	rt := NewRuntime()
 	if err := rt.Bind("boom", func() (string, error) {

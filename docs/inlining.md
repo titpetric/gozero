@@ -8,14 +8,14 @@ default build, and `-gcflags=all=-l`, which disables inlining in every
 package including the standard library. Pinned core (`taskset -c 3`),
 Intel N150, go1.27; each figure is the best of three fixed-count
 runs (`-benchtime 100000x -count 3`), which holds steady against
-other load on the shared machine. The tables were remeasured on
-2026-09-10, after argument pooling landed
+other load on the shared machine. The tables carry the 2026-09-10
+measurements, taken after argument pooling landed
 ([changelog](changelog.md)).
 
 ## With inlining (default build)
 
 Table 1, the fixture suite in a default build; other chapters
-reference these measurements by table number rather than carrying
+reference these measurements by table number and carry no
 copies:
 
 | fixture  | vm                        | native            | ratio |
@@ -46,7 +46,7 @@ Two pools shape the allocation columns. The frame pool recycles the
 per-run frame of every program whose frame the compiler proves does
 not escape. Argument pooling recycles the pack slices, string boxes
 and literal blocks behind every call, under the binding contract
-that arguments are borrowed. Together they put every fixture at or
+that a call borrows its arguments. Together they put every fixture at or
 below its mirror's allocation count: fmt runs at 2 allocations
 against its mirror's 4, types at 8 against 11, and json at parity in
 the default build and two under at `-l`.
@@ -54,7 +54,7 @@ the default build and two under at `-l`.
 ## What the difference says
 
 Disabling inlining roughly doubles both columns: most of every
-fixture's time is shared work in fmt and net/*, and that work
+fixture's time goes to shared work in fmt and net/*, and that work
 inflates equally on both sides. The ratios still move, in two
 directions.
 
@@ -71,17 +71,17 @@ spread call, and the vm and the mirror make the same calls once
 nothing inlines.
 
 Inlining also feeds escape analysis, which shows in the alloc columns.
-With inlining, json/native drops from 16 allocs to 14 and url/native
-from 14 to 12: inlined callees let the compiler prove pointers do not
+With inlining, json/native drops two allocations, from 16 to 14, and
+url/native from 14 to 12: inlined callees let the compiler prove pointers do not
 escape and keep values on the stack. The vm's counts are identical in
 both builds, because its values travel through closure returns and
 interface boxes the compiler cannot see through.
 
 The no-inline ratio is the structural cost of interpreting: one
 indirect call and one boxed transport per node, immune to compiler
-optimisation. The default-build ratio is the one a caller sees, and is
-lower because the interpreter's fixed cost is diluted by library work
-that inlining has already made faster on both sides.
+optimisation. The default-build ratio is the one a caller sees, and sits
+lower because library work, which inlining already makes faster on
+both sides, dilutes the interpreter's fixed cost.
 
 ## Reproducing
 
@@ -90,14 +90,14 @@ taskset -c 3 go test -run '^$' -bench 'BenchmarkFixtures/' -benchmem -benchtime 
 taskset -c 3 go test -run '^$' -bench 'BenchmarkFixtures/' -benchmem -benchtime 100000x -count 3 -gcflags=all=-l
 ```
 
-Take the best run per benchmark: the minimum is the run least
+Take the best run per benchmark: the fastest run is the one least
 disturbed by other load, and the fixed iteration count keeps the
 three runs comparable.
 
 ## Learnings
 
 - Disabling inlining roughly doubles both columns because most of every
-  fixture's time is shared library work; the ratios still move, and in
+  fixture's time goes to shared library work; the ratios still move, and in
   both directions.
 - The no-inline ratio approximates the structural cost of interpreting,
   one indirect call and one boxed transport per node, immune to the
@@ -108,5 +108,5 @@ three runs comparable.
   through closures the compiler cannot see through.
 - A fixture whose work is one call runs near native parity once
   nothing inlines: variadic reads 1.1x-1.3x across sweeps, which
-  locates the interpreter's overhead in the statements around a call
-  rather than in the call.
+  locates the interpreter's overhead in the statements around a call,
+  outside the call itself.

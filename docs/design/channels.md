@@ -5,9 +5,9 @@ date: "2026-09-10T11:31:00+02:00"
 
 Channels moved from research into the syntax on 2026-09-10 and out
 again on 2026-10-17 ([changelog](../changelog.md)): the operations
-never left reflect's per-element boxing, and a channel was already a
+never left reflect's per-element boxing, and a channel stays a
 value a binding produces and a program passes on, which is all that
-remains. This document records what the syntax was while it existed,
+remains. This document records the syntax from its time in the language,
 its semantics, how the operations ran on each tier with the measured
 cost, and what stayed out with the reasons the research established.
 
@@ -30,17 +30,17 @@ The implicit rules carry over from the rest of the language:
   loops `Exec` until `errors.Is(err, io.EOF)` and the program never
   writes the check. `v, ok := <-c` is a compile error naming the
   rule.
-- Both operations are armed with the execution context. A blocked
+- Both operations carry the execution context. A blocked
   receive or send ends the program with `ctx.Err()` when the
-  `ExecContext` deadline passes or the context is cancelled, which
+  `ExecContext` deadline passes or the host cancels the context, which
   also bounds a nil channel; without a deadline a blocked operation
   blocks, as it does in Go. The select-on-`ctx.Done()` pattern that
   motivated the research became the operation itself.
 - A send on a closed channel panics as in Go and arrives as
   `*PanicError` through the guard.
 - The channel must have a static type: a name the program bound, a
-  field read off one, or a call result. A stack name is rejected at
-  compile time the way a method on one is, because its type is only
+  field read off one, or a call result. The compiler rejects a stack
+  name the way it rejects a method on one, because its type is only
   known at execution.
 - Declaration rules apply: `:=` or `var` declares the received
   name, `=` assigns to a declared one.
@@ -49,8 +49,8 @@ The language has no `go` statement. The peer is the host's: goroutines,
 channel construction and topology stay in Go, and a compiled program
 is safe to run from as many goroutines as the host starts. That is
 the shell model the research pointed at: the shell owns the
-processes and the pipes, a command only reads and writes the ends it
-was handed. The worker pattern is the host looping `Exec` per
+processes and the pipes, a command only reads and writes the ends the
+shell passes it. The worker pattern is the host looping `Exec` per
 message until `io.EOF`; [syntax.md](../syntax.md) shows it next to
 the Go it replaces.
 
@@ -65,12 +65,16 @@ blocking path. On the direct tier the operations are language nodes
 same producers the bridge uses, the received element stores into the
 frame through a typed `reflect.Set`, and neither operation appears
 in `Supports` output. The channels fixture reports `tier: JIT`; the
-shape-table entries its constructor bindings needed were added with
-the feature.
+feature added the shape-table entries its constructor bindings needed.
 
-Measured against its handwritten mirror, pinned core: 1883ns against
-1223ns in a default build (1.5x, inside the band the other fixtures
-sit in) and 4346ns against 1978ns with inlining disabled (2.2x). The
+Measured against its handwritten mirror, pinned core:
+
+| Build             | Channels fixture | Mirror | Ratio |
+|-------------------|------------------|--------|-------|
+| default           | 1883ns           | 1223ns | 1.5x  |
+| inlining disabled | 4346ns           | 1978ns | 2.2x  |
+
+The default build sits inside the band the other fixtures sit in. The
 gap is allocation: 15 against the mirror's 8, because every reflect
 receive boxes the element where the mirror receives into a local.
 The unexplored next step is a typed fast path per element class,
@@ -86,8 +90,8 @@ documents, and that decomposition held:
 - `select` is a multi-way conditional with blocking and per-arm
   bodies: block syntax, branch compilation and the early-exit signal
   from [conditions.md](conditions.md), plus readiness semantics of
-  its own. The context arm, its most common use, is built into every
-  receive and send instead.
+  its own. Every receive and send carries the context arm, its most
+  common use, as part of the operation.
 - `range` over a channel is [loops.md](loops.md) with a channel as
   the sequence. The host loops; a program handles one element.
 - `go` would put program-spawned concurrency inside the sandbox
@@ -97,9 +101,9 @@ documents, and that decomposition held:
   their capacity, the way it constructs every other resource the
   binding set hands out.
 
-Two research alternatives were superseded by the syntax: typed
-channel bindings (`chans.Recv(ctx, c)`) are no longer needed, and
+The syntax superseded two research alternatives: typed
+channel bindings (`chans.Recv(ctx, c)`) became unnecessary, and
 the generic reflect binding's type loss does not arise, because the
 element type comes from the channel's static type at compile time.
-`iter.Seq` bindings consumed by a host loop remain the answer for
+`iter.Seq` bindings consumed by a host loop serve
 streams that need no send side.

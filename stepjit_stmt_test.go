@@ -102,7 +102,7 @@ func TestFieldWriteClasses(t *testing.T) {
 }
 
 // TestFieldWriteNilBase pins the run-time guard: writing a field of a
-// nil pointer is an error naming the base, not a fault.
+// nil pointer returns an error naming the base and does not fault.
 func TestFieldWriteNilBase(t *testing.T) {
 	rt := boxRuntime(t)
 	fn, err := rt.Compile(`b := nilBox(); b.N = 5; json.NewEncoder(dest).Encode("never")`)
@@ -150,7 +150,7 @@ func TestDiscardedResults(t *testing.T) {
 
 // TestInterfaceSlotStore pins an interface value written into a frame
 // slot: reading the name twice stops planInline splicing the producer
-// away, so the pair really is stored and loaded.
+// away, so the program really stores and loads the pair.
 func TestInterfaceSlotStore(t *testing.T) {
 	rt := boxRuntime(t)
 	var got []any

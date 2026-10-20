@@ -6,40 +6,41 @@ import (
 	"strings"
 )
 
-// The multi-statement VM. A program is a list of calls whose results
-// are bound to names; there are no operators, so every value is a
+// The multi-statement VM. A program is a list of calls that bind their
+// results to names; there are no operators, so every value is a
 // literal, a name, or the result of another call.
 //
 // Two rules shape the compiled form:
 //
-// A trailing error result is never a value. It is stripped from the
-// result list at compile time and checked after every call, so
+// A trailing error result is never a value. The compiler strips it from
+// the result list and checks it after every call, so
 // "req := http.NewRequest(...)" binds one name to a two-result call and
-// a failure returns from Exec or Scan on the spot. No program text
+// a failure returns from Exec or Scan at that statement. No program text
 // mentions an error.
 //
 // Every argument is optional. A parameter the statement does not supply
-// is filled with the zero value of its type, which is how
-// http.NewRequest is called with two arguments and a nil body.
+// takes the zero value of its type; http.NewRequest with two arguments
+// receives a nil body that way.
 //
-// Names bound by the program carry a static type, so methods on them
-// are resolved against that type when the statement compiles.
-// json.NewEncoder is bound; Encode is not, and is reached through the
-// *json.Encoder the binding returns. Names coming from the caller's
-// stack, including dest, are opaque and are checked when they are read.
-// compileProgram builds a vmProgram. Slots and their static types are
-// tracked as the statements are walked, so a name must be bound before
-// it is used and a method must exist on the type of the name it is
-// called on.
+// Names the program binds carry a static type, so the compiler resolves
+// methods on them against that type when the statement compiles.
+// json.NewEncoder is a binding; Encode is not, and the program reaches
+// it through the *json.Encoder the binding returns. Names coming from
+// the caller's stack, including dest, are opaque and the VM checks them
+// when it reads them.
+// compileProgram builds a vmProgram. It tracks slots and their static
+// types while it walks the statements, so the program must bind a name
+// before using it and a method must exist on the receiver name's
+// static type.
 func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 	p := &vmProgram{addrTaken: map[int]bool{}}
 	slots := map[string]int{}
 	env := map[string]reflect.Type{}
 
-	// A name that collides with a binding can never be read back:
+	// A program can never read back a name that collides with a binding:
 	// path resolution prefers the binding, so url := ... with url.Parse
-	// bound compiles and then silently resolves the other way. Shadowing
-	// is rejected instead.
+	// bound compiles and then silently resolves the other way. The
+	// compiler rejects shadowing.
 	reserved := map[string]bool{"dest": true, "true": true, "false": true, "nil": true, "var": true, "return": true}
 	for name := range c.bindings {
 		if i := strings.IndexByte(name, '.'); i > 0 {
@@ -76,8 +77,9 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 		return fmt.Errorf("compile: no new variables on left side of :=")
 	}
 
-	// A name declared with var fixes its type before anything else is
-	// compiled, so a literal assigned to it converts to that type.
+	// A name declared with var fixes its type before the compiler
+	// reaches anything else, so a literal assigned to it converts to
+	// that type.
 	declared := map[string]reflect.Type{}
 	for si := range prog.stmts {
 		if s := prog.stmts[si]; s.varType != "" {
@@ -176,9 +178,9 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 		}
 
 		// x = int32(0) is a conversion hint. The right-hand side parses
-		// as a call; a path that names a registered type rather than a
-		// binding cannot be called, so it fixes the literal's type
-		// instead, the way a var declaration would. The var form stays:
+		// as a call; a path that names a registered type, and no
+		// binding, is not callable, so it fixes the literal's type
+		// the way a var declaration would. The var form stays:
 		// the hint only covers a name assigned a literal.
 		if s.call != nil && !s.ret && len(s.lhs) > 0 {
 			if t, ok := c.conversionType(s.call); ok {
@@ -278,7 +280,7 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 	return p, nil
 }
 
-// assignFrame gives every call in the program a disjoint window into
+// assignFrame assigns every call in the program a disjoint window into
 // the per-run argument frame, so one allocation covers them all and a
 // nested call cannot overwrite the arguments its parent is still
 // filling.
@@ -296,7 +298,7 @@ func (p *vmProgram) assignFrame(c *vmCall) {
 func (p *vmProgram) assignArg(a *vmArg) {
 	// An addressed argument pins the slot at its root: run stores the
 	// slot's value through an addressable cell, and the step JIT
-	// refuses to splice its producer or alias it behind an interface.
+	// neither splices its producer nor aliases it behind an interface.
 	if a.addrOf {
 		root := a
 		for root.kind == vaField {
@@ -380,10 +382,10 @@ func (c *Compiler) compileFieldSet(slots map[string]int, env map[string]reflect.
 	return fs, nil
 }
 
-// compileRetVal compiles the value of a "return x;" form. The
-// parameter type it is compiled against is its own: a program-bound
-// name uses its static type, a stack name has none and is returned as
-// it is, a literal keeps its natural width.
+// compileRetVal compiles the value of a "return x;" form. The value
+// compiles against its own type: a program-bound name uses its static
+// type, a stack name has none and returns unchanged, a literal keeps
+// its natural width.
 func (c *Compiler) compileRetVal(slots map[string]int, env map[string]reflect.Type, a arg) (*vmArg, error) {
 	pt := reflect.TypeFor[any]()
 	switch a.kind {

@@ -8,27 +8,28 @@ import (
 	"unsafe"
 )
 
-// The multi-statement VM. A program is a list of calls whose results
-// are bound to names; there are no operators, so every value is a
+// The multi-statement VM. A program is a list of calls that bind their
+// results to names; there are no operators, so every value is a
 // literal, a name, or the result of another call.
 //
 // Two rules shape the compiled form:
 //
-// A trailing error result is never a value. It is stripped from the
-// result list at compile time and checked after every call, so
+// A trailing error result is never a value. The compiler strips it from
+// the result list and checks it after every call, so
 // "req := http.NewRequest(...)" binds one name to a two-result call and
-// a failure returns from Exec or Scan on the spot. No program text
+// a failure returns from Exec or Scan at that statement. No program text
 // mentions an error.
 //
 // Every argument is optional. A parameter the statement does not supply
-// is filled with the zero value of its type, which is how
-// http.NewRequest is called with two arguments and a nil body.
+// takes the zero value of its type; http.NewRequest with two arguments
+// receives a nil body that way.
 //
-// Names bound by the program carry a static type, so methods on them
-// are resolved against that type when the statement compiles.
-// json.NewEncoder is bound; Encode is not, and is reached through the
-// *json.Encoder the binding returns. Names coming from the caller's
-// stack, including dest, are opaque and are checked when they are read.
+// Names the program binds carry a static type, so the compiler resolves
+// methods on them against that type when the statement compiles.
+// json.NewEncoder is a binding; Encode is not, and the program reaches
+// it through the *json.Encoder the binding returns. Names coming from
+// the caller's stack, including dest, are opaque and the VM checks them
+// when it reads them.
 
 type vmArgKind int
 
@@ -36,7 +37,7 @@ const (
 	vaConst  vmArgKind = iota // a literal, or an omitted argument's zero value
 	vaSlot                    // a name bound earlier in the program
 	vaStack                   // a name read from the caller's stack map
-	vaDest                    // the pointer Scan was handed
+	vaDest                    // the pointer passed to Scan
 	vaCall                    // a nested call
 	vaField                   // a struct field read off another value
 	vaCtx                     // the execution context, auto-filled
@@ -48,13 +49,13 @@ var ctxType = reflect.TypeFor[context.Context]()
 // vmArg is one argument of a compiled call.
 //
 // assign is an inline cache for the assignability check on vaStack and
-// vaDest, the only two kinds whose type is unknown until the value is
-// read. reflect.Type.AssignableTo against an interface parameter walks
-// the method tables comparing names, and it dominated the profile at
-// 29% of samples; the same program is almost always handed the same
-// concrete type, so one entry removes it. It is an atomic.Pointer
-// rather than a plain field because a compiled program is shared
-// between concurrent runs.
+// vaDest, the only two kinds whose type stays unknown until the VM reads
+// the value. reflect.Type.AssignableTo against an interface parameter
+// walks the method tables comparing names, and it dominated the profile
+// at 29% of samples; the same program almost always receives the same
+// concrete type, so one entry removes it. The cache is an atomic.Pointer
+// and a plain field would race, because concurrent runs share a
+// compiled program.
 type vmArg struct {
 	kind   vmArgKind
 	val    reflect.Value // vaConst
@@ -66,23 +67,23 @@ type vmArg struct {
 
 	// iface >= 0 when this argument fills a non-empty interface
 	// parameter from a dynamic value and the interface type is in
-	// ifaceConvs. The value is converted with a type assertion, which
-	// is how the itab is obtained, and handed to reflect already typed
-	// as the parameter. reflect.Value.call runs its own assignTo on
+	// ifaceConvs. A type assertion converts the value and produces the
+	// itab, and reflect receives the value already typed as the
+	// parameter. reflect.Value.call runs its own assignTo on
 	// every argument, and for an interface parameter that means
 	// reflect.implements walking method tables by name on every call;
 	// arriving with identical types skips it.
 	iface int
 	conv  ifaceConv
 
-	// vaField: src is the value the field is read from, index the
+	// vaField: src is the value holding the field, index the
 	// reflect field path, and deref says src is a pointer to the struct
-	// rather than the struct.
+	// and not the struct itself.
 	src   *vmArg
 	index []int
 	deref bool
 
-	// addrOf resolves to the address of the slot or field instead of
+	// addrOf resolves to the address of the slot or field, skipping
 	// its value: the receiver of a pointer method on a value. typ is
 	// then the pointer type. Only a name or a field of one is
 	// addressable, matching Go's rule that a variable has an address
@@ -90,8 +91,8 @@ type vmArg struct {
 	addrOf bool
 
 	// vaStruct: styp is the struct type the literal builds, addr marks
-	// the &T{} form, and elems are the field writes. The value is built
-	// on every evaluation, the way a Go composite literal allocates
+	// the &T{} form, and elems are the field writes. Every evaluation
+	// builds a fresh value, the way a Go composite literal allocates
 	// each time the expression runs; a value shared between runs would
 	// share its mutations.
 	styp  reflect.Type
@@ -134,7 +135,7 @@ type vmCall struct {
 	nres   int // results excluding that error
 	off    int // this call's window into the per-run frame
 	// spread marks a variadic call whose last argument is the slice
-	// itself, f(xs...): the invocation goes through CallSlice.
+	// itself, f(xs...): the invocation uses CallSlice.
 	spread bool
 }
 
@@ -149,13 +150,13 @@ type vmStmt struct {
 	// converted to the slot's type.
 	lit reflect.Value
 
-	// assign is an assignment whose value is built per run rather than
+	// assign is an assignment whose value each run builds, with nothing
 	// precomputed: a composite literal, "u = url.URL{...}". lit cannot
 	// carry it, because runs sharing one prebuilt value would share
 	// the struct.
 	assign *vmArg
 
-	// retArg is a return statement's value when it is not a call:
+	// retArg is a return statement's value when that value is not a call:
 	// a name, a field read, or a literal.
 	retArg *vmArg
 
@@ -185,8 +186,8 @@ type slotInit struct {
 	zero reflect.Value
 }
 
-// vmProgram is a compiled program. It holds no per-call state: the
-// slots are allocated per execution, so a compiled program is safe for
+// vmProgram is a compiled program. It holds no per-call state: each
+// execution allocates its own slots, so a compiled program is safe for
 // concurrent use.
 type vmProgram struct {
 	stmts   []vmStmt
@@ -194,8 +195,8 @@ type vmProgram struct {
 	frame   int // total argument words across every call in the program
 	nifaces int // interface arguments pre-converted per run
 
-	// slotTypes is the static type of each named slot, which the step
-	// JIT needs to lay out its frame. polymorphic records a slot
+	// slotTypes holds each named slot's static type; the step
+	// JIT needs these to lay out its frame. polymorphic records a slot
 	// reassigned at a different type, which no single frame field can
 	// hold.
 	slotTypes   []reflect.Type
@@ -215,7 +216,7 @@ type vmProgram struct {
 
 // apply writes the value through the field chain. Addressability comes
 // from a pointer in the chain; a struct held by value in a slot is only
-// settable when the slot was created addressable by a var declaration.
+// settable when a var declaration made the slot addressable.
 func (fs *vmFieldSet) apply(ctx context.Context, slots, frame []reflect.Value, ifaces []ifacePair, stack map[string]any, dest any) error {
 	v := slots[fs.base]
 	if !v.IsValid() {
@@ -241,7 +242,7 @@ func (fs *vmFieldSet) apply(ctx context.Context, slots, frame []reflect.Value, i
 	return nil
 }
 
-// run executes the program. Slots are allocated per execution, so
+// run executes the program. Each execution allocates its own slots, so
 // concurrent runs of the same compiled program do not share state.
 func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (any, error) {
 	// One allocation per run for both the named slots and every call's
@@ -254,7 +255,7 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 		ifaces = make([]ifacePair, p.nifaces)
 	}
 	for _, in := range p.inits {
-		// New rather than Zero, so a field of a var-declared struct is
+		// New, and not Zero, so a field of a var-declared struct is
 		// settable in place.
 		slots[in.slot] = reflect.New(in.zero.Type()).Elem()
 	}
@@ -315,11 +316,11 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 	return nil, nil
 }
 
-// addrCell stores v into a fresh addressable cell when the slot's
-// address is taken somewhere in the program. A call result and the
-// prebuilt literal value are not addressable, and the literal is also
-// shared between runs, so both go through the copy; every other slot
-// keeps the value as it is.
+// addrCell stores v into a fresh addressable cell when the program
+// takes the slot's address somewhere. A call result and the
+// prebuilt literal value are not addressable, and runs also share the
+// literal, so both take the copy; every other slot keeps the value
+// unchanged.
 func (p *vmProgram) addrCell(v reflect.Value, slot int) reflect.Value {
 	if !p.addrTaken[slot] {
 		return v
@@ -408,9 +409,9 @@ func (a *vmArg) get(ctx context.Context, slots, frame []reflect.Value, ifaces []
 		}
 		return v, nil
 	case vaStruct:
-		// New rather than a copied prototype, so every evaluation is its
-		// own allocation and the result is addressable: a field of the
-		// value a slot holds can be assigned afterwards.
+		// New, with no copied prototype, so every evaluation is its
+		// own allocation and the result is addressable: a later
+		// statement can assign a field of the value a slot holds.
 		pv := reflect.New(a.styp)
 		sv := pv.Elem()
 		for i := range a.elems {
@@ -440,11 +441,11 @@ func (a *vmArg) get(ctx context.Context, slots, frame []reflect.Value, ifaces []
 }
 
 // dynamic resolves a value whose type is only known now: from the
-// caller's stack, or from the pointer Scan was handed.
+// caller's stack, or from the pointer passed to Scan.
 func (a *vmArg) dynamic(v any, ifaces []ifacePair, name string) (reflect.Value, error) {
 	if a.iface >= 0 {
 		// The assertion inside conv is both the check and the itab
-		// lookup. Writing the result into the frame gives reflect a
+		// lookup. Writing the result into the frame passes reflect a
 		// value already typed as the parameter.
 		p, ok := a.conv(v)
 		if !ok {

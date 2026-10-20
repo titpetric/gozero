@@ -8,7 +8,7 @@ import (
 )
 
 // poolRuntime binds a formatter and a collector. The collector
-// follows the binding contract: its arguments are borrowed, so it
+// follows the binding contract: it borrows its arguments, so it
 // copies what it keeps.
 func poolRuntime(t *testing.T) (*Runtime, *[][]any) {
 	t.Helper()
@@ -24,8 +24,8 @@ func poolRuntime(t *testing.T) (*Runtime, *[][]any) {
 	}
 	var kept [][]any
 	if err := rt.Bind("keep", func(vs ...any) int {
-		// vs and its elements are borrowed: the slice is cloned and
-		// each element re-boxed by the copy, per the contract in
+		// keep borrows vs and its elements: it clones the slice and
+		// the copy re-boxes each element, per the contract in
 		// Bind's documentation.
 		own := make([]any, len(vs))
 		for i, v := range vs {
@@ -40,7 +40,7 @@ func poolRuntime(t *testing.T) (*Runtime, *[][]any) {
 }
 
 // TestArgumentPools checks the pooled kinds end to end: the pack
-// slice and string box of a call are reused between runs and every
+// slice and string box of a call return to use between runs and every
 // run still computes the right value, sequentially and concurrently
 // under the race detector.
 func TestArgumentPools(t *testing.T) {
@@ -81,8 +81,8 @@ func TestArgumentPools(t *testing.T) {
 }
 
 // TestPooledLiteralBlock checks a composite literal in argument
-// position: the block is pooled, and every run sees its own fill,
-// not a previous run's.
+// position: the block comes from a pool, and every run sees its own
+// fill and never a previous run's.
 func TestPooledLiteralBlock(t *testing.T) {
 	rt, _ := poolRuntime(t)
 	fn, err := rt.Compile(`s := describe(&url.URL{Path: "/block"}); return s`)

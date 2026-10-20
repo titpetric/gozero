@@ -124,7 +124,7 @@ func TestFieldAssignment(t *testing.T) {
 }
 
 // TestFieldAccess covers reading a struct field, which is not a method
-// and so is resolved separately: as an argument, as the receiver of a
+// and so has its own resolution: as an argument, as the receiver of a
 // method, and through a chain of two fields.
 func TestFieldAccess(t *testing.T) {
 	rt := vmRuntime(t)
@@ -165,8 +165,8 @@ func TestFieldAccess(t *testing.T) {
 	}
 }
 
-// TestFieldAccessErrors checks what a field cannot do: be called, and
-// be read when it is unexported or absent.
+// TestFieldAccessErrors checks what a field cannot do: run as a call,
+// and serve a read when unexported or absent.
 func TestFieldAccessErrors(t *testing.T) {
 	rt := vmRuntime(t)
 	for _, tc := range []struct{ name, src string }{

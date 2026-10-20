@@ -73,13 +73,12 @@ func (c *jitCompiler) argNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 				}}, nil
 			}
 			// Stored indirectly. Pointing the interface at the slot
-			// rather than a copy saves the allocation, but is only
-			// legal while the slot is written once: the frame outlives
+			// and skipping a copy saves the allocation, but is only
+			// legal while the slot takes one write: the frame outlives
 			// the call and the callee may keep the interface. A slot
 			// written more than once, one whose address the program
 			// takes (a pointer method may write through it), and any
-			// scalar, is copied instead, which is what the Go compiler
-			// does anyway.
+			// scalar, gets a copy, as the Go compiler does anyway.
 			if c.writes[a.slot] == 1 && !c.addr[a.slot] && !layoutOf(st).scalar() {
 				c.frameEscapes = true
 				return node{class: lIface, I: func(fr unsafe.Pointer, ctx context.Context, _ map[string]any, _ any) (ifacePair, error) {
@@ -112,17 +111,16 @@ func (c *jitCompiler) argNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 	case vaStack, vaDest:
 		return c.dynamicNode(a, pt, cl)
 	}
-	// Every kind is named above. Reaching here means a new one was
-	// added without a case, and the previous shape of this switch sent
-	// it to dynamicNode, which looked up the empty name, found nothing
-	// and produced a nil interface: a wrong answer with no error. That
-	// is what adding vaField did.
+	// The switch above names every kind. Reaching here means a new kind
+	// has no case. Sending it to dynamicNode would look up the empty
+	// name, find nothing and produce a nil interface: a wrong value with
+	// no error, the failure vaField hit when it went in.
 	return node{}, fmt.Errorf("argument kind %d has no node", a.kind)
 }
 
-// fieldNode reads one struct field out of a pointer. The offset is
-// known when the program compiles, so the load is an add and a move
-// rather than a call.
+// fieldNode reads one struct field out of a pointer. The compiler
+// computes the offset, so the load is an add and a move
+// and needs no call.
 //
 // Only a single field of a pointer to a struct is in the table. A
 // deeper index reaches through embedded types whose offsets do not
@@ -251,8 +249,8 @@ func (c *jitCompiler) fieldNode(a *vmArg, pt reflect.Type, cl layout) (node, err
 	return node{}, fmt.Errorf("a %s field cannot fill a %s parameter", out.class, cl)
 }
 
-// dynamicNode compiles a value whose type is only known when it is
-// read: from the caller's stack, or the pointer Scan was handed.
+// dynamicNode compiles a value whose type only shows at the read:
+// from the caller's stack, or the pointer passed to Scan.
 func (c *jitCompiler) dynamicNode(a *vmArg, pt reflect.Type, cl layout) (node, error) {
 	isDest := a.kind == vaDest
 	name := a.name
@@ -429,7 +427,7 @@ var stackScalarConvs = map[reflect.Type]func(any) (uint64, float64, bool){
 	reflect.TypeFor[float64](): floatBits[float64](),
 }
 
-// callResultType is the static type of a call's i'th non-error result.
+// callResultType returns the static type for a call's i'th non-error result.
 func callResultType(c *vmCall, i int) reflect.Type {
 	ft := c.fn.Type()
 	n := 0
