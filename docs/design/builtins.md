@@ -18,13 +18,13 @@ one-line binding: `func(v []string) int { return len(v) }`.
 This document weighs making the rest of them reachable, and says which
 form each one should take.
 
-## Against Go
+## Why binding stops short of a builtin
 
-Go reaches a package's exported identifiers through an import, and the
-compiler types every one of them. A program here reaches what a host
-binds, and the table below sets out the difference.
+A Go program names whatever its imports export. A program here names
+whatever a host binds. Those two sets differ in one way that decides
+this whole document, so the table sets them side by side.
 
-| Go names | a program names | through |
+| a Go program names | a program here names | through |
 | --- | --- | --- |
 | a func | a func, called | `Bind` |
 | a var, a const | a value, read | `Bind` |
@@ -32,26 +32,33 @@ binds, and the table below sets out the difference.
 | a method | a method on a bound value | the selector link |
 | a field | a field on a bound value | the selector link |
 | a type | a type, in `var` and `[]T{}` | `BindType`, discovery |
-| a type parameter | nothing | - |
 | a declaration | nothing: a host declares | - |
 | 18 builtins | 2, as bindings | `Append`, `Delete` |
 | `if`, `for`, `switch` | a non-nil trailing error | the call contract |
 | `go`, `select`, `chan` | nothing | - |
+| **a type parameter** | **nothing** | **-** |
 
-Discovery widens the type half without a host naming anything: every
-`Bind` walks the bound type five levels deep and registers what it
-finds, so a type a host never mentioned still answers `var`.
+Binding covers every row but the last. A host exposes a func, a value, a
+pointer, a method, a field and a type, and a program reads all six. A
+program declares nothing of its own, so a host owns every type, which
+costs a program nothing it misses.
 
-Three rows carry the weight. A program names values and calls, which
-covers the surface a host exposes. It declares nothing, so a host owns
-every type. And it branches on an error alone, so the builtins that read
-as statements cost more here than their Go counterparts suggest: `clear`
-and `close` each need a statement node, and the language holds few of
-those.
+The last row is the one that bites. A builtin is generic over its
+argument's type: `len` reads a slice, a string, a map or a channel, and
+one Go signature cannot say that. A binding has one signature. So
+`Bind("len", func(v []string) int)` reaches a `[]string` and nothing
+else, and `Bind("len", func(v any) int)` leaves the compiler nothing to
+refuse, so `len(42)` compiles and fails when it runs.
 
-Binding reaches everything in that table but one row, the type
-parameter. A builtin is generic over its argument's type, and that gap
-is what this document prices.
+That is the gap this document prices: for each builtin, whether one
+signature suffices, and what a compiler case costs where it does not.
+
+Two smaller notes from the table. Discovery widens the type row without
+a host naming anything, since every `Bind` walks the bound type five
+levels deep and registers what it finds. And a program branches on an
+error alone, so a builtin that reads as a statement costs more here than
+its Go counterpart suggests: `clear` and `close` each need a statement
+node, of which the language holds few.
 
 ## How it would look
 

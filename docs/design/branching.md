@@ -27,12 +27,20 @@ sequence, the machine assigns to the program counter from a table. One
 `pc += offset` has become one `pc = table[cond]` plus N copies of the
 tail. The copies are the cost; the transfer stays.
 
-The transformation that does remove a branch is the opposite one:
-**if-conversion** and predication (Allen, Kennedy, Porterfield and
-Warren, *Conversion of Control Dependence to Data Dependence*, POPL
-1983) compute both arms and select a result. It merges paths where tail
-duplication splits them, and it pays when both arms are a few
-instructions.
+The transformation that does remove a branch is the opposite one.
+**If-conversion** (Allen, Kennedy, Porterfield and Warren, *Conversion
+of Control Dependence to Data Dependence*, POPL 1983) turns a control
+dependence into a data dependence: both arms run and the code keeps one
+result. It merges paths where tail duplication splits them, and it pays
+when both arms are a few instructions.
+
+**Predication** is the hardware mechanism the same idea reaches for on
+an ISA that carries one: an instruction takes a predicate operand and
+the processor nullifies it where the predicate is false (Mahlke, Lin,
+Chen, Hank and Bringmann, *Effective Compiler Support for Predicated
+Execution Using the Hyperblock*, MICRO-25, 1992). Without it, a compiler
+spells if-conversion as a select or a conditional move. That is the form
+amd64 and arm64 carry, and the form Go emits.
 
 Taken to its limit the proposal is the **first Futamura projection**
 (Futamura 1971): specialising an interpreter for a fixed program
@@ -112,8 +120,10 @@ requireEqual(want, got)   // a non-nil error ends the program here
 next(w, r)
 ```
 
-That is a guard, and a guard is most of what a condition does in the
-programs this runtime runs. It costs nothing, it reaches the direct
+That is a guard in the call-contract sense `GLOSSARY.md` records, and
+not the trace-JIT sense above: nothing resumes after it, since the
+program ends. A guard of that kind is most of what a condition does in
+programs this runtime runs. It costs nothing and it reaches the direct
 tier, and the branch it needs is the one the call contract already
 carries. A two-armed `if`, where both outcomes continue, is the thing
 that needs `conditions.md`.
@@ -155,9 +165,11 @@ on a path where nothing else does. Widening the shape table is what
 
 **Quickening and type specialisation.** Brunthaler measured a 1.4x
 median (DLS 2010); PEP 659 attributes most of its 10 to 60% to
-specialisation. Already spent here: monomorphisation by ABI layout class
-is the core of the direct tier, and because the subset is statically
-typed it happens at compile time with no guard and no deoptimisation.
+specialisation. Already spent here: the direct tier monomorphises by
+layout class, one copy per shape and not one per type, so a single
+shape-table entry serves every signature with the same classes. The
+subset is statically typed, so the specialisation happens at compile
+time with no guard and no deoptimisation.
 
 **Closure compilation.** Replace the step slice with closures built once
 at compile time, each specialised over its constants (Feeley and
