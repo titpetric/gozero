@@ -18,6 +18,41 @@ one-line binding: `func(v []string) int { return len(v) }`.
 This document weighs making the rest of them reachable, and says which
 form each one should take.
 
+## Against Go
+
+Go reaches a package's exported identifiers through an import, and the
+compiler types every one of them. A program here reaches what a host
+binds, and the table below sets out the difference.
+
+| Go names | a program names | through |
+| --- | --- | --- |
+| a func | a func, called | `Bind` |
+| a var, a const | a value, read | `Bind` |
+| `&v` on a var | a pointer, written through | `Bind("x", &v)` |
+| a method | a method on a bound value | the selector link |
+| a field | a field on a bound value | the selector link |
+| a type | a type, in `var` and `[]T{}` | `BindType`, discovery |
+| a type parameter | nothing | - |
+| a declaration | nothing: a host declares | - |
+| 18 builtins | 2, as bindings | `Append`, `Delete` |
+| `if`, `for`, `switch` | a non-nil trailing error | the call contract |
+| `go`, `select`, `chan` | nothing | - |
+
+Discovery widens the type half without a host naming anything: every
+`Bind` walks the bound type five levels deep and registers what it
+finds, so a type a host never mentioned still answers `var`.
+
+Three rows carry the weight. A program names values and calls, which
+covers the surface a host exposes. It declares nothing, so a host owns
+every type. And it branches on an error alone, so the builtins that read
+as statements cost more here than their Go counterparts suggest: `clear`
+and `close` each need a statement node, and the language holds few of
+those.
+
+Binding reaches everything in that table but one row, the type
+parameter. A builtin is generic over its argument's type, and that gap
+is what this document prices.
+
 ## How it would look
 
 A compiler case reads at the head of `compileExpr`, before the binding
@@ -107,6 +142,15 @@ and 222 test at the commit that removed them.
 | `print`, `println` | binding | 20-40 | 20-30 |
 | `complex`, `real`, `imag` | neither | 350-550 | 250-400 |
 | `panic`, `recover` | neither | - | - |
+
+Two totals come out of that table. The five cheap cases, `len`, `cap`,
+`copy`, `clear` and `close`, run 210 to 400 non-test lines and 210 to
+360 test lines, over one shared insertion point. Every case this
+document recommends or allows, which adds `delete`, `min`, `max`,
+`make` and `new` and leaves out the three it declines, runs 690 to 1150
+non-test and 630 to 1010 test. `make` and `new` carry the grammar change
+inside their own figures, and they share it, so doing both costs less
+than the two rows added together.
 
 `len` and `cap` are the cheapest and the most used. Both are nearly free
 on the direct tier: `sliceHdr` already carries a length and a capacity,

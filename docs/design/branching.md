@@ -90,6 +90,34 @@ tail-duplicates the dispatch back into every opcode handler; when LLVM
 dispatch tail is worth roughly ten percent. Duplicating the user
 program's paths is worth nothing.
 
+## What a bool already buys
+
+Equality needs no builtin and no case. `bool` is a layout class, so a
+binding that returns one reaches the direct tier as a load of a single
+byte, and a host writes it in one line. `reflect.DeepEqual` is the
+general form; `assertEqual` in the test tree shows the cheaper one,
+comparing two comparable values as interfaces and keeping `DeepEqual`
+for the rest.
+
+The bool is not the problem. A program can assign it to a slot, pass it
+to another binding, and return it. Nothing consumes it as a condition,
+because the language has one conditional and that conditional reads an
+error.
+
+Which names the hack this document otherwise declines. A one-armed
+condition already works, spelled as a binding that returns an `error`:
+
+```go
+requireEqual(want, got)   // a non-nil error ends the program here
+next(w, r)
+```
+
+That is a guard, and a guard is most of what a condition does in the
+programs this runtime runs. It costs nothing, it reaches the direct
+tier, and the branch it needs is the one the call contract already
+carries. A two-armed `if`, where both outcomes continue, is the thing
+that needs `conditions.md`.
+
 ## What this costs here, today
 
 Nothing, because there is no jump to replace. The dispatch loop ranges
