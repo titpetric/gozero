@@ -38,7 +38,7 @@ func Append(slice any, v any) error {
 		*p = append(*p, n)
 		return nil
 	case *[]any:
-		*p = append(*p, v)
+		*p = append(*p, copyBoxed(v))
 		return nil
 	}
 
@@ -67,6 +67,38 @@ func Append(slice any, v any) error {
 		}
 		ev = ev.Convert(et)
 	}
+	// An element of concrete type is copied by the store itself. An
+	// interface element keeps the box the argument arrived in, and that
+	// box is borrowed for the length of the call, so what lands in the
+	// slice has to be a box of its own.
+	if et.Kind() == reflect.Interface {
+		ev = reflect.ValueOf(copyBoxed(ev.Interface()))
+		if !ev.IsValid() {
+			ev = reflect.Zero(et)
+		}
+	}
 	sv.Set(reflect.Append(sv, ev))
 	return nil
+}
+
+// copyBoxed moves a borrowed any into a box of its own: a fresh cell,
+// a typed move into it, and a new interface over that cell. A plain
+// reflect.ValueOf(v).Interface() is not a copy, since for a
+// non-addressable value it hands back an interface sharing the box it
+// was given.
+//
+// The binding contract makes every argument borrowed for the length
+// of the call, and the direct tier pools the cell a value boxes into
+// for an interface parameter. Anything a binding keeps past the call
+// has to be copied, or the release clears the block underneath it.
+func copyBoxed(v any) any {
+	rv := reflect.ValueOf(v)
+	if !rv.IsValid() {
+		return nil
+	}
+
+	nv := reflect.New(rv.Type()).Elem()
+	nv.Set(rv)
+
+	return nv.Interface()
 }

@@ -204,20 +204,9 @@ func assertTrue(tb any, value bool, message string) {
 	t.Error("condition is false")
 }
 
-// copyBoxed is the binding contract's copy for a borrowed any of
-// unknown type: a fresh cell, a typed move into it, and a new box.
-// A plain reflect.ValueOf(v).Interface() is not a copy: for a
-// non-addressable value it returns an interface sharing the same
-// box.
-func copyBoxed(v any) any {
-	rv := reflect.ValueOf(v)
-	if !rv.IsValid() {
-		return nil
-	}
-	nv := reflect.New(rv.Type()).Elem()
-	nv.Set(rv)
-	return nv.Interface()
-}
+// copyBoxed, the binding contract's copy for a borrowed any, is in
+// append.go: Append needs it for an interface element, and a recorder
+// that keeps what it was handed needs the same thing.
 
 type fixtureCtxKey struct{}
 

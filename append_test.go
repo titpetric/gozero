@@ -3,6 +3,7 @@ package gozero
 import (
 	"strings"
 	"testing"
+	"unsafe"
 )
 
 // TestAppend covers the append that works through a pointer held in an
@@ -58,6 +59,66 @@ func TestAppend(t *testing.T) {
 	}
 	if len(is) != 2 {
 		t.Errorf("a convertible element did not append: %v", is)
+	}
+}
+
+// boxOf answers the cell an any's value sits in. Two interfaces over
+// one cell share it, which is what the binding contract forbids a
+// binding from keeping: the direct tier pools that cell and clears it
+// when the statement finishes.
+//
+// Only read this for a value the compiler boxes, never a pointer: a
+// pointer-shaped value is its own data word, so two copies of one
+// pointer share it and nothing is wrong.
+func boxOf(v any) unsafe.Pointer {
+	return (*struct {
+		_    unsafe.Pointer
+		data unsafe.Pointer
+	})(unsafe.Pointer(&v)).data
+}
+
+// TestAppendCopiesABorrowedBox pins the binding contract on the two
+// paths that keep what they were handed. An element of concrete type
+// is copied by the store itself; an interface element would otherwise
+// keep the caller's box, and the caller's box is borrowed.
+func TestAppendCopiesABorrowedBox(t *testing.T) {
+	// A string, because that is the case the pool comment names, and
+	// because a non-empty one always boxes into a cell of its own.
+	borrowed := any("needs a cell")
+
+	// The type-switched path.
+	as := []any{}
+	if err := Append(&as, borrowed); err != nil {
+		t.Fatal(err)
+	}
+	if len(as) != 1 || as[0] != "needs a cell" {
+		t.Fatalf("[]any path left %v", as)
+	}
+	if boxOf(as[0]) == boxOf(borrowed) {
+		t.Error("the []any path kept the box the argument arrived in")
+	}
+
+	// The reflect path, over an interface element the switch does not
+	// name: a named slice type misses case *[]any and lands in the
+	// reflect tail with an interface element type.
+	type anys []any
+	rs := anys{}
+	if err := Append(&rs, borrowed); err != nil {
+		t.Fatal(err)
+	}
+	if len(rs) != 1 || rs[0] != "needs a cell" {
+		t.Fatalf("reflect interface path left %v", rs)
+	}
+	if boxOf(rs[0]) == boxOf(borrowed) {
+		t.Error("the reflect interface path kept the box the argument arrived in")
+	}
+
+	// A nil element still appends, and asks nothing of the box.
+	if err := Append(&as, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(as) != 2 || as[1] != nil {
+		t.Errorf("a nil element left %v", as)
 	}
 }
 
