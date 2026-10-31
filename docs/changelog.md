@@ -23,18 +23,18 @@ with the syntax; the MutexMap binding stays, measured in
 BenchmarkConcurrency. [design/channels.md](design/channels.md) keeps
 the research record.
 
-## 2026-09-23 00:00 +02:00: Bind takes values, and the two reference operators
+## 2026-09-23 00:00 +02:00: Bind takes values
 
 `Bind` carried funcs, so data had no way into a program except as a
 literal or through a nullary getter, at the cost of a call per read.
 A host could not expose `time.Hour`, `io.EOF` or `os.Args` at all.
 
-`Bind` now takes either. A func is called; anything else is a value,
-read in argument position like any other name and type-checked
-against the parameter when the program compiles, so after
-`Bind("time.Hour", time.Hour)` a binding taking a `time.Duration`
-accepts it and one taking `int64` rejects it. `BindScope` carries
-values for free, since it is `Bind` in a loop.
+`Bind` now takes either. A program calls a func; anything else is a
+value, read in argument position like any other name and
+type-checked against the parameter when the program compiles, so
+after `Bind("time.Hour", time.Hour)` a binding taking a
+`time.Duration` accepts it and one taking `int64` rejects it.
+`BindScope` loops over `Bind`, so it carries values for free.
 
 A value binding is also a receiver, with Go's method sets in full.
 It owns the longest dotted prefix of a path the way a func binding
@@ -44,27 +44,27 @@ bound value, because a bound name is addressable the way a Go
 variable is. The address is the per-run cell, so the mutation is the
 program's and not the host's.
 
-A callee can be a value rather than a binding: a func-typed name, a
-func-typed field of one, or a func bound under a name. `f := getFn()`
-then `f()` compiles, and so does `cfg.Fn()`. The signature is static
-either way, so the arguments are checked when the program compiles
-and only the func value is read per run. The call bridges, because
+A callee can be a value: a func-typed name, a func-typed field of
+one, or a func bound under a name. `f := getFn()` then `f()`
+compiles, and so does `cfg.Fn()`. The signature is static either
+way, so the compiler checks the arguments when the program compiles
+and each run reads only the func value. The call bridges, because
 there is no funcval to cast at compile time.
 
 Whether a program reaches the host is Go's rule and needs no API for
-it. A value is copied in, so the name is the program's own for the
-run: `label = x` and `&label` both reach a per-run copy, and the
-host's variable keeps what it had. Binding an address opts in. The
-name is then a `*T`, so `*os.Args` reads the host's slice,
+it. Binding a value copies it in, so the name is the program's own
+for the run: `label = x` and `&label` both reach a per-run copy,
+and the host's variable keeps what it had. Binding an address opts
+in. The name is then a `*T`, so `*os.Args` reads the host's slice,
 `*os.Args = xs` writes it, and a binding taking a `*[]string` takes
-the name directly. The shallow copy is Go's too, so a slice or a map
-bound by value still shares its elements with the host.
+the name directly. The shallow copy is Go's too, so a slice or a
+map bound by value still shares its elements with the host.
 
-The copy is per run rather than one copy the binding holds: a
-compiled program keeps no per-run state, so two concurrent `Exec`s
-must not see each other's writes and a second run must not start
-from what the first appended. One cell per name per program, so two
-`&label` address the same storage the way two `&x` do in Go.
+The copy is per run and the binding holds none: a compiled program
+keeps no per-run state, so two concurrent `Exec`s must not see each
+other's writes and a second run must not start from what the first
+appended. One cell per name per program, so two `&label` address
+the same storage the way two `&x` do in Go.
 
 `&` and `*` are the only operators the language gained. `&name`
 takes the address of a program name, a field of one, or a value
@@ -82,18 +82,18 @@ value stands.
 `gozero.Delete(m, key)` removes a key from a map held in an `any`
 and `gozero.Append(&v, x)` appends through a pointer held in one;
 neither is something the builtin can do once the value has been
-through an interface. The common shapes are type-asserted and the
-rest goes through reflect. A missing key, a nil map and a nil slice
-are no-ops, as in Go.
+through an interface. Both type-assert the common shapes and fall
+back to reflect for the rest. A missing key, a nil map and a nil
+slice are no-ops, as in Go.
 
 Reading a value reaches the direct tier as one load from the
 binding's fixed address, with no frame slot and no boxing; an
 addressed one becomes a frame slot seeded per run, and `&name`
 filling an interface parameter carries a compile-time itab like any
-other interface argument. A write does not yet: `planInline` refuses
-the statement so the program falls back to the reflect evaluator
-whole, rather than dropping the write. `testdata/vars.txt` runs the
-surface end to end.
+other interface argument. A write does not yet: `planInline`
+refuses the statement, so the program falls back to the reflect
+evaluator whole and the write still lands. `testdata/vars.txt` runs
+the surface end to end.
 
 A rebind is a new binding, not an update: neither a compiled program
 nor the cached compilation of the same source sees it, which is the

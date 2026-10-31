@@ -93,9 +93,9 @@ type vmArg struct {
 	// and the result of a call does not.
 	addrOf bool
 
-	// vaVar: varv is the value Bind registered under the name. It is
-	// read-only storage: a program that writes the name writes a
-	// per-run cell instead, which materializeVarCells creates.
+	// vaVar: varv holds the value Bind registered under the name. The
+	// program never writes it: a statement that assigns the name
+	// writes a per-run cell, which materializeVarCells creates.
 	varv reflect.Value
 
 	// vaStruct: styp is the struct type the literal builds, addr marks
@@ -138,10 +138,10 @@ func (a *vmArg) assignable(rt reflect.Type) bool {
 type vmCall struct {
 	fn reflect.Value
 	// fnArg produces the func value per run, for a call through a
-	// value rather than a binding: a func-typed name, or a func-typed
-	// field of one. fn is then invalid and ft carries the signature,
-	// which is static either way and is what the arguments were
-	// checked against.
+	// value: a func-typed name, or a func-typed field of one. fn is
+	// then invalid and ft carries the signature. A call through fn
+	// and a call through fnArg both have a static signature, and the
+	// compiler checks the arguments against ft.
 	fnArg  *vmArg
 	ft     reflect.Type
 	name   string // for diagnostics
@@ -199,14 +199,15 @@ type vmFieldSet struct {
 }
 
 // slotInit is the value a slot starts each run from: the zero value a
-// var statement puts in scope, or the bound value a value binding's
-// per-run cell is copied from.
+// var statement puts in scope, or the bound value that run copies
+// into a value binding's per-run cell.
 type slotInit struct {
 	slot int
 	zero reflect.Value
-	// seed marks an init that copies zero in rather than relying on
-	// fresh storage already being zero. A var declaration does not
-	// need it; a value binding's per-run copy does.
+	// seed marks an init that copies zero into the cell; an init
+	// without it relies on fresh storage already being zero. A var
+	// declaration does not need the copy; a value binding's per-run
+	// copy does.
 	seed bool
 }
 
@@ -238,8 +239,9 @@ type vmProgram struct {
 	inits []slotInit
 
 	// varCells names the value bindings the program addresses or
-	// assigns, and varSlots the per-run cell each one got. Both are
-	// filled while the program is assembled; see materializeVarCells.
+	// assigns, and varSlots the per-run cell each one got.
+	// markVarCells fills varCells, materializeVarCells fills
+	// varSlots, both from compileProgram.
 	varCells map[string]bool
 	varSlots map[string]int
 }
@@ -482,8 +484,9 @@ func (a *vmArg) get(ctx context.Context, slots, frame []reflect.Value, ifaces []
 	case vaSlice:
 		return a.buildSlice(ctx, slots, frame, ifaces, stack, dest)
 	case vaVar:
-		// An addressed occurrence became a slot when the program was
-		// assembled, so what is left here is a plain read.
+		// materializeVarCells rewrites every occurrence of a binding
+		// the program addresses or assigns into a slot, so a vaVar
+		// reaching here only reads the bound value.
 		return a.varv, nil
 	case vaDeref:
 		v, err := a.src.get(ctx, slots, frame, ifaces, stack, dest)

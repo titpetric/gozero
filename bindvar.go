@@ -12,11 +12,11 @@ import (
 //	rt.Bind("io.EOF", io.EOF)        // a value, read
 //	rt.Bind("os.Args", &os.Args)     // a pointer, read and written through
 //
-// A value is copied into the runtime the way passing a value to a
+// Bind copies the value into the runtime the way passing a value to a
 // function copies it, so the name is the program's own for the run:
-// "label = x" writes the copy and the host's variable is untouched.
-// Binding an address opts into mutation without any API for it. The
-// name is then a *T, so "*os.Args" reads the host's slice and
+// "label = x" writes the copy and the host's variable keeps what it
+// had. Binding an address opts into mutation without any API for it.
+// The name is then a *T, so "*os.Args" reads the host's slice and
 // "*os.Args = xs" writes it, exactly as the same spellings do in Go.
 //
 // Shallow copying is Go's too. A value binding of a slice or a map
@@ -28,14 +28,15 @@ type varBinding struct {
 	val reflect.Value
 }
 
-// Delete removes a key from a map held in an any, which is what the
-// builtin delete cannot do once the map has been through an interface.
-// The common key shapes are type-asserted and the rest goes through
-// reflect, so a bound Delete costs a type switch on the paths a
-// program actually takes.
+// Delete removes a key from a map held in an any, which the builtin
+// delete cannot do once the map has been through an interface. The
+// common key shapes are type-asserted and the rest takes the reflect
+// path, so a bound Delete costs a type switch on the paths a program
+// actually takes.
 //
-// A missing key is not an error, as in Go. A nil map is not either:
-// deleting from one is a no-op in Go and stays one here.
+// A missing key is not an error, as in Go, and neither is a nil map:
+// deleting from one is a no-op in Go and stays one here. A nil any
+// holds no map to delete from, and Delete reports that as an error.
 func Delete(m any, key any) error {
 	if m == nil {
 		return fmt.Errorf("delete: the map is nil")

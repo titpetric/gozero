@@ -62,8 +62,8 @@ func TestSliceLiteral(t *testing.T) {
 }
 
 // TestSliceLiteralIsFreshPerRun pins that the literal allocates on
-// every evaluation, the way a Go composite literal does: a binding
-// that wrote into one run's slice must not be seen by the next.
+// every evaluation, the way a Go composite literal does: the next run
+// must not read what a binding wrote into the previous run's slice.
 func TestSliceLiteralIsFreshPerRun(t *testing.T) {
 	rt, seen := bvRuntime(t)
 	fn, err := rt.Compile("xs := []string{\"a\"}\npokeL(xs)\nrecordL(xs)")

@@ -69,21 +69,21 @@ their values directly and need no copy.
 ## value binding
 
 Data the host registers with `Bind`, as opposed to the func a
-`binding` holds: `Bind` takes either and what it is decides what the
-name does. A program reads a value binding in argument position, it
-carries the static type it was bound with, and it can be the
-receiver of a field read or a method call.
+`binding` holds: `Bind` takes either, and the kind of argument
+decides what the name does. A program reads a value binding in
+argument position. The name carries the static type the host bound
+it with and can be the receiver of a field read or a method call.
 
 ## per-run cell
 
 The storage a program gets when it writes or addresses a value
-binding. A value is copied into the runtime, so the name is the
-program's own for the run: `name = v` and `&name` reach the cell,
-and the host's variable is untouched. The cell is seeded from the
-bound value at the start of every run and there is one per name per
-program, so two `&name` address the same storage the way two `&x` do
-in Go. A host that wants a program to write its own storage binds an
-address instead, and the program writes through it with `*name = v`.
+binding. `Bind` copies the value into the runtime, so the name is
+the program's own for the run: `name = v` and `&name` reach the
+cell, and the host's variable keeps what it had. The cell starts
+every run from the bound value. One cell per name per program, so
+two `&name` address the same storage the way two `&x` do in Go. A
+host that binds an address instead lets the program write the
+host's own storage through `*name = v`.
 
 ## direct-call tier
 

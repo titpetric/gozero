@@ -7,8 +7,8 @@ import (
 
 // The assignment statements that are not a call: a field write and
 // the value form of return. Both resolve their target first and then
-// compile the value against the target's type, which is what keeps a
-// literal's width and a name's static type honest.
+// compile the value against the target's type, which keeps a literal's
+// width and a name's static type honest.
 
 // compileFieldSet compiles req.Method = value. The base is a
 // program-bound name, every selector is an exported field, and the

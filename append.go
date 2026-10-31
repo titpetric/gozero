@@ -8,17 +8,17 @@ import (
 // Append appends through a pointer to a slice, which the builtin
 // cannot do once the slice has been through an interface: append
 // returns a new header and a value parameter has nowhere to put it.
-// &name on a value binding yields the pointer.
+// &name on a value binding names that pointer.
 //
-// The common element shapes are type-asserted, the rest goes through
-// reflect, and a nil slice appends to an empty one as in Go.
+// The common element shapes are type-asserted, the rest takes the
+// reflect path, and a nil slice appends to an empty one as in Go.
 func Append(slice any, v any) error {
 	if slice == nil {
 		return fmt.Errorf("append: the destination is nil")
 	}
-	// Before the type switch, because a typed nil pointer matches an
-	// arm and the write through it would be a crash rather than an
-	// error. An any holding (*[]string)(nil) is not == nil.
+	// Before the type switch: a typed nil pointer matches an arm, and
+	// the write through it panics where Append owes an error. An any
+	// holding (*[]string)(nil) is not == nil.
 	if pv := reflect.ValueOf(slice); pv.Kind() == reflect.Pointer && pv.IsNil() {
 		return fmt.Errorf("append: the destination pointer is nil")
 	}
@@ -67,10 +67,10 @@ func Append(slice any, v any) error {
 		}
 		ev = ev.Convert(et)
 	}
-	// An element of concrete type is copied by the store itself. An
-	// interface element keeps the box the argument arrived in, and that
-	// box is borrowed for the length of the call, so what lands in the
-	// slice has to be a box of its own.
+	// The store copies an element of concrete type. An interface
+	// element would keep the box the argument arrived in, and that box
+	// stays valid only for the length of the call, so the slice takes a
+	// box of its own.
 	if et.Kind() == reflect.Interface {
 		ev = reflect.ValueOf(copyBoxed(ev.Interface()))
 		if !ev.IsValid() {
@@ -84,13 +84,14 @@ func Append(slice any, v any) error {
 // copyBoxed moves a borrowed any into a box of its own: a fresh cell,
 // a typed move into it, and a new interface over that cell. A plain
 // reflect.ValueOf(v).Interface() is not a copy, since for a
-// non-addressable value it hands back an interface sharing the box it
-// was given.
+// non-addressable value it returns an interface over the same box as
+// the argument.
 //
 // The binding contract makes every argument borrowed for the length
 // of the call, and the direct tier pools the cell a value boxes into
-// for an interface parameter. Anything a binding keeps past the call
-// has to be copied, or the release clears the block underneath it.
+// for an interface parameter. A binding that keeps a box past the
+// call has to copy it first, or the release clears the block
+// underneath it.
 func copyBoxed(v any) any {
 	rv := reflect.ValueOf(v)
 	if !rv.IsValid() {

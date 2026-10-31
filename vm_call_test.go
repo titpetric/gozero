@@ -353,8 +353,8 @@ func TestMethodSetsOnValueBindings(t *testing.T) {
 		}
 	}
 
-	// A pointer method that mutates writes the run's cell, not the
-	// value the host handed over.
+	// A pointer method that mutates writes the run's cell. The host
+	// keeps the value it bound.
 	if err := bvRun(t, rt, "pv.Bump()\npv.Bump()\nrecordN(pv.N)"); err != nil {
 		t.Fatal(err)
 	}
@@ -407,8 +407,8 @@ func TestCallThroughAFuncValue(t *testing.T) {
 		}
 	}
 
-	// The arguments are checked against the func value's signature
-	// when the program compiles, the same as a call to a binding.
+	// At compile time the compiler checks the arguments against the
+	// func value's signature, the same as a call to a binding.
 	err := bvRun(t, rt, "s := cfg.Two(1, \"b\")\nrecordS(s)")
 	if err == nil || !strings.Contains(err.Error(), "cannot use") {
 		t.Errorf("a wrong argument type should not compile: %v", err)
@@ -420,8 +420,9 @@ func TestCallThroughAFuncValue(t *testing.T) {
 	}
 }
 
-// TestCallThroughNilFuncValue pins the run-time half: a nil func is an
-// error naming the callee, not a panic from inside reflect.
+// TestCallThroughNilFuncValue pins the run-time half: the VM catches a
+// nil func before reflect ever sees the call, so the program fails with
+// an error naming the callee.
 func TestCallThroughNilFuncValue(t *testing.T) {
 	rt, _ := bvRuntime(t)
 	if err := rt.Bind("cfg", bvCfg{Name: "c"}); err != nil {

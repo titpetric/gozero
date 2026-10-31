@@ -69,8 +69,8 @@ func (p *Parser) arg() (arg, error) {
 		return p.numberLit()
 	case c == '&':
 		// & prefixes a composite literal, or takes the address of a
-		// name, a field of one, or a value binding. Which one it is
-		// shows at the brace.
+		// name, a field of one, or a value binding. A '{' after the
+		// path marks the composite literal.
 		p.pos++
 		p.nl = false
 		path, err := p.path()
@@ -82,9 +82,9 @@ func (p *Parser) arg() (arg, error) {
 		}
 		return arg{kind: argAddr, path: path}, nil
 	case c == '[' && p.pos+1 < len(p.src) && p.src[p.pos+1] == ']':
-		// A slice literal. The type is read the way a var statement
-		// reads one, so []string and [][]byte spell the same here as
-		// they do there.
+		// A slice literal. typeRef reads the type, the same call a
+		// var statement makes, so []string and [][]byte spell the
+		// same here as they do there.
 		typ, err := p.typeRef()
 		if err != nil {
 			return arg{}, err
@@ -144,8 +144,8 @@ func (p *Parser) arg() (arg, error) {
 }
 
 // sliceLit reads the elements of a slice literal after the opening
-// brace. Elements are unkeyed: an index key would need the compiler
-// to size the slice, and nothing in the language needs one.
+// brace. The elements carry no keys: an index key would need the
+// compiler to size the slice, and nothing in the language needs one.
 func (p *Parser) sliceLit(typ string) (arg, error) {
 	a := arg{kind: argSlice, typ: typ}
 	for {

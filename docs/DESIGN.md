@@ -37,9 +37,9 @@ the binding set is the sandbox boundary. A program cannot open a file
 unless the host binds a function that opens files.
 
 `Bind` takes data as readily as funcs, and the boundary holds there
-too. A value is copied in, so a program writing the name writes its
-own storage; an address is the host saying the variable is the
-program's to write, and the program does it through `*name = v`.
+too. Binding a value copies it in, so a program writing the name
+writes its own storage; an address is the host saying the variable
+is the program's to write, and the program does it through `*name = v`.
 [syntax.md](syntax.md) has the rules.
 
 Methods extend the reach without extending the bindings. `Cookies` and

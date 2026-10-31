@@ -168,8 +168,8 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 			return nil, nil, fmt.Errorf("compile: %s has no method or field %s", currType, l.name)
 		}
 		if f.Type.Kind() == reflect.Func && last(links, l) {
-			// A func-typed field is a callee, not a receiver: the
-			// value is read out of the struct and called through.
+			// A func-typed field is a callee, not a receiver: each
+			// run reads the value out of the struct and calls it.
 			fv := &vmArg{kind: vaField, src: recv, index: f.Index, deref: deref, typ: f.Type, iface: -1}
 			call, err := c.callThrough(slots, env, fv, f.Type, currType.String()+"."+l.name, l.args)
 			if err != nil {
@@ -179,8 +179,8 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 			continue
 		}
 		if last(links, l) {
-			// The source wrote parentheses, so a field that is not a
-			// func is the mistake rather than the chain being short.
+			// The source wrote parentheses, so the error names the
+			// non-func field as the mistake: the chain ends here.
 			return nil, nil, fmt.Errorf("compile: %s.%s is a %s field, not a method", currType, l.name, f.Type)
 		}
 		if len(l.args) > 0 {
@@ -199,17 +199,17 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 	return curr, currType, nil
 }
 
-// last reports whether l is the final link, which is the only one the
-// source wrote arguments for and so the only one a func-typed value
-// is called through rather than read as a receiver.
+// last reports whether l is the final link. The source wrote arguments
+// for that link alone, so a func-typed value is the callee there and a
+// receiver at any earlier link.
 func last(links []link, l link) bool {
 	return len(links) > 0 && links[len(links)-1].name == l.name
 }
 
-// callThrough compiles a call whose callee is a value rather than a
-// binding: a func-typed name, value binding, or field. The signature
-// is static, so the arguments are checked exactly as a call to a
-// binding checks them; only the func value itself is read per run.
+// callThrough compiles a call whose callee is a value: a func-typed
+// name, value binding, or field. The signature is static, so the
+// compiler checks the arguments exactly as it checks a call to a
+// binding; each run reads only the func value itself.
 func (c *Compiler) callThrough(slots map[string]int, env map[string]reflect.Type, fv *vmArg, ft reflect.Type, name string, src []arg) (*vmCall, error) {
 	if ft == nil || ft.Kind() != reflect.Func {
 		return nil, fmt.Errorf("compile: %s is a value, not a call", name)
@@ -284,8 +284,8 @@ func (c *Compiler) compileCall(slots map[string]int, env map[string]reflect.Type
 
 // compileCallOf is compileCall with the callee split from its
 // signature, so a call through a func value checks its arguments the
-// same way a call to a binding does. Exactly one of fn and fnArg is
-// set; ft is the signature either way.
+// same way a call to a binding does. Exactly one of fn and fnArg holds
+// the callee; ft is the signature either way.
 func (c *Compiler) compileCallOf(slots map[string]int, env map[string]reflect.Type, fn reflect.Value, fnArg *vmArg, ft reflect.Type, name string, recv *vmArg, src []arg) (*vmCall, error) {
 	call := &vmCall{fn: fn, fnArg: fnArg, ft: ft, name: name, errIdx: -1}
 	if recv != nil {

@@ -44,8 +44,8 @@ func (c *jitCompiler) argNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 				return at, nil
 			}
 			// An address filling an interface parameter is the same
-			// pointer with an itab in front of it, and the itab for
-			// (*T, I) is fixed at compile time like any other.
+			// pointer with an itab in front of it, and the pair
+			// (*T, I) pins that itab at compile time like any other.
 			return c.toIface(reflect.PointerTo(c.types[field]), pt, at)
 		}
 		if producer := c.splices[a]; producer != nil {

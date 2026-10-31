@@ -267,9 +267,9 @@ func (p *Parser) stmt() (stmt, error) {
 		return s, nil
 	}
 
-	// "*p = v" writes through a pointer. It is sniffed before
-	// everything else because nothing else in the grammar starts a
-	// statement with '*'.
+	// "*p = v" writes through a pointer. The parser tries this form
+	// before everything else because nothing else in the grammar
+	// starts a statement with '*'.
 	if p.peek() == '*' {
 		derefSave := p.pos
 		p.pos++
@@ -309,10 +309,10 @@ func (p *Parser) stmt() (stmt, error) {
 				if err != nil {
 					return stmt{}, err
 				}
-				// A name on the right is legal for a value binding
-				// ("os.Args = xs") and not for a field; only the
-				// compiler knows which the path is, so the rejection
-				// moved to compileFieldSet.
+				// A name on the right is legal for either target: a
+				// value binding takes one ("os.Args = xs"), and so
+				// does a field write, which compiles it against the
+				// field's type in assignedValue.
 				if !p.terminated() {
 					return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
 				}

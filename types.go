@@ -95,10 +95,8 @@ func (r *Runtime) discover(t reflect.Type, depth int) {
 	}
 }
 
-// BindType registers a type under a name, for the case a type is not
-// reachable from any binding. v is a value of the type; for an
-// interface, pass a nil pointer to it, BindType("io.Closer",
-// (*io.Closer)(nil)).
+// BindType registers a type under a name, for a type no binding reaches. v
+// is a value of the type, and a nil pointer to it for an interface.
 func (r *Runtime) BindType(name string, v any) error {
 	t := reflect.TypeOf(v)
 	if t == nil {
@@ -119,8 +117,7 @@ func (r *Runtime) BindType(name string, v any) error {
 	return nil
 }
 
-// Types lists the names a var statement can use, for working out why
-// a lookup of one fails.
+// Types lists the names a var statement can use.
 func (r *Runtime) Types() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

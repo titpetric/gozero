@@ -36,8 +36,8 @@ func TestFieldSetValueForms(t *testing.T) {
 		}
 	}
 
-	// The target's type is the check, and it is made when the program
-	// compiles.
+	// The field's type is the check: assignedValue compiles the value
+	// against it, so a mismatch fails the compile.
 	err := bvRun(t, rt, "u := parse(\"https://e.com/\")\nu.Path = 1")
 	if err == nil || !strings.Contains(err.Error(), "cannot use") {
 		t.Errorf("an int into a string field: %v", err)
@@ -52,8 +52,8 @@ func TestFieldSetValueForms(t *testing.T) {
 	}
 }
 
-// TestReturnValueForms covers the value form of return, whose
-// parameter type is its own rather than a binding's.
+// TestReturnValueForms covers the value form of return: with no bound
+// function to supply a parameter type, the value keeps its own.
 func TestReturnValueForms(t *testing.T) {
 	rt, _ := bvRuntime(t)
 	if err := rt.Bind("parse", url.Parse); err != nil {

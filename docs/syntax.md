@@ -373,9 +373,9 @@ joined := path.Join(parts...)
 
 ## Values and references
 
-`Bind` takes a func or a value. A func is called; anything else is a
-value, read in argument position like any other name and carrying
-the static type it was bound with:
+`Bind` takes a func or a value. A program calls a func; anything
+else is a value, read in argument position like any other name and
+carrying the static type the host bound it with:
 
 ```go
 rt.Bind("url.Parse", url.Parse)   // a func
@@ -401,9 +401,9 @@ t := cfg.Fn()
 ```
 
 Whether a program reaches the host is Go's rule, and the `&` at the
-`Bind` call site is the whole of the opt-in. A value is copied in,
-so the name is the program's own for the run; an address makes the
-name a `*T`, and the program writes through it:
+`Bind` call site is the whole of the opt-in. Binding a value
+copies it in, so the name is the program's own for the run; an
+address makes the name a `*T`, and the program writes through it:
 
 <table>
 <tr>
@@ -464,16 +464,16 @@ n := *p
 Nothing auto-references an argument. The one address the compiler
 takes implicitly is the receiver of a pointer-method call, which is
 the only place Go takes one too: `o := f(); o.Bump()` addresses `o`,
-and `Mutate(o)` against a `*T` parameter is a compile error until it
-is written `Mutate(&o)`.
+and `Mutate(o)` against a `*T` parameter is a compile error until
+the program writes `Mutate(&o)`.
 
 ## Slice literals
 
 `[]T{a, b}` builds a slice per evaluation, the way a Go composite
 literal allocates each time the expression runs. It stands anywhere
 a value stands - an argument, a name, the right of an assignment -
-and each element is checked against `T` the way an argument of that
-type is:
+and the compiler checks each element against `T` the way it checks
+an argument of that type:
 
 ```go
 xs := []string{"a", "b"}
@@ -481,10 +481,10 @@ assert.Equal(tb, "a/b", path.Join(xs...))
 *os.Args = []string{"1", "2", "3"}
 ```
 
-Elements are unkeyed: an index key would need the compiler to size
-the slice, and nothing in the language needs one. The type is
-spelled the way a `var` statement spells one, so it must name a type
-discovery registered.
+A slice literal takes no element keys: an index key would need the
+compiler to size the slice, and nothing in the language needs one.
+A literal spells its type the way a `var` statement spells one, so
+it must name a type discovery registered.
 
 The program in [`testdata/vars.txt`](../testdata/vars.txt) runs the
 whole surface.

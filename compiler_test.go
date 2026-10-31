@@ -284,7 +284,7 @@ func (f *testFixtures) testVariadic(tb testing.TB) {
 }
 
 // testVars mirrors the vars fixture. Every name the program reads is a
-// local here, which is what a value binding is on the other side: a
+// local here, the same shape a value binding has on the other side: a
 // copy the run owns, seeded from the value the host bound.
 func (f *testFixtures) testVars(tb testing.TB) {
 	argv := []string{"prog", "-v"}

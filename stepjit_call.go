@@ -99,7 +99,7 @@ func (c *jitCompiler) bridgeNode(call *vmCall) (node, error) {
 	}
 
 	fn, name, errIdx, spread := call.fn, call.name, call.errIdx, call.spread
-	// A dynamic callee is read like any other argument.
+	// bridgeArg reads a dynamic callee like any other argument.
 	var calleeOf func(unsafe.Pointer, context.Context, map[string]any, any) (reflect.Value, error)
 	if call.fnArg != nil {
 		g, err := c.bridgeArg(call.fnArg)
@@ -256,9 +256,9 @@ func (c *jitCompiler) bridgeArg(a *vmArg) (func(unsafe.Pointer, context.Context,
 		off, st := c.offs[field], c.types[field]
 		if a.addrOf {
 			// NewAt of the frame slot is the address the receiver
-			// wants, already typed *T. Assignability rather than
-			// identity, because the parameter may be an interface the
-			// pointer satisfies: an append binding takes an any.
+			// needs, already typed *T. The check is assignability,
+			// because the parameter may be an interface the pointer
+			// satisfies: an append binding takes an any.
 			if !reflect.PointerTo(st).AssignableTo(a.typ) {
 				return nil, fmt.Errorf("cannot use *%s as %s", st, a.typ)
 			}

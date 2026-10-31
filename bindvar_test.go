@@ -56,7 +56,7 @@ func bvRun(t *testing.T, rt *Runtime, src string) error {
 }
 
 // TestBindValueRead pins that Bind takes a value as readily as a func,
-// and the name carries the static type it was bound with.
+// and the name carries the bound value's static type.
 func TestBindValueRead(t *testing.T) {
 	rt, seen := bvRuntime(t)
 	for name, v := range map[string]any{
@@ -101,8 +101,8 @@ func TestBindValueRead(t *testing.T) {
 	}
 }
 
-// TestBindValueIsACopy is the rule a host has to know: a value is
-// copied in, so a program writing the name writes its own storage.
+// TestBindValueIsACopy is the rule a host has to know: Bind copies
+// the value in, so a program writing the name writes its own storage.
 // The copy is Go's, which is shallow, so the elements stay shared.
 func TestBindValueIsACopy(t *testing.T) {
 	rt, seen := bvRuntime(t)
@@ -131,8 +131,8 @@ func TestBindValueIsACopy(t *testing.T) {
 	if strings.Join(seen.l, ",") != "a,b" {
 		t.Errorf("a later run read %v, want the bound value", seen.l)
 	}
-	// The elements are shared either way, the same shallow copy Go
-	// makes when a slice is passed to a function.
+	// The copy shares the elements either way, the same shallow copy
+	// Go makes for a slice parameter.
 	if err := bvRun(t, rt, `pokeL(args)`); err != nil {
 		t.Fatal(err)
 	}
@@ -288,8 +288,8 @@ func TestBindRejections(t *testing.T) {
 // TestBindRebindIsNotAnUpdate pins the rule a host gets wrong: a
 // second Bind under the same name is a new binding, and neither a
 // compiled program nor the next Compile of the same source sees it,
-// because the node captured the binding and the compilation is
-// cached.
+// because the node captured the binding and the runtime caches the
+// compilation by program string.
 func TestBindRebindIsNotAnUpdate(t *testing.T) {
 	rt, seen := bvRuntime(t)
 	if err := rt.Bind("label", "first"); err != nil {

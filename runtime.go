@@ -15,6 +15,12 @@ import (
 // Runtime holds the bindings and the expression -> func cache. Create
 // one with NewRuntime, register functions with Bind, then use Eval, or
 // Compile once and Exec/Scan many times.
+//
+// A binding borrows its arguments. The runtime pools the memory behind
+// packs, boxes and literal arguments and reuses it after the call returns,
+// so a binding that keeps a received any, slice or literal pointer copies
+// it first, the way a type assertion copies a value out of its box. Plain
+// string and scalar parameters need no copy.
 type Runtime struct {
 	mu       sync.RWMutex
 	compiler Compiler
@@ -32,10 +38,7 @@ type Runtime struct {
 	origin string
 }
 
-// SetLogger attaches a logger. Discovery reports every type it
-// registers through it, at debug level, so a caller can see which
-// names a var statement may use and where each name comes
-// from.
+// SetLogger attaches the logger the runtime reports each registration to.
 func (r *Runtime) SetLogger(l *slog.Logger) {
 	r.mu.Lock()
 	r.log = l
@@ -56,16 +59,14 @@ func NewRuntime() *Runtime {
 	}
 }
 
-// Bind registers a Go function or a value under a name: a func is
-// called, a value is read and carries the static type it was bound
-// with, and an address is read and written through. The reference
-// rules are in bindvar.go.
+// Bind registers a Go function or a value under a name, and refuses a nil
+// value or a nil pointer: neither carries a type to take or a value to read.
 //
-// Arguments are borrowed. A binding that keeps a received any, slice
-// or literal pointer copies it first, the way a type assertion copies
-// a value out of its box, because the runtime pools the memory behind
-// packs, boxes and literal arguments and reuses it after the call
-// returns. Plain string and scalar parameters need no copy.
+//	rt.Bind("url.Parse", url.Parse)  // a func, called
+//	rt.Bind("io.EOF", io.EOF)        // a value, read
+//	rt.Bind("os.Args", &os.Args)     // a pointer, read and written through
+//
+// A value read through its name carries the static type Bind recorded.
 func (r *Runtime) Bind(name string, fn any) error {
 	if fn == nil {
 		return fmt.Errorf("bind: %s: cannot bind a nil value, its type is unknown", name)
@@ -105,15 +106,8 @@ func (r *Runtime) bindValue(name string, v reflect.Value) error {
 	return nil
 }
 
-// BindScope registers a group of functions under a dotted prefix, so
-// BindScope("json", map[string]any{"NewEncoder": json.NewEncoder})
-// binds json.NewEncoder. BindScope is Bind in a loop and needs no support in
-// the compiler: a dotted name is one key in the binding map, and a path
-// in the source resolves to the longest prefix that names a binding.
-//
-// BindScope sorts the names before binding so a failure reports the same entry
-// on every run. The first failure stops the loop; entries already bound
-// stay bound.
+// BindScope is Bind in a loop over a map of functions under a dotted prefix,
+// so {"NewEncoder": json.NewEncoder} under "json" binds json.NewEncoder.
 func (r *Runtime) BindScope(prefix string, fns map[string]any) error {
 	for _, name := range slices.Sorted(maps.Keys(fns)) {
 		if err := r.Bind(prefix+"."+name, fns[name]); err != nil {
@@ -210,10 +204,8 @@ func (r *Runtime) compileUncached(stmt string) (CompiledFunc, error) {
 	return r.compiler.Compile(call)
 }
 
-// Eval compiles (or reuses the cached compilation of) stmt and executes
-// it against the stack. T is the expected result type and Go cannot
-// infer it, so every call instantiates it explicitly:
-// rt.Eval[*http.Request](stmt, stack).
+// Eval compiles stmt, or reuses the cached compilation of it, and executes
+// it against the stack, returning the result as T.
 func (r *Runtime) Eval[T any](stmt string, stack map[string]any) (T, error) {
 	fn, err := r.Compile(stmt)
 	if err != nil {

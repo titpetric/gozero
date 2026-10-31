@@ -9,13 +9,15 @@ import (
 // program would unwind through the JIT's raw frame stores, so the
 // boundary turns it into an ordinary error at the point Compile hands
 // the program back.
+//
+// Error reports the recovered value, and the stack of the goroutine that
+// panicked stays on the struct for a caller that wants it.
 type PanicError struct {
 	Value any
 	Stack []byte
 }
 
-// Error reports the recovered value; the stack stays on the struct for
-// a caller that wants it.
+// Error reports the recovered value.
 func (e *PanicError) Error() string {
 	return fmt.Sprintf("exec: binding panicked: %v", e.Value)
 }

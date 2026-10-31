@@ -13,8 +13,8 @@ import (
 //
 // The element type comes from the type the literal names, not from
 // the parameter, so []string{} filling an any parameter arrives as a
-// []string. Each element is compiled against that type, which gives
-// the same literal checks an argument gets.
+// []string. compileSliceLit compiles each element against that type,
+// so an element takes the same literal checks as an argument.
 
 // compileSliceLit compiles []T{...} to the argument that builds it.
 func (c *Compiler) compileSliceLit(slots map[string]int, env map[string]reflect.Type, a arg) (*vmArg, reflect.Type, error) {

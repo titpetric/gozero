@@ -6,11 +6,11 @@ import (
 	"reflect"
 )
 
-// Value bindings in a compiled program. A name Bind registered with a
-// value is read like any other argument. A program that writes the
-// name writes its own per-run copy; writing the host's variable is
-// what "*name = v" on a bound pointer does, which is Go's rule and
-// needs nothing from this file.
+// Value bindings in a compiled program. A program reads a name Bind
+// registered with a value the way it reads any other argument. A
+// program that writes the name writes its own per-run copy; writing
+// the host's variable is what "*name = v" on a bound pointer does,
+// which is Go's rule and needs nothing from this file.
 
 // varArg resolves a dotted path against the value bindings and returns
 // the argument that reads it, with the static type. ok is false when
@@ -22,10 +22,10 @@ func (c *Compiler) varArg(path []string, addrOf bool) (a *vmArg, t reflect.Type,
 		return nil, nil, false, nil
 	}
 	t = vb.val.Type()
-	// The root is named by the binding's own prefix, not the whole
-	// path: the name is the key the per-run cell is found under, so
-	// "pv" and "pv.N" have to agree on it or a method call and a field
-	// read end up on different storage.
+	// The root carries the binding's own prefix as its name, with the
+	// field selectors stripped: that name is the map key of the per-run
+	// cell, so "pv" and "pv.N" have to agree on it or a method call and
+	// a field read land on different storage.
 	a = &vmArg{kind: vaVar, name: joinPath(path[:len(path)-len(rest)]), varv: vb.val, typ: t, iface: -1}
 	for _, seg := range rest {
 		f, deref, found := fieldOf(t, seg)
@@ -38,11 +38,12 @@ func (c *Compiler) varArg(path []string, addrOf bool) (a *vmArg, t reflect.Type,
 	if !addrOf {
 		return a, t, true, nil
 	}
-	// &name addresses the program's per-run copy, which
-	// materializeVarCells creates once the program is assembled. A
-	// program may append to that copy, sort it or write through it,
-	// and the host's variable keeps the header it had. Reaching the
-	// host is what binding an address and writing "*name = v" does.
+	// &name addresses the program's per-run copy, the slot
+	// materializeVarCells adds while compileProgram assembles the
+	// program. A program may append to that copy, sort it or write
+	// through it, and the host's variable keeps the header it had.
+	// Reaching the host is what binding an address and writing
+	// "*name = v" does.
 	a.addrOf = true
 	a.typ = reflect.PointerTo(t)
 	return a, a.typ, true, nil
@@ -80,11 +81,12 @@ func (p *vmProgram) argRoots() []*vmArg {
 // materializeVarCells rewrites every addressed or assigned value
 // binding into a per-run slot seeded from the bound value.
 //
-// The copy is per run rather than one copy the binding holds. A
-// compiled program keeps no per-run state, so two concurrent Execs
-// must not see each other's writes and a second run must not start
-// from what the first one appended. A host that wants storage
-// outliving the run binds &v and the program writes "*name = v".
+// The prologue of each run allocates the copy from p.inits, and the
+// binding keeps the read-only value Bind registered. A compiled
+// program keeps no per-run state, so two concurrent Execs must not
+// see each other's writes and a second run must not start from what
+// the first one appended. A host that wants storage outliving the
+// run binds &v and the program writes "*name = v".
 //
 // One cell per binding name per program, so two &os.Args address the
 // same storage the way two &x do in Go.
@@ -206,19 +208,20 @@ func derefArg(src *vmArg, t reflect.Type, name string) (*vmArg, reflect.Type, er
 }
 
 // vmVarSet is a compiled write to a value binding: "os.Args = xs", or
-// "*p = v" where p is a pointer. Exactly one of the two destinations
-// is set, and which one says where the write lands:
+// "*p = v" where p is a pointer. compileVarSet and compileDerefSet
+// fill exactly one of the two destinations, and which one says where
+// the write lands:
 //
 //   - dst, the program's per-run cell, for "name = v"
 //   - via, the pointee of a pointer the program holds, for "*p = v"
 type vmVarSet struct {
 	val  *vmArg
 	name string // for diagnostics
-	// via is the pointer whose pointee is written, produced per run.
+	// via holds the pointer apply writes through, evaluated per run.
 	via *vmArg
-	// dst is the per-run cell of a value binding. It is a vaVar when
-	// the program compiles and materializeVarCells rewrites it to the
-	// cell's slot, the same rewrite every read of the name gets.
+	// dst is the per-run cell of a value binding. compileVarSet builds
+	// it as a vaVar and materializeVarCells rewrites it to the cell's
+	// slot, the same rewrite every read of the name gets.
 	dst *vmArg
 }
 
@@ -273,9 +276,9 @@ func (c *Compiler) compileVarSet(slots map[string]int, env map[string]reflect.Ty
 		return nil, fmt.Errorf("compile: %s is not a value binding", joinPath(path))
 	}
 	name := joinPath(path)
-	// The target is built as the same vaVar chain a read of the name
-	// compiles to, so materializeVarCells rewrites both to the one
-	// cell and a read after the write sees what was written.
+	// The target repeats the vaVar chain a read of the name compiles
+	// to, so materializeVarCells rewrites both to the one cell and a
+	// read after the write sees what the write stored.
 	dst := &vmArg{kind: vaVar, name: joinPath(path[:len(path)-len(rest)]), varv: vb.val, typ: vb.val.Type(), iface: -1}
 	t := dst.typ
 	for _, seg := range rest {

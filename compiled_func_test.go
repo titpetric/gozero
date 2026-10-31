@@ -206,7 +206,7 @@ func assertTrue(tb any, value bool, message string) {
 
 // copyBoxed, the binding contract's copy for a borrowed any, is in
 // append.go: Append needs it for an interface element, and a recorder
-// that keeps what it was handed needs the same thing.
+// that keeps the any it receives needs the same thing.
 
 type fixtureCtxKey struct{}
 
@@ -262,11 +262,11 @@ func fixtureRuntime(tb testing.TB) *Runtime {
 	}); err != nil {
 		tb.Fatal(err)
 	}
-	// The values the vars fixture reads and writes. argv and cursor
-	// are bound by address, so the fixture writes them through "*name
-	// = v" and reads the writes back; they are per-runtime, so the
-	// writes are visible to this subtest and nothing else. time.Hour,
-	// io.EOF and frozen are bound by value: a program reads them and
+	// The values the vars fixture reads and writes. The loop binds
+	// argv and cursor by address, so the fixture writes them through
+	// "*name = v" and reads the writes back; they are per-runtime, so
+	// the writes reach this subtest and nothing else. It binds
+	// time.Hour, io.EOF and frozen by value: a program reads them and
 	// writes its own copy for the run.
 	argv := []string{"prog", "-v"}
 	cursor := 0

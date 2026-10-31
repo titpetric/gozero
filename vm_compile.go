@@ -159,8 +159,8 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 			continue
 		}
 
-		// A bare name on the left of "=" is a value binding when one
-		// is registered under it; every other bare name is a program
+		// A bare name on the left of "=" is a value binding when Bind
+		// registered one under it; every other bare name is a program
 		// slot and falls through.
 		if len(s.lhs) == 1 && !s.define {
 			if _, ok := c.vars[s.lhs[0]]; ok {
@@ -313,11 +313,12 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 		p.stmts = append(p.stmts, vmStmt{call: call, out: out, ret: s.ret})
 	}
 
-	// Addressed and assigned bindings get their per-run cells before the
-	// frame is laid out, because a cell is a slot and slots are what
-	// the frame is made of. A runtime with no value bindings cannot
-	// have produced one, and the walk is skipped rather than allocated
-	// for: parse and compile are on a measured allocation budget.
+	// Addressed and assigned bindings get their per-run cells before
+	// assignFrame lays out the frame, because a cell is a slot and
+	// slots make up the frame. A runtime with no value bindings cannot
+	// have produced one, so the guard skips the walk and allocates
+	// nothing for it: parse and compile are on a measured allocation
+	// budget.
 	if len(c.vars) > 0 {
 		roots := p.argRoots()
 		p.markVarCells(roots)
@@ -400,7 +401,7 @@ func (p *vmProgram) assignArg(a *vmArg) {
 	}
 }
 
-// resultType is the static type of the i'th non-error result.
+// resultType returns the i'th non-error result's static type.
 func (c *Compiler) resultType(call *vmCall, i int) reflect.Type {
 	ft := call.ft
 	n := 0

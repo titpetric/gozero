@@ -62,9 +62,8 @@ func (s *Statement) release(p *[]reflect.Value) {
 	s.pool.Put(p)
 }
 
-// Func returns the constructed closure over the Statement: the JIT'd
-// direct call when the binding fits a shape, otherwise the reflect
-// path. This is the value Runtime.Compile caches.
+// Func returns the constructed closure over the Statement: the JIT'd direct
+// call when the binding fits a shape, otherwise the reflect path.
 func (s *Statement) Func() CompiledFunc {
 	if s.fast != nil {
 		return s.fast

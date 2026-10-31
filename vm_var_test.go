@@ -9,7 +9,7 @@ import (
 // TestVarArgResolution covers the resolver directly: the longest
 // dotted prefix wins, field selectors continue from there, and an
 // address is legal on any of them because it addresses the program's
-// own cell rather than the host's storage.
+// own cell and leaves the host's storage alone.
 func TestVarArgResolution(t *testing.T) {
 	type inner struct{ Name string }
 	type outer struct {
@@ -43,8 +43,8 @@ func TestVarArgResolution(t *testing.T) {
 		t.Errorf("cfg.Nope: ok=%v err=%v, want a resolved name with an error", ok, err)
 	}
 
-	// A path naming nothing is a miss, which leaves it to the other
-	// resolvers rather than failing the compile here.
+	// A path naming nothing is a miss with no error, which leaves the
+	// path to the other resolvers.
 	if _, _, ok, err := c.varArg([]string{"absent"}, false); ok || err != nil {
 		t.Errorf("absent: ok=%v err=%v, want a clean miss", ok, err)
 	}
@@ -64,8 +64,8 @@ func TestVarArgResolution(t *testing.T) {
 	}
 }
 
-// TestDerefArg pins the static half of the pointer read: a non-pointer
-// operand is refused when the program compiles.
+// TestDerefArg pins the static half of the pointer read: derefArg
+// refuses a non-pointer operand when the program compiles.
 func TestDerefArg(t *testing.T) {
 	src := &vmArg{kind: vaConst, iface: -1}
 	if _, _, err := derefArg(src, reflect.TypeFor[int](), "n"); err == nil {
@@ -83,8 +83,8 @@ func TestDerefArg(t *testing.T) {
 	}
 }
 
-// TestVarSetNilPointer covers the run-time half of "*p = v": a nil
-// pointer is an error rather than a crash.
+// TestVarSetNilPointer covers the run-time half of "*p = v": apply
+// reports a nil pointer as an error and never panics.
 func TestVarSetNilPointer(t *testing.T) {
 	var p *int
 	vs := &vmVarSet{
