@@ -10,8 +10,8 @@ jump, no program-counter housekeeping, one path per outcome.
 
 This document answers whether that differs from a jump. It does not: the
 proposal is a jump with the program duplicated behind it. The
-transformation has a name, and the literature carries the experiment and
-its numbers.
+transformation has a name. The literature holds the experiment and its
+numbers.
 
 ## What it already is
 
@@ -31,8 +31,8 @@ The transformation that does remove a branch is the opposite one.
 **If-conversion** (Allen, Kennedy, Porterfield and Warren, *Conversion
 of Control Dependence to Data Dependence*, POPL 1983) turns a control
 dependence into a data dependence: both arms run and the code keeps one
-result. It merges paths where tail duplication splits them, and it pays
-when both arms are a few instructions.
+result. It merges paths where tail duplication splits them. It pays when
+both arms are a few instructions.
 
 **Predication** is the hardware mechanism the same idea reaches for on
 an ISA that carries one: an instruction takes a predicate operand and
@@ -74,13 +74,13 @@ in the body the path count is n·2^k. The options are a back edge, which
 is a jump; unrolling to a static bound with a residual loop, which still
 has a jump; or generating steps at run time, which is a trace JIT. Even
 bounded, the first condition inside the loop has to rejoin a shared
-continuation, and that rejoin is the assignment the proposal set out to
+continuation. That rejoin is the assignment the proposal set out to
 remove.
 
 **The duplicates carry one bit.** Each copy records "this condition
 held". That is worth code only if something downstream re-tests it. If
-nothing does, the copies are bloat, and that is exactly the criterion a
-version limit encodes.
+nothing does, the copies are bloat. A version limit encodes that same
+criterion.
 
 **Hardware caps the payoff before any of this.** The branch in question
 is a conditional branch on a condition that leans one way in most
@@ -91,7 +91,7 @@ the indirect dispatch branch well at modest working sets. Zheng and
 Sasaki (IEEE CAL 2026) bound what remains: removing 73.7% of CPython's
 bytecode-jump mispredictions bought 3.2% harmonic-mean IPC.
 
-Duplication has one measured win, and it lands on the dispatch tail.
+Duplication has one measured win. It lands on the dispatch tail.
 Clang lowers a computed goto to a shared indirect branch and then
 tail-duplicates the dispatch back into every opcode handler; when LLVM
 19 stopped doing that, CPython lost around 9 to 11%. Duplicating the
@@ -102,7 +102,7 @@ program's paths is worth nothing.
 
 Equality needs no builtin and no case. `bool` is a layout class, so a
 binding that returns one reaches the direct tier as a load of a single
-byte, and a host writes it in one line. `reflect.DeepEqual` is the
+byte. A host writes it in one line. `reflect.DeepEqual` is the
 general form; `assertEqual` in the test tree shows the cheaper one,
 comparing two comparable values as interfaces and keeping `DeepEqual`
 for the rest.
@@ -159,8 +159,8 @@ threaded code (TOPLAS 29(6), 2007). This is the cheapest real win in the
 literature and it fits a flat statement slice directly.
 
 **Remove the remaining reflect on bridged calls.** A call outside the
-shape table bridges, and the bridge carries reflect's per-argument cost
-on a path where nothing else does. Widening the shape table is what
+shape table bridges. The bridge pays reflect's per-argument cost on a
+path where nothing else does. Widening the shape table is what
 `prep/3-shapes` does and it needs no new concepts.
 
 **Quickening and type specialisation.** Brunthaler measured a 1.4x

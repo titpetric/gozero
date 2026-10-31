@@ -39,7 +39,7 @@ this whole document, so the table sets them side by side.
 | **a type parameter** | **nothing** | **-** |
 
 Binding covers every row but the last. A host exposes a func, a value, a
-pointer, a method, a field and a type, and a program reads all six. A
+pointer, a method, a field and a type; a program reads all six. A
 program declares nothing of its own, so a host owns every type, which
 costs a program nothing it misses.
 
@@ -98,9 +98,9 @@ Admitting a type in argument position changes the shape of the grammar.
 The backends are the easy half - `reflect.MakeSlice` already runs for
 slice literals and `unsafeNew` already runs for frames.
 
-`panic` and `recover` already have a mechanism, and that mechanism is
-not a call. `guard` turns any panic into a `*PanicError`, and the
-non-nil trailing error is the language's only conditional. A program
+`panic` and `recover` already have a mechanism, which is not a call.
+`guard` turns any panic into a `*PanicError`, and a non-nil trailing
+error is the language's only conditional. A program
 that could recover would need somewhere to put the branch.
 
 `len` and `cap` of an array are constants in Go, with no runtime
@@ -117,8 +117,8 @@ what the compiler could have refused. The result has nowhere to go:
 reaches the bridge, so the call carries reflect's cost on a path where
 every other call runs on the direct tier.
 
-The cost of the compiler-case form is six places per builtin, and they
-are the same six every time: a branch at the head of `compileExpr`, a
+The cost of the compiler-case form is six places per builtin, the same
+six every time: a branch at the head of `compileExpr`, a
 kind in `vmArgKind`, an arm in `vmArg.get`, an arm in `assignArg` if the
 kind has children, a case or a refusal in `planInline`, and a node in
 `argNode` or `stmtNode`.
@@ -155,9 +155,9 @@ Two totals come out of that table. The five cheap cases, `len`, `cap`,
 360 test lines, over one shared insertion point. Every case this
 document recommends or allows, which adds `delete`, `min`, `max`,
 `make` and `new` and leaves out the three it declines, runs 690 to 1150
-non-test and 630 to 1010 test. `make` and `new` carry the grammar change
-inside their own figures, and they share it, so doing both costs less
-than the two rows added together.
+non-test and 630 to 1010 test. `make` and `new` hold the grammar change
+inside their own figures and share it, so doing both costs less than the
+two rows added together.
 
 `len` and `cap` are the cheapest and the most used. Both are nearly free
 on the direct tier: `sliceHdr` already carries a length and a capacity,
@@ -202,7 +202,7 @@ would have accepted it. This is the only part of this document worth
 doing on its own.
 
 **Wait for the type argument.** `make` and `new` wait on the grammar
-admitting a type in argument position, and so does a slice literal whose
+admitting a type in argument position. So does a slice literal whose
 element type no binding has named. Three features turn on the same
 change. That argues for one grammar change, made on its own terms.
 

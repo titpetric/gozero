@@ -279,8 +279,8 @@ removes the split and keeps the join.
 The ABI category of a type: pointer-shaped (one word), string (two
 words), interface (two words), slice (three words), or one scalar
 class per width. Two types in the same layout class pass through
-registers identically, and that lets one shape-table entry
-serve every function with the same class signature. `bool` is a
+registers identically, so one shape-table entry serves
+every function with the same class signature. `bool` is a
 scalar class, so a binding returning one reaches the direct tier as
 a one-byte load. `layout` is a closed enum. Every scalar switch in
 the tree covers each of its classes, so a type that fits no existing
