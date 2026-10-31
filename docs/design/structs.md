@@ -55,8 +55,8 @@ line-oriented parser still grows its first block.
 
 **Declared types have no name at the reflect layer.** `StructOf`
 returns an unnamed type: `%T` prints
-`struct { X int64; Y int64 }`, and so would every compile and
-execution error that mentions the type. The compiler can alias the
+`struct { X int64; Y int64 }`. Every compile and execution error that
+mentions the type prints it the same way. The compiler can alias the
 declared name in its own registry and error text, but the name
 never reaches reflect, a host-side type switch, or a stack trace.
 The type system today is `reflect.Type` end to end; declarations
@@ -121,8 +121,8 @@ boxed, and the map kinds have no composite-literal syntax in the
 grammar either.
 
 **A type-construction binding.** `mkstruct("X", "int64", ...)`
-cannot work: the compiler needs the type while the program compiles,
-and a binding runs after.
+cannot work: the compiler needs the type while the program compiles.
+A binding runs after.
 
 ## In other imperative settings
 

@@ -54,7 +54,7 @@ the default build and two under at `-l`.
 ## What the difference says
 
 Disabling inlining roughly doubles both columns: most of every
-fixture's time goes to shared work in fmt and net/*, and that work
+fixture's time goes to shared work in fmt and net/*. That work
 inflates equally on both sides. The ratios still move, in two
 directions.
 

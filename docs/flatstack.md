@@ -150,8 +150,8 @@ in [overheads.md](overheads.md) shows 6 against 6, which is true only under
 compiler proves the cookie slice does not outlive the `Encode` call and
 keeps it on the stack; the JIT hands that value to a func it
 reinterpreted and has to treat it as escaping. The budget is thus
-native plus one, with the reason written next to it, and that one
-allocation is the floor for this design.
+native plus one, with the reason written next to it. That one allocation
+is the floor for this design.
 
 ## What did not port: the type switch
 
@@ -199,8 +199,8 @@ the aliasing, failed on the first run of the new code.
 - Clear a pooled buffer to capacity, not length; the leak passes every
   test.
 - Publish the tier gate. `Supports` stops a benchmark or an
-  equivalence test measuring an accidental fallback, and it should say
-  why, not only whether.
+  equivalence test measuring an accidental fallback. It should say why,
+  not only whether.
 - A fast path must keep the panic boundary, and the boundary should
   cover every tier by construction: `Compile` wraps what it returns.
 - Put an allocation ceiling in the test suite; it found the one

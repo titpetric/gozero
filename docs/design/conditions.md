@@ -43,8 +43,8 @@ is small.
 **The grammar stops being line-oriented.** A statement is today
 one line, closed by EOL; the parser has no nesting. Blocks bring
 brace tracking, multi-line statements, and a statement tree where
-there is now a flat list. The design avoids this parsing extension,
-and the extension does not stop at `if`: `else`, `else if`
+there is now a flat list. The design avoids this parsing extension.
+Nor does the extension stop at `if`: `else`, `else if`
 and nesting come with the syntax, or the language ships a visibly
 incomplete `if`.
 
@@ -89,7 +89,7 @@ if strings.Contains(host, ":") { ... }
 ```
 
 This stays inside the current design: `eq` is a binding, typed by its
-signature, and the AST holds a call it already knows how to compile.
+signature, so the AST holds a call it already knows how to compile.
 The cons:
 
 - `eq(x, 5)` is legal Go, but Go writes `x == 5`; every comparison
@@ -152,8 +152,8 @@ problem.
 
 An `if` restricted to bool names and bool calls is implementable on
 every tier and stays a strict Go subset. It costs the line-oriented
-grammar, the single-exit control contract, part of the aliasing
-optimization, and it immediately raises the operand question that
+grammar, the single-exit control contract, and part of the aliasing
+optimization. It also raises at once the operand question that
 [expressions.md](expressions.md) declines to solve. The guard-binding
 pattern covers the dominant real use (middleware abort) with zero
 language change, and is where this design stops.

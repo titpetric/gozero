@@ -3,11 +3,11 @@ title: Type binding, hydration and discovery
 date: "2026-09-05T17:44:56+02:00"
 ---
 
-The VM calls the Go functions the host binds. Those functions have types, and
-a program has to be able to name them: `var x int64` needs `int64`, and
-`var r *http.Request` needs a type the host never mentioned except as a
-return value. This is how those names get into the runtime and what
-happens to them at compile and execution time.
+The VM calls the Go functions the host binds. Those functions have
+types. A program has to be able to name them: `var x int64` needs
+`int64`, and `var r *http.Request` needs a type the host never
+mentioned except as a return value. This is how those names get into
+the runtime and what happens to them at compile and execution time.
 
 Binding a function is the only step a
 caller normally takes; everything the signature implies follows from it.
