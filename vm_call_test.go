@@ -373,9 +373,9 @@ func TestMethodSetsOnValueBindings(t *testing.T) {
 	}
 }
 
-// TestCallThroughAFuncValue covers a callee that is a value rather
-// than a binding: a func-typed name, a func-typed field, and a func
-// bound under a name.
+// TestCallThroughAFuncValue covers a callee the value registry
+// answers: a func-typed name, a func-typed field, and a func bound
+// under a name.
 func TestCallThroughAFuncValue(t *testing.T) {
 	rt, seen := bvRuntime(t)
 	for name, v := range map[string]any{

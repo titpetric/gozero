@@ -8,9 +8,9 @@ import (
 )
 
 // TestVarNodeTiers pins which value reads the direct tier takes. A
-// read is one load from a fixed address; a write is not in the table
-// and must send the program to the reflect evaluator whole rather
-// than lose the statement.
+// read is one load from a fixed address. A write falls outside the
+// table, and the whole program then goes to the reflect evaluator,
+// which keeps the statement.
 func TestVarNodeTiers(t *testing.T) {
 	rt := NewRuntime()
 	count := 0

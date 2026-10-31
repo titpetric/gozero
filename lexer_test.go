@@ -199,10 +199,13 @@ func TestAssignNameToName(t *testing.T) {
 }
 
 // TestParseAllocBudget stops the parse and compile cost creeping
-// silently: it moved 1088 to 1256 to 1416 B/op across three grammar
-// expansions with nothing watching. Measured 29 allocations; the
-// ceiling is that plus headroom for one small feature. It sets no
-// target.
+// silently. Three grammar expansions raised the per-operation byte
+// count twice over with no check watching:
+//
+//	1088 B/op -> 1256 B/op -> 1416 B/op
+//
+// Measured 29 allocations; the ceiling is that plus headroom for one
+// small feature. It sets no target.
 func TestParseAllocBudget(t *testing.T) {
 	rt, _ := litRuntime(t)
 	const src = `return http.NewRequest("GET", url);`

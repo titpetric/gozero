@@ -73,8 +73,8 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 			methods = rest
 			if len(rest) == 0 && len(e.chain) == 0 {
 				// The name itself is the callee: a func bound as a
-				// value, reached through the value registry rather
-				// than the func one.
+				// value, which the value registry answers and the
+				// func registry does not hold.
 				call, err := c.callThrough(slots, env, recv, currType, joinPath(e.path), e.args)
 				if err != nil {
 					return nil, nil, err

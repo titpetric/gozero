@@ -127,8 +127,8 @@ func scalarRuntime(t *testing.T) *Runtime {
 }
 
 // TestPtrScalarShapesJIT pins the func(*T) scalar family, which had no
-// binding of that shape anywhere in the suite: every width goes
-// through ptrScalarCall, floats through pF and the rest through pN.
+// binding of that shape anywhere in the suite: ptrScalarCall takes
+// every width, pF takes the floats and pN takes the rest.
 func TestPtrScalarShapesJIT(t *testing.T) {
 	rt := scalarRuntime(t)
 	for name, tc := range map[string]struct {
