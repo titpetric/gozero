@@ -24,8 +24,8 @@ func (c *Compiler) varArg(path []string, addrOf bool) (a *vmArg, t reflect.Type,
 	t = vb.val.Type()
 	// The root carries the binding's own prefix as its name, with the
 	// field selectors stripped: that name is the map key of the per-run
-	// cell, so "pv" and "pv.N" have to agree on it or a method call and
-	// a field read land on different storage.
+	// cell. "pv" and "pv.N" have to agree on it or a method call and a
+	// field read land on different storage.
 	a = &vmArg{kind: vaVar, name: joinPath(path[:len(path)-len(rest)]), varv: vb.val, typ: t, iface: -1}
 	for _, seg := range rest {
 		f, deref, found := fieldOf(t, seg)
@@ -82,14 +82,14 @@ func (p *vmProgram) argRoots() []*vmArg {
 // binding into a per-run slot seeded from the bound value.
 //
 // The prologue of each run allocates the copy from p.inits, and the
-// binding keeps the read-only value Bind registered. A compiled
-// program keeps no per-run state, so two concurrent Execs must not
-// see each other's writes and a second run must not start from what
-// the first one appended. A host that wants storage outliving the
+// binding keeps the read-only value Bind registered. Because a
+// compiled program keeps no per-run state, two concurrent Execs must
+// not see each other's writes and a second run must not start from
+// what the first one appended. A host that wants storage outliving the
 // run binds &v and the program writes "*name = v".
 //
-// One cell per binding name per program, so two &os.Args address the
-// same storage the way two &x do in Go.
+// One cell per binding name per program. Two &os.Args address the same
+// storage the way two &x do in Go.
 func (p *vmProgram) materializeVarCells(args []*vmArg) {
 	var walk func(a *vmArg)
 	walk = func(a *vmArg) {
@@ -99,7 +99,12 @@ func (p *vmProgram) materializeVarCells(args []*vmArg) {
 		switch a.kind {
 		case vaField, vaDeref:
 			walk(a.src)
-		case vaStruct:
+		case vaStruct, vaSlice:
+			// Both kinds hold their elements in elems. This walk
+			// reaches both. While it named only the composite literal,
+			// a binding read from inside a slice literal kept pointing
+			// at the bound value while a write to the same name reached
+			// the cell, and the program saw its own write undone.
 			for i := range a.elems {
 				walk(a.elems[i].val)
 			}
@@ -125,9 +130,9 @@ func (p *vmProgram) materializeVarCells(args []*vmArg) {
 				p.varSlots[a.name] = slot
 			}
 			p.addrTaken[slot] = true
-			// Reads of the name come from the cell too, so a program
-			// that appends through &name sees the longer slice when it
-			// reads name afterwards.
+			// Because reads of the name come from the cell too, a
+			// program that appends through &name sees the longer slice
+			// when it reads name afterwards.
 			a.kind = vaSlot
 			a.slot = slot
 			a.varv = reflect.Value{}
@@ -139,8 +144,8 @@ func (p *vmProgram) materializeVarCells(args []*vmArg) {
 }
 
 // markVarCells records which binding names the program addresses or
-// assigns anywhere, so every occurrence of one shares the cell rather
-// than only the addressed occurrences moving into it. A write is a
+// assigns anywhere. Every occurrence of a recorded name then shares
+// the cell, including the occurrences that only read it. A write is a
 // reason on its own: "os.Args = xs" needs the cell even when the
 // program never writes &os.Args.
 func (p *vmProgram) markVarCells(args []*vmArg) {
@@ -174,7 +179,7 @@ func (p *vmProgram) markAddressed(args []*vmArg) {
 		switch a.kind {
 		case vaField, vaDeref:
 			walk(a.src, addressed)
-		case vaStruct:
+		case vaStruct, vaSlice:
 			for i := range a.elems {
 				walk(a.elems[i].val, false)
 			}
@@ -267,18 +272,18 @@ func (vs *vmVarSet) apply(ctx context.Context, slots, frame []reflect.Value, ifa
 
 // compileVarSet compiles an assignment whose target is a value
 // binding. It writes the program's per-run cell, the same storage
-// &name addresses, so the name shadows the binding for the run the
-// way a local shadows an outer name in Go. A program reaches the
-// host by writing through a bound pointer, "*name = v".
+// &name addresses. The name shadows the binding for the run the way a
+// local shadows an outer name in Go. A program reaches the host by
+// writing through a bound pointer, "*name = v".
 func (c *Compiler) compileVarSet(slots map[string]int, env map[string]reflect.Type, path []string, s stmt) (*vmVarSet, error) {
 	vb, rest, ok := c.varOf(path)
 	if !ok {
 		return nil, fmt.Errorf("compile: %s is not a value binding", joinPath(path))
 	}
 	name := joinPath(path)
-	// The target repeats the vaVar chain a read of the name compiles
-	// to, so materializeVarCells rewrites both to the one cell and a
-	// read after the write sees what the write stored.
+	// Because the target repeats the vaVar chain a read of the name
+	// compiles to, materializeVarCells rewrites both to the one cell
+	// and a read after the write sees what the write stored.
 	dst := &vmArg{kind: vaVar, name: joinPath(path[:len(path)-len(rest)]), varv: vb.val, typ: vb.val.Type(), iface: -1}
 	t := dst.typ
 	for _, seg := range rest {
@@ -296,9 +301,9 @@ func (c *Compiler) compileVarSet(slots map[string]int, env map[string]reflect.Ty
 	return &vmVarSet{dst: dst, val: val, name: name}, nil
 }
 
-// compileDerefSet compiles "*p = v". The pointer comes from a program
-// name or a value binding, so the destination is only known per run
-// and travels as via.
+// compileDerefSet compiles "*p = v". Because the pointer comes from a
+// program name or a value binding, the destination is only known per
+// run and travels as via.
 func (c *Compiler) compileDerefSet(slots map[string]int, env map[string]reflect.Type, path []string, s stmt) (*vmVarSet, error) {
 	name := "*" + joinPath(path)
 	ptr, pt, err := c.pathValue(slots, env, path)

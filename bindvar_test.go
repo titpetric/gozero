@@ -10,8 +10,8 @@ import (
 )
 
 // bvRuntime binds the recorders every case in this file reads its
-// result through, so a program's effect is observable without a
-// return value.
+// result through. A program's effect is observable without a return
+// value.
 func bvRuntime(t *testing.T) (*Runtime, *bvSeen) {
 	t.Helper()
 	seen := &bvSeen{}
@@ -26,6 +26,12 @@ func bvRuntime(t *testing.T) (*Runtime, *bvSeen) {
 		"pokeL":   func(v []string) error { v[0] = "poked"; return nil },
 		"setL":    func(p *[]string) error { *p = []string{"replaced"}; return nil },
 		"bump":    func(p *int) error { *p++; return nil },
+		"bumpAll": func(ps []*int) error {
+			for _, p := range ps {
+				*p++
+			}
+			return nil
+		},
 		"append":  Append,
 		"delete":  Delete,
 		"lenM":    func(m map[string]int) error { seen.n = len(m); return nil },
@@ -55,8 +61,8 @@ func bvRun(t *testing.T, rt *Runtime, src string) error {
 	return err
 }
 
-// TestBindValueRead pins that Bind takes a value as readily as a func,
-// and the name carries the bound value's static type.
+// TestBindValueRead pins that Bind takes a value as readily as a func.
+// The name carries the bound value's static type.
 func TestBindValueRead(t *testing.T) {
 	rt, seen := bvRuntime(t)
 	for name, v := range map[string]any{
@@ -94,7 +100,7 @@ func TestBindValueRead(t *testing.T) {
 		t.Errorf("io.EOF = %v", seen.e)
 	}
 
-	// The type check is the binding's, and it happens at compile time.
+	// The type check is the binding's. It happens at compile time.
 	err := bvRun(t, rt, `recordN(time.Hour)`)
 	if err == nil || !strings.Contains(err.Error(), "cannot use time.Duration as int") {
 		t.Fatalf("want a compile-time type error, got %v", err)
@@ -102,8 +108,8 @@ func TestBindValueRead(t *testing.T) {
 }
 
 // TestBindValueIsACopy is the rule a host has to know: Bind copies
-// the value in, so a program writing the name writes its own storage.
-// The copy is Go's, which is shallow, so the elements stay shared.
+// the value in. A program writing the name writes its own storage.
+// Go's copy is shallow, which leaves the elements shared.
 func TestBindValueIsACopy(t *testing.T) {
 	rt, seen := bvRuntime(t)
 	host := []string{"a", "b"}
@@ -142,8 +148,8 @@ func TestBindValueIsACopy(t *testing.T) {
 }
 
 // TestBindPointerReachesTheHost covers the opt-in: a bound address is
-// a *T, and the program writes the host through it. No API says so;
-// the & at the Bind call site does.
+// a *T. The program writes the host through it. No API says so; the &
+// at the Bind call site does.
 func TestBindPointerReachesTheHost(t *testing.T) {
 	rt, seen := bvRuntime(t)
 	host := []string{"a", "b"}
@@ -162,7 +168,7 @@ func TestBindPointerReachesTheHost(t *testing.T) {
 	if strings.Join(seen.l, ",") != "a,b" {
 		t.Errorf("*args read as %v", seen.l)
 	}
-	// *name = v writes the host, and a literal is a legal value.
+	// *name = v writes the host. A literal is a legal value.
 	if err := bvRun(t, rt, `*args = []string{"1", "2", "3"}`); err != nil {
 		t.Fatal(err)
 	}
@@ -343,5 +349,58 @@ func TestDeleteBinding(t *testing.T) {
 	}
 	if _, ok := m["a"]; ok {
 		t.Error("the host's map still holds a")
+	}
+}
+
+// TestVarCellInsideSliceLiteral pins the per-run cell against a read
+// from inside a slice literal.
+//
+// A slice literal holds its elements in the same field a composite
+// literal uses, and the two cell passes walked only the composite one.
+// A write to a binding reached the cell while a read of the same name
+// from inside a slice literal still reached the bound value. The
+// program saw its own write undone.
+func TestVarCellInsideSliceLiteral(t *testing.T) {
+	rt, seen := bvRuntime(t)
+	if err := rt.Bind("cfg", "orig"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := bvRun(t, rt, "cfg = \"new\"\nrecordL([]string{cfg})"); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen.l) != 1 || seen.l[0] != "new" {
+		t.Errorf("a read inside a slice literal saw %v, want [new]", seen.l)
+	}
+
+	// The control: the same write read through a plain argument. Both
+	// paths have to agree, or one of them is reading the wrong storage.
+	rt2, seen2 := bvRuntime(t)
+	if err := rt2.Bind("cfg", "orig"); err != nil {
+		t.Fatal(err)
+	}
+	if err := bvRun(t, rt2, "cfg = \"new\"\nrecordS(cfg)"); err != nil {
+		t.Fatal(err)
+	}
+	if seen2.s != "new" {
+		t.Errorf("a plain read saw %q, want new", seen2.s)
+	}
+}
+
+// TestVarAddressInsideSliceLiteral pins the other half of the same
+// gap: an address taken inside a slice literal has to mark the cell.
+// Without the mark, the argument's type says pointer and the value
+// behind it holds the bound value.
+func TestVarAddressInsideSliceLiteral(t *testing.T) {
+	rt, seen := bvRuntime(t)
+	if err := rt.Bind("n", 1); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := bvRun(t, rt, "bumpAll([]*int{&n})\nrecordN(n)"); err != nil {
+		t.Fatal(err)
+	}
+	if seen.n != 2 {
+		t.Errorf("the host saw %d, want 2", seen.n)
 	}
 }
