@@ -287,7 +287,7 @@ u.Path = "/rewritten"
 
 `T{}` and `&T{}` build structs, keyed or positional, nested, with
 calls as elements and a trailing comma allowed, as in Go. Every run
-builds the value fresh, and the value is addressable, so its fields assign
+builds the value fresh. The value is addressable, so its fields assign
 afterwards. The type name is any type discovery registered
 (`testdata/structs.txt`):
 

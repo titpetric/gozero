@@ -62,8 +62,8 @@ runtime binds a fixed shape instead:
 "Equal": assertEqual // func(tb any, want, got any, message string)
 ```
 
-Every parameter has a layout class, so an assertion is one direct call,
-and the message stays optional because every trailing argument is:
+Every parameter has a layout class, so an assertion is one direct call.
+The message stays optional because every trailing argument is:
 `assert.Equal(tb, want, got)` zero-fills it to `""`. `tb` has type
 `any`, and the helper asserts it to `testing.TB`, which keeps
 `testing` out of the runtime's own types.
@@ -99,7 +99,7 @@ context from `tb.Context()` on both sides. All seven fixtures run
 fully on the direct-call tier, structs since composite literals landed
 on it ([changelog](changelog.md)). The measurements live in
 [inlining.md](inlining.md): table 1 is the default build, table 2 the
-build with inlining disabled, and that page describes the method (best
+build with inlining disabled. That page describes the method (best
 of three fixed-count runs) once.
 
 Two pools produce the allocation columns of those tables. The frame

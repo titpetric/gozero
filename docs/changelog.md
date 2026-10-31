@@ -198,7 +198,7 @@ receiver resolves to the variable's real address - on the direct
 tier the frame slot's offset, with no load at all, and a method that
 writes through its receiver writes the program's variable. The reflect
 tier stores a slot whose address a method takes through an addressable
-cell, the planner never splices such a slot away, and it does not
+cell. The planner never splices such a slot away and never lets it
 back an aliased interface argument, the same hazard class as a
 rewritten slot. The existing fixture benchmarks keep their numbers: the
 checks run at compile time.
@@ -336,7 +336,7 @@ r = &http.Request{URL: url.Parse("http://h/c")};  a call as a value
 The literal works wherever a value does: assigned to a name, passed
 as an argument, written to a field, returned. Every run of the compiled
 program builds the value fresh, matching Go's per-evaluation
-allocation, and the value is addressable, so later statements can
+allocation. The value is addressable, so later statements can
 assign its fields:
 
 ```

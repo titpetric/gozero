@@ -121,8 +121,8 @@ per-call reflection with direct calls through the shape table.
 The ABI category of a type: pointer-shaped (one word), string (two
 words), interface (two words), slice (three words), or one scalar
 class per width. Two types in the same layout class pass through
-registers identically, and that lets one shape-table entry
-serve every function with the same class signature.
+registers identically, so one shape-table entry serves every
+function with the same class signature.
 
 ## mirror
 

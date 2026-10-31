@@ -15,7 +15,7 @@ userland control flow, stdlib only.
 The three-clause `for i := 0; i < n; i++` stays out: the
 condition and the increment are operator expressions
 ([expressions.md](expressions.md)). What Go supports without a single
-operator is `range`, and since go1.22 and go1.23 range covers more:
+operator is `range`. Since go1.22 and go1.23 range covers more:
 
 ```go
 for _, c := range req.Cookies() {
@@ -35,9 +35,8 @@ for line := range strings.Lines(text) {
 }
 ```
 
-Slices, maps, integers, and since go1.23 iterator functions:
-`strings.Lines` returns an `iter.Seq[string]`, and any binding can
-return one. Range-over-func is the natural fit for this design,
+Slices, maps, integers, and from go1.23 iterator functions:
+`strings.Lines` returns an `iter.Seq[string]`, as any binding may. Range-over-func is the natural fit for this design,
 because it keeps the imperative principle intact - the loop still
 iterates a value a bound Go function produced.
 
@@ -55,12 +54,12 @@ nothing range does not.
 ## What it costs the design
 
 **The termination guarantee goes.** The sandbox guarantee has two
-parts today: a program reaches only what the host binds, and it halts.
+parts today: a program reaches only what the host binds, then halts.
 `for range xs` over a binding-produced value keeps a bound: the
 program runs as long as the host's data. `for cond { }` does not, and
 an iterator binding can be infinite by intent. The runtime would owe
 a `ctx.Err()` check so `ExecContext` deadlines end a spinning
-program, and that check lands on every iteration.
+program. That check lands on every iteration.
 
 **Loop-carried slots lose the aliasing win.** A name assigned each
 iteration takes more than one write by definition, so the write-once

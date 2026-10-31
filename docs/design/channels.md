@@ -5,8 +5,8 @@ date: "2026-09-10T11:31:00+02:00"
 
 Channels moved from research into the syntax on 2026-09-10 and out
 again on 2026-10-17 ([changelog](../changelog.md)): the operations
-never left reflect's per-element boxing, and a channel stays a
-value a binding produces and a program passes on, which is all that
+never left reflect's per-element boxing. A channel stays a value a
+binding produces and a program passes on, which is all that
 remains. This document records the syntax from its time in the language,
 its semantics, how the operations ran on each tier with the measured
 cost, and what stayed out with the reasons the research established.
@@ -85,7 +85,7 @@ would remain for named and struct elements.
 ## What stayed out
 
 The research decomposed the remaining channel surface onto the other
-documents, and that decomposition held:
+documents. That decomposition held:
 
 - `select` is a multi-way conditional with blocking and per-arm
   bodies: block syntax, branch compilation and the early-exit signal

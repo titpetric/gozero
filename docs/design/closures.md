@@ -147,8 +147,8 @@ continuation, and the branch exists.
 ## Verdict
 
 Closures are the best-aligned of the four extensions: no new type
-surface, stdlib materialization on both tiers, and they answer the
-middleware question directly. They cost capture-as-aliasing, an
+surface, stdlib materialization on both tiers, and a direct answer to
+the middleware question. They cost capture-as-aliasing, an
 escaping frame, per-run construction, block grammar - and they make
 userland control flow expressible. The capture-free alternatives
 (`BindProgram`-style adapters) deliver most of the value as host API,

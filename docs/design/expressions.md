@@ -91,7 +91,7 @@ ok := op.eq(status, 200)
 
 Everything stays inside the existing design: the AST holds calls it
 already compiles, signatures type-check the operands at compile time,
-scalar shapes make the calls direct, and the semantics are the Go
+and scalar shapes make the calls direct. The semantics are the Go
 compiler's because the host wrote Go. Overflow, NaN and comparability
 behave exactly as compiled Go, for free. Cons:
 
