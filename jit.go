@@ -32,9 +32,9 @@ type eface struct{ typ, data unsafe.Pointer }
 type ifacePair struct{ tab, data unsafe.Pointer }
 
 // funcPtr returns the funcval pointer of a func value held in an any.
-// Func values are pointer-shaped, so the eface data word is the funcval
-// pointer itself; this holds for top-level funcs, closures and method
-// values alike.
+// Because func values are pointer-shaped, the eface data word is the
+// funcval pointer itself; this holds for top-level funcs, closures and
+// method values alike.
 func funcPtr(fn any) unsafe.Pointer {
 	return (*eface)(unsafe.Pointer(&fn)).data
 }
@@ -47,8 +47,8 @@ func rtypePtr(t reflect.Type) unsafe.Pointer {
 }
 
 // castFn reinterprets a funcval pointer as a func of the shape type F.
-// A func variable is a single pointer to its funcval, so writing the
-// pointer over a zero F is the whole conversion.
+// Because a func variable is a single pointer to its funcval, writing
+// the pointer over a zero F is the whole conversion.
 func castFn[F any](p unsafe.Pointer) F {
 	var f F
 	*(*unsafe.Pointer)(unsafe.Pointer(&f)) = p
@@ -72,13 +72,13 @@ var strType = reflect.TypeOf("")
 //
 // Hand assembly of the words cannot work. An empty interface holds a
 // *rtype where a non-empty one holds an *itab, and the runtime builds
-// and caches the itab for a (concrete, interface) pair; there
-// is no exported way to reach it. A type assertion is that lookup, so
+// and caches the itab for a (concrete, interface) pair; there is no
+// exported way to reach it. Because a type assertion is that lookup,
 // each converter asserts to its own interface type in ordinary Go and
-// reinterprets the result. The assertion is the only part that has to
-// know the type statically, so this is a table keyed by reflect.Type
-// and no generic function: the parameter type exists only at compile
-// time of the statement, as a reflect.Type.
+// reinterprets the result. Since the assertion is the only part that
+// has to know the type statically, this is a table keyed by
+// reflect.Type and no generic function: the parameter type exists
+// only at compile time of the statement, as a reflect.Type.
 type ifaceConv func(v any) (ifacePair, bool)
 
 func convTo[I any](v any) (ifacePair, bool) {
@@ -287,7 +287,7 @@ func jitCompile(fn any, ft reflect.Type, call *callExpr) CompiledFunc {
 }
 
 // jitError turns the raw error words of an error-only result back into
-// an error. A zero tab is a nil interface, so a nil error.
+// an error. A zero tab is a nil interface, which is a nil error.
 func jitError(e ifacePair) (any, error) {
 	if e.tab != nil {
 		return nil, *(*error)(unsafe.Pointer(&e))

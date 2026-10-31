@@ -188,8 +188,8 @@ func TestReturnNameJITs(t *testing.T) {
 	}
 }
 
-// TestAssignNameToName pins the error message for x = y, so it does not
-// surface as a bare "expected '('".
+// TestAssignNameToName pins the error message for x = y so that it does
+// not surface as a bare "expected '('".
 func TestAssignNameToName(t *testing.T) {
 	rt, _ := litRuntime(t)
 	_, err := rt.Compile(`x = 5; y = x;`)
@@ -201,7 +201,7 @@ func TestAssignNameToName(t *testing.T) {
 // TestParseAllocBudget stops the parse and compile cost creeping
 // silently: it moved 1088 to 1256 to 1416 B/op across three grammar
 // expansions with nothing watching. Measured 29 allocations; the
-// ceiling is that plus headroom for one small feature, and it sets no
+// ceiling is that plus headroom for one small feature. It sets no
 // target.
 func TestParseAllocBudget(t *testing.T) {
 	rt, _ := litRuntime(t)
@@ -253,8 +253,8 @@ func TestStringEscapes(t *testing.T) {
 // TestStatementsAcrossLines pins the line rules: the end of a line
 // closes a statement the way a semicolon does, a semicolon separates
 // statements sharing a line, and a statement still spans lines freely
-// inside its parentheses. The end of a line is a terminator, so a
-// return's value has to start on the return's own line.
+// inside its parentheses. Because the end of a line is a terminator,
+// a return's value has to start on the return's own line.
 func TestStatementsAcrossLines(t *testing.T) {
 	rt, _ := litRuntime(t)
 	for _, src := range []string{

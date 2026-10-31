@@ -7,14 +7,14 @@ import (
 	"unsafe" // also required by go:linkname
 )
 
-// Value bindings on the direct tier. A value the host registered with
-// Bind lives at one address for the life of the runtime, so a read is
-// one load from a compile-time constant address, with no frame slot,
-// no boxing and no reflect.
+// Value bindings on the direct tier. The compiler fixes the address
+// of a value the host registered with Bind, one per compiled node. A
+// read is then one load from that compile-time constant address, with
+// no frame slot, no boxing and no reflect.
 //
 // A rebind is not visible to a program already compiled: the node
 // captures the binding as it stood when the program compiled, and
-// Runtime.Compile caches that program per source string, so a later
+// Runtime.Compile caches that program per source string. A later
 // Bind under the same name reaches neither.
 
 // bridgeRef resolves a value binding or a pointer read for the
@@ -22,9 +22,9 @@ import (
 // outside the shape table.
 func (c *jitCompiler) bridgeRef(a *vmArg) (func(unsafe.Pointer, context.Context, map[string]any, any) (reflect.Value, error), error) {
 	if a.kind == vaVar {
-		// The binding's Value settles at compile time, so bridgeRef
-		// reads it once here and the closure returns the same Value
-		// per call.
+		// Because the binding's Value settles at compile time, bridgeRef
+		// reads it once here and the closure returns the same Value per
+		// call.
 		if a.addrOf {
 			return nil, fmt.Errorf("an addressed value binding has no cell")
 		}
@@ -55,7 +55,7 @@ func (c *jitCompiler) bridgeRef(a *vmArg) (func(unsafe.Pointer, context.Context,
 // varNode compiles a value-binding read to a load from the binding's
 // fixed address. An addressed occurrence never reaches here:
 // materializeVarCells rewrites it to a frame slot as the program
-// assembles, and that slot is the program's own storage to write.
+// assembles. That slot is the program's own storage to write.
 func (c *jitCompiler) varNode(a *vmArg, pt reflect.Type, cl layout) (node, error) {
 	if a.addrOf {
 		return node{}, fmt.Errorf("an addressed value binding has no cell")
@@ -80,12 +80,12 @@ func (c *jitCompiler) varNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 				return ifacePair{tab: tab, data: *(*unsafe.Pointer)(at)}, nil
 			}}, nil
 		}
-		// Wider than a word, so the interface data word holds the
+		// Wider than a word: the interface data word holds the
 		// address of the binding's own storage and aliases it. That
 		// is sound for the same reason the frame alias is, and more
-		// so: the binding's storage outlives the runtime, and
-		// nothing writes it, because a program that writes the name
-		// writes its cell.
+		// so: the binding's storage outlives the runtime, and no
+		// program writes it, because a program that writes the name
+		// writes its own cell.
 		return node{class: lIface, I: func(unsafe.Pointer, context.Context, map[string]any, any) (ifacePair, error) {
 			return ifacePair{tab: tab, data: at}, nil
 		}}, nil
@@ -97,10 +97,10 @@ func (c *jitCompiler) varNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 	return varLoad(at, cl), nil
 }
 
-// varAddr returns the fixed address of a binding's storage. A Value
-// from reflect.ValueOf has no address of its own, so varAddr copies
-// it into a cell once at compile time. Nothing writes that storage:
-// the read is the only user.
+// varAddr returns the fixed address of a binding's storage. Because
+// a Value from reflect.ValueOf has no address of its own, varAddr
+// copies it into a cell once at compile time. No program writes that
+// storage: the read is the only user.
 func varAddr(a *vmArg) unsafe.Pointer {
 	v := a.varv
 	if v.CanAddr() {
@@ -143,9 +143,9 @@ func varLoad(at unsafe.Pointer, cl layout) node {
 	}
 }
 
-// bridgeSlice builds a slice literal for the reflect bridge. The
-// literal allocates through reflect on either tier, so the bridge is
-// its whole implementation.
+// bridgeSlice builds a slice literal for the reflect bridge. Because
+// the literal allocates through reflect on either tier, the bridge
+// is its whole implementation.
 func (c *jitCompiler) bridgeSlice(a *vmArg) (func(unsafe.Pointer, context.Context, map[string]any, any) (reflect.Value, error), error) {
 	elems := make([]func(unsafe.Pointer, context.Context, map[string]any, any) (reflect.Value, error), len(a.elems))
 	for i := range a.elems {

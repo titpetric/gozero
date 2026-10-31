@@ -13,7 +13,7 @@ import (
 )
 
 // compilePair compiles src twice: once as the step-JIT program and once
-// as the reflect evaluator, so a test can run the same source down both
+// as the reflect evaluator. A test can run the same source down both
 // paths and compare. It fails when the source does not JIT, because a
 // silent fallback would make an equivalence test pass by running the
 // reflect path twice.
@@ -319,13 +319,14 @@ func TestFramePoolGate(t *testing.T) {
 		return jp
 	}
 
-	// Pointer and scalar slots only: nothing escapes, pool set.
+	// Pointer and scalar slots only: no slot escapes and the compiler
+	// sets the frame pool.
 	pooled := compile(`req := http.NewRequest("GET", "/a"); s := req.URL.String(); return s`)
 	if pooled.pool == nil {
 		t.Error("no-escape program did not get a frame pool")
 	}
-	// A slice slot aliased into an any parameter escapes. The
-	// producer and the reader are not adjacent, so the slot survives
+	// A slice slot aliased into an any parameter escapes. Because the
+	// producer and the reader are not adjacent, the slot survives
 	// planInline and the interface argument points into the frame.
 	aliased := compile(`
 		cookies := http.NewRequest("GET", "/").Cookies();

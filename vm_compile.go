@@ -7,13 +7,13 @@ import (
 )
 
 // The multi-statement VM. A program is a list of calls that bind their
-// results to names; there are no operators, so every value is a
+// results to names. Because there are no operators, every value is a
 // literal, a name, or the result of another call.
 //
 // Two rules shape the compiled form:
 //
-// A trailing error result is never a value. The compiler strips it from
-// the result list and checks it after every call, so
+// A trailing error result is never a value. Because the compiler strips
+// it from the result list and checks it after every call,
 // "req := http.NewRequest(...)" binds one name to a two-result call and
 // a failure returns from Exec or Scan at that statement. No program text
 // mentions an error.
@@ -22,23 +22,24 @@ import (
 // takes the zero value of its type; http.NewRequest with two arguments
 // receives a nil body that way.
 //
-// Names the program binds carry a static type, so the compiler resolves
-// methods on them against that type when the statement compiles.
+// Because names the program binds carry a static type, the compiler
+// resolves methods on them against that type when the statement
+// compiles.
 // json.NewEncoder is a binding; Encode is not, and the program reaches
 // it through the *json.Encoder the binding returns. Names coming from
 // the caller's stack, including dest, are opaque and the VM checks them
 // when it reads them.
-// compileProgram builds a vmProgram. It tracks slots and their static
-// types while it walks the statements, so the program must bind a name
-// before using it and a method must exist on the receiver name's
+// compileProgram builds a vmProgram. Because it tracks slots and their
+// static types while it walks the statements, the program must bind a
+// name before using it and a method must exist on the receiver name's
 // static type.
 func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 	p := &vmProgram{addrTaken: map[int]bool{}}
 	slots := map[string]int{}
 	env := map[string]reflect.Type{}
 
-	// A program can never read back a name that collides with a binding:
-	// path resolution prefers the binding, so url := ... with url.Parse
+	// A program can never read back a name that collides with a binding.
+	// Path resolution prefers the binding: url := ... with url.Parse
 	// bound compiles and then silently resolves the other way. The
 	// compiler rejects shadowing.
 	reserved := map[string]bool{"dest": true, "true": true, "false": true, "nil": true, "var": true, "return": true}
@@ -86,9 +87,9 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 		return fmt.Errorf("compile: no new variables on left side of :=")
 	}
 
-	// A name declared with var fixes its type before the compiler
-	// reaches anything else, so a literal assigned to it converts to
-	// that type.
+	// Because a name declared with var fixes its type before the
+	// compiler reaches anything else, a literal assigned to it converts
+	// to that type.
 	declared := map[string]reflect.Type{}
 	for si := range prog.stmts {
 		if s := prog.stmts[si]; s.varType != "" {
@@ -230,9 +231,9 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 
 		// x = int32(0) is a conversion hint. The right-hand side parses
 		// as a call; a path that names a registered type, and no
-		// binding, is not callable, so it fixes the literal's type
-		// the way a var declaration would. The var form stays:
-		// the hint only covers a name assigned a literal.
+		// binding, is not callable. The hint fixes the literal's type
+		// the way a var declaration would. The var form stays: the hint
+		// only covers a name assigned a literal.
 		if s.call != nil && !s.ret && len(s.lhs) > 0 {
 			if t, ok := c.conversionType(s.call); ok {
 				if len(s.lhs) != 1 {
@@ -314,11 +315,12 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 	}
 
 	// Addressed and assigned bindings get their per-run cells before
-	// assignFrame lays out the frame, because a cell is a slot and
-	// slots make up the frame. A runtime with no value bindings cannot
-	// have produced one, so the guard skips the walk and allocates
-	// nothing for it: parse and compile are on a measured allocation
-	// budget.
+	// assignFrame lays out the frame. A cell is a new slot, and the
+	// slot count has to be final before the first run: run sizes one
+	// allocation as p.nslots+p.frame and splits it at p.nslots.
+	// Because a runtime with no value bindings cannot have produced a
+	// cell, the guard skips the walk and allocates no map or slot for
+	// one: parse and compile are on a measured allocation budget.
 	if len(c.vars) > 0 {
 		roots := p.argRoots()
 		p.markVarCells(roots)
@@ -350,8 +352,8 @@ func (c *Compiler) compileProgram(prog *program) (*vmProgram, error) {
 }
 
 // assignFrame assigns every call in the program a disjoint window into
-// the per-run argument frame, so one allocation covers them all and a
-// nested call cannot overwrite the arguments its parent is still
+// the per-run argument frame. One allocation then covers them all and
+// a nested call cannot overwrite the arguments its parent is still
 // filling.
 func (p *vmProgram) assignFrame(c *vmCall) {
 	c.off = p.frame

@@ -18,8 +18,8 @@ caller normally takes; everything the signature implies follows from it.
 callable in the runtime under one name.
 
 **Discovery** is what the runtime does with that signature. It walks the
-type graph reachable from the function and records every type it finds,
-so a later `var` statement can name any of them.
+type graph reachable from the function and records every type it finds.
+A later `var` statement can name any of them.
 
 **Hydration** is what a program does with a discovered type: `var u url.URL` produces the zero value of `url.URL` in a slot, without the
 host ever having registered `url.URL` or written a constructor for it.
@@ -59,7 +59,7 @@ base name collide, and the later `Bind` wins; `BindType` resolves
 the collision.
 
 `any` is the exception. It prints as `interface {}`, which is not a name
-a program can write, so the registry also holds it under the spelling Go
+a program can write. The registry also holds it under the spelling Go
 source uses.
 
 ### What one binding is worth
@@ -90,7 +90,7 @@ them where one of them contributes 111, because most of their walks
 cover the same graph from different entry points.
 
 `net/http` has no `NewClient`. Its only exported constructors are
-`NewRequest` and `NewRequestWithContext`, so the client side of the
+`NewRequest` and `NewRequestWithContext`. The client side of the
 package becomes reachable through the types those name, with no
 constructor of its own.
 
@@ -116,8 +116,8 @@ level=DEBUG msg="type discovered" name=*http.Request kind=ptr via=http.NewReques
 ```
 
 `via` is the binding the walk started from and `depth` is how far it had
-to go, so a name that turns up unexpectedly leads back to the
-signature that dragged it in.
+to go. A name that turns up unexpectedly leads back to the signature
+that dragged it in.
 
 `Runtime.Types` returns the registry as a list. `atkins test:discovery`
 runs the test that prints this output, including a table per binding and
@@ -131,9 +131,9 @@ Only for a type no binding mentions:
 rt.BindType("io.Closer", (*io.Closer)(nil))
 ```
 
-The value is a value of the type. An interface has no value to pass, so
-a nil pointer to it works and `BindType` takes the element type. The
-walk then covers the registered type like anything else.
+The value is a value of the type. Because an interface has no value
+to pass, a nil pointer to it works and `BindType` takes the element
+type. The walk then covers the registered type like anything else.
 
 ## Hydration
 
@@ -156,13 +156,13 @@ The type name can carry `*` and `[]` prefixes, matching how
 naming the fix: `unknown type "nope.Thing", register it with BindType`.
 
 The zero value costs nothing to produce. On the direct-call tier the
-frame is one allocation that comes back zeroed, so a declared name is
+frame is one allocation that comes back zeroed. A declared name is
 already its zero value with no instruction; the reflect tier uses a
 `reflect.Zero` recorded at compile time and written once per run.
 
 ### Inference
 
-A short declaration carries no type, so `x := 123` has to work out
+A short declaration carries no type. `x := 123` has to work out
 what `x` is. Three rules, in order:
 
 1. A `var` statement fixes it.
@@ -194,7 +194,7 @@ convert, because the declaration states the type.
 ### Literals at the call
 
 A numeric literal takes its type from the parameter it fills. The parser
-produces only `int64` and `float64`, so without this a program could
+produces only `int64` and `float64`. Without this a program could
 not pass a literal to a binding taking `int` at all. The value has to
 be representable, and a literal that is not is a compile error, never
 a wrap:
@@ -213,7 +213,7 @@ there is no parameter type to convert towards.
 
 ## What this costs at execution
 
-Discovery and hydration are compile-time. Nothing in this document runs
+Discovery and hydration are compile-time. No step in this document runs
 per call: the compiler consults the registry when a `var` statement
 compiles, converts the literal when the argument compiles, and the zero
 value is
@@ -223,7 +223,7 @@ Scalars reach the direct-call tier. Each width is its own layout class,
 because the cast that makes a direct call needs the exact Go type: an
 `int32` parameter is four bytes where an `int64` is eight, and a float
 travels in a different register file from an integer of the same width.
-`int` and `uint` follow their size, not their kind, so they share
+`int` and `uint` follow their size and not their kind. They share
 a class with `int64` and `uint64` on a 64 bit platform.
 
 Between them, these all run without `reflect.Value.Call`:
@@ -257,11 +257,10 @@ Boxing a scalar into an interface allocates, because the data word has
 to point at a value of the concrete width. That is the allocation the Go
 compiler makes at the same place.
 
-The shape table is finite and a program JITs whole or not at all, so a
+The shape table is finite and a program JITs whole or not at all. A
 call whose parameter and result classes are not in it sends the whole
 program to the reflect evaluator. `Runtime.Supports` reports which call
-and which shape, so this shows up before a benchmark has to discover
-it.
+and which shape. This shows up before a benchmark has to discover it.
 
 ## Learnings
 
@@ -276,8 +275,8 @@ it.
   frame on the direct tier and a `reflect.Zero` recorded once on the
   other.
 - Literal typing needs three rules (declaration, first use, parser
-  width), and use does not override a declared type, so a mismatch
-  stays a compile error.
+  width), and use does not override a declared type. A mismatch stays
+  a compile error.
 - Scalars reach the direct-call tier because each width is its own
   layout class: the cast needs the exact Go type.
 - Three claims aged out of this chapter: a scalar boxed into an

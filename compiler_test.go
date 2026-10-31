@@ -246,8 +246,8 @@ func (f *testFixtures) testStructs(tb testing.TB) {
 	p := &url.URL{Scheme: "https", Host: "h", Path: "/p"}
 	assertEqual(tb, "https://h/p", p.String(), "")
 
-	// The fixture's positional url.URL{"https"} fills Scheme; Go
-	// requires every field positionally, so the keyed form stands in.
+	// The fixture's positional url.URL{"https"} fills Scheme. Because
+	// Go requires every field positionally, the keyed form stands in.
 	s := url.URL{Scheme: "https"}
 	assertEqual(tb, "https", s.Scheme, "")
 

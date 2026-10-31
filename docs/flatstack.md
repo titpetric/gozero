@@ -9,8 +9,8 @@ written in Go, and its
 module is an opt-in bytecode backend for it. It answers the same
 question this repository does, for a language with a much larger
 surface: what does it cost to call Go from an interpreter, and how much
-of that cost can an interpreter remove. It got there earlier, so this is what
-reading it changed here.
+of that cost can an interpreter remove. It got there earlier. This is
+what reading it changed here.
 
 Its design document is
 [docs/flatstack.md](https://github.com/titpetric/phpscript/blob/main/docs/flatstack.md).
@@ -31,10 +31,10 @@ one import swaps the backend. The substance is
 | `vm.go`       |  1152 | the execution loop                                    |
 
 Two structural decisions carry the rest. `Host` is an interface of
-around thirty methods holding every PHP value semantic, so the engine
+around thirty methods holding every PHP value semantic. The engine
 owns only compilation, operand and local storage, jumps and iteration.
-And `Program.localNames` is per program, not per function, so a
-slot number means the same name in every frame and a closure capture
+And `Program.localNames` is per program, not per function. A slot
+number means the same name in every frame and a closure capture
 copies by number without a name lookup.
 
 ## Lesson 1: boxing makes pooling possible
@@ -51,10 +51,10 @@ type vmScratch struct {
 ```
 
 This repository had concluded that pooling could not work, because an
-interface argument taken from a frame slot points at the slot and
-nothing proves the callee does not keep it. flatstack has no such
-problem: `locals` is `[]any`, so each store copies a value into the
-interface and no pointer into the frame ever escapes.
+interface argument taken from a frame slot points at the slot and the
+compiler cannot prove the callee does not keep it. flatstack has no
+such problem. Because `locals` is `[]any`, each store copies a value
+into the interface and no pointer into the frame ever escapes.
 
 The two designs are the same trade seen from opposite sides. flatstack
 boxes and pools; this repository aliased and allocated. Their answer
@@ -93,10 +93,10 @@ drifted 30% between runs:
 // pool and is never collected.
 ```
 
-**What it changed.** Nothing yet, because nothing here uses a pool. This
-page records it because the mistake is invisible: clearing to length passes
-every test and leaks whatever the largest program touched, for the life
-of the process.
+**What it changed.** No change here yet, because no code uses a pool.
+This page records it because the mistake is invisible: clearing to
+length passes every test and leaks whatever the largest program
+touched, for the life of the process.
 
 ## Lesson 3: publish the gate that says which tier ran
 
@@ -129,7 +129,7 @@ neither of which the fast path intercepted.
 
 **What it changed.** This repository had no boundary at all. A binding panic
 unwound straight through the JIT's raw frame stores, on both tiers.
-`Compile` now wraps what it returns, so one `defer recover()` covers
+`Compile` now wraps what it returns. One `defer recover()` covers
 both tiers by construction, with nothing to remember, and a panic
 arrives as `*PanicError` carrying the value and a stack.
 
@@ -138,10 +138,10 @@ arrives as `*PanicError` carrying the value and a stack.
 `TestFlatstackPrecompiledAllocationBudget` asserts a hard limit with
 `testing.AllocsPerRun`.
 
-**What it changed.** Allocation counts here showed up only in
-benchmark output, so a regression would not fail anything.
-`TestAllocationBudget` now compares the compiled program against the
-native code it stands for on every run of the suite.
+**What it changed.** Allocation counts here showed up only in benchmark
+output. A regression would not fail anything. `TestAllocationBudget`
+now compares the compiled program against the native code it stands
+for on every run of the suite.
 
 **Gain.** It immediately reported something the benchmarks had hidden:
 6 allocations against native's 5 in an ordinary build. The results table
@@ -160,11 +160,11 @@ about eleven concrete signatures, `func(any) any`, `func(string) string`
 and so on, falling through to reflection for the rest. No unsafe, no ABI
 dependence, no equivalence test needed.
 
-It does not carry over here. PHP values are already `any`, so a handful of
-literal cases covers nearly every binding. The bindings here are Go APIs
-with concrete types, where a type switch needs one case per concrete
-signature. That is why this repository went to layout classes: one
-`SSI_PE` case covers every `(string, string, iface) -> (ptr, error)`
+It does not carry over here. Because PHP values are already `any`, a
+handful of literal cases covers nearly every binding. The bindings here
+are Go APIs with concrete types, where a type switch needs one case per
+concrete signature. That is why this repository went to layout classes:
+one `SSI_PE` case covers every `(string, string, iface) -> (ptr, error)`
 binding, at the cost of `TestStepJITMatchesReflect` to check the ABI
 dependence.
 
@@ -179,7 +179,7 @@ This page records both because tests written earlier for other reasons
 found them, which is the argument for writing them.
 
 `planInline` first recorded its decision by editing the call tree. The
-reflect evaluator runs that same tree, so a program that inlined
+reflect evaluator runs that same tree. A program that inlined
 and then failed to JIT reached the fallback with the producer both
 spliced into its reader and still standing as its own statement, and ran
 it twice. It now records splices in a side table.
@@ -191,11 +191,11 @@ the aliasing, failed on the first run of the new code.
 
 ## Learnings
 
-- Boxing makes pooling possible: flatstack pools because its
-  locals are already `any`; these slots hold typed Go values, so
-  pooling would add the box it removed. The diagnosis mattered more
-  than the decision: the frame should barely exist, and the closure
-  tree with `planInline` came of asking why.
+- Boxing makes pooling possible: flatstack pools because its locals
+  are already `any`; these slots hold typed Go values. Pooling would
+  add the box it removed. The diagnosis mattered more than the
+  decision: the frame should barely exist, and the closure tree with
+  `planInline` came of asking why.
 - Clear a pooled buffer to capacity, not length; the leak passes every
   test.
 - Publish the tier gate. `Supports` stops a benchmark or an

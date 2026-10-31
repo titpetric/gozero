@@ -93,8 +93,8 @@ func TestInterfaceMethodCall(t *testing.T) {
 		t.Fatal("Done() = nil, want the cancellable context's channel")
 	}
 
-	// Err returns only an error, so the error contract applies: on a
-	// cancelled context the statement ends the program with the
+	// Because Err returns only an error, the error contract applies:
+	// on a cancelled context the statement ends the program with the
 	// cancellation cause and binds no value.
 	cancel()
 	if _, err := rt.EvalContext[any](ctx, `ctxOf().Err();`, nil); !errors.Is(err, context.Canceled) {
@@ -324,8 +324,8 @@ type bvCfg struct {
 // TestMethodSetsOnValueBindings pins Go's method-set rule on a value
 // binding: a value-receiver method is callable on T and *T, and a
 // pointer-receiver method is callable on an addressable T, which a
-// bound name is. The address is the program's per-run cell, so the
-// mutation does not reach the host.
+// bound name is. Because the address is the program's per-run cell,
+// the mutation does not reach the host.
 func TestMethodSetsOnValueBindings(t *testing.T) {
 	rt, seen := bvRuntime(t)
 	host := bvPtr{N: 1}
@@ -421,8 +421,8 @@ func TestCallThroughAFuncValue(t *testing.T) {
 }
 
 // TestCallThroughNilFuncValue pins the run-time half: the VM catches a
-// nil func before reflect ever sees the call, so the program fails with
-// an error naming the callee.
+// nil func before reflect ever sees the call. The program fails with an
+// error naming the callee.
 func TestCallThroughNilFuncValue(t *testing.T) {
 	rt, _ := bvRuntime(t)
 	if err := rt.Bind("cfg", bvCfg{Name: "c"}); err != nil {
@@ -434,9 +434,9 @@ func TestCallThroughNilFuncValue(t *testing.T) {
 	}
 }
 
-// TestCallThroughIsBridged records the tier: a callee read per run has
-// no funcval to cast at compile time, so the call bridges while its
-// neighbours stay direct.
+// TestCallThroughIsBridged records the tier: because a callee read per
+// run has no funcval to cast at compile time, the call bridges while
+// its neighbours stay direct.
 func TestCallThroughIsBridged(t *testing.T) {
 	rt, _ := bvRuntime(t)
 	if err := rt.Bind("cfg", bvCfg{Fn: func() string { return "x" }}); err != nil {

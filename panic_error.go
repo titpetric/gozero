@@ -6,9 +6,9 @@ import (
 
 // PanicError is what a panic raised inside a bound function becomes. A
 // binding is host code and a panic crossing back into a compiled
-// program would unwind through the JIT's raw frame stores, so the
-// boundary turns it into an ordinary error at the point Compile hands
-// the program back.
+// program would unwind through the JIT's raw frame stores. The boundary
+// turns it into an ordinary error at the point Compile returns the
+// compiled program.
 //
 // Error reports the recovered value, and the stack of the goroutine that
 // panicked stays on the struct for a caller that wants it.

@@ -8,8 +8,8 @@ import (
 
 // TestStructNodeAllocatesPerEvaluation pins the direct tier's literal
 // allocation: two runs of one compiled &T{} must not share the struct.
-// TestStructLiteral checks the same property through Compile;
-// this one requires the JIT and runs its tier directly, so a fallback
+// TestStructLiteral checks the same property through Compile. Because
+// this one requires the JIT and runs its tier directly, a fallback
 // cannot make it pass by allocating through reflect.
 func TestStructNodeAllocatesPerEvaluation(t *testing.T) {
 	rt, _ := typeRuntime(t)

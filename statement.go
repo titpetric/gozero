@@ -17,8 +17,8 @@ type varSlot struct {
 
 // Statement is the compiled form of one return statement. It
 // internalizes the reflect.Value of the bound function and a prebuilt
-// argument slice: compile time fills the literals once, each call
-// patches the variable slots in a per-call copy, and the invocation is a
+// argument slice: compile time fills the literals once and each call
+// patches the variable slots in a per-call copy. The invocation is a
 // single fn.Call.
 //
 // Both paths are safe for concurrent use. The JIT'd statement (fast !=
@@ -31,8 +31,8 @@ type Statement struct {
 	args []reflect.Value
 	vars []varSlot
 
-	// pool holds *[]reflect.Value in place of the slice, so returning
-	// one boxes no freshly allocated header.
+	// pool holds *[]reflect.Value in place of the slice. Returning one
+	// boxes no freshly allocated header.
 	pool sync.Pool
 
 	outIndex int // index of the result value, -1 if none
@@ -40,8 +40,8 @@ type Statement struct {
 }
 
 // borrow takes an argument slice with the literals already in place.
-// Release clears only the variable slots, so a fresh buffer is the only
-// one that needs the full copy.
+// Because release clears only the variable slots, a fresh buffer is
+// the only one that needs the full copy.
 func (s *Statement) borrow() *[]reflect.Value {
 	if p, ok := s.pool.Get().(*[]reflect.Value); ok {
 		return p
@@ -52,7 +52,7 @@ func (s *Statement) borrow() *[]reflect.Value {
 }
 
 // release drops the references the call took off the stack and returns
-// the buffer. Literals stay: s.args holds them regardless, so
+// the buffer. Literals stay. Because s.args holds them regardless,
 // keeping them costs nothing and saves the copy.
 func (s *Statement) release(p *[]reflect.Value) {
 	buf := *p

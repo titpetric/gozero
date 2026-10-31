@@ -37,7 +37,7 @@ func TestFieldSetValueForms(t *testing.T) {
 	}
 
 	// The field's type is the check: assignedValue compiles the value
-	// against it, so a mismatch fails the compile.
+	// against it. A mismatch fails the compile.
 	err := bvRun(t, rt, "u := parse(\"https://e.com/\")\nu.Path = 1")
 	if err == nil || !strings.Contains(err.Error(), "cannot use") {
 		t.Errorf("an int into a string field: %v", err)

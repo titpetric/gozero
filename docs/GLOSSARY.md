@@ -19,9 +19,9 @@ when the garbage collector later scans and frees it.
 Passing a pointer to existing storage in place of a copy of the
 value. In gozero, an interface argument can point directly at a
 frame slot and skip the copied cell, which saves the copy's
-allocation. The alias is only safe while the storage outlives every
-holder of the pointer, so the frame pool cannot take an aliased frame
-and no statement can rewrite an aliased slot.
+allocation. Because the alias is only safe while the storage
+outlives every holder of the pointer, the frame pool cannot take an
+aliased frame and no statement can rewrite an aliased slot.
 
 ## binding
 
@@ -37,7 +37,7 @@ A value copied into a heap cell so that an interface can point at
 it. Go's `any` and every other interface is two words: a type or
 itab word, and a data word that holds a pointer. A pointer-sized
 value stores its pointer in the data word directly. A wider value,
-for example a string (two words) or a struct, does not fit, so the
+for example a string (two words) or a struct, does not fit. The
 runtime allocates a cell, copies the value into the cell, and points
 the data word at the cell. That allocation plus copy is boxing.
 
@@ -77,11 +77,11 @@ it with and can be the receiver of a field read or a method call.
 ## per-run cell
 
 The storage a program gets when it writes or addresses a value
-binding. `Bind` copies the value into the runtime, so the name is
-the program's own for the run: `name = v` and `&name` reach the
+binding. Because `Bind` copies the value into the runtime, the name
+is the program's own for the run: `name = v` and `&name` reach the
 cell, and the host's variable keeps what it had. The cell starts
-every run from the bound value. One cell per name per program, so
-two `&name` address the same storage the way two `&x` do in Go. A
+every run from the bound value. Each program gets one cell per name.
+Two `&name` address the same storage the way two `&x` do in Go. A
 host that binds an address instead lets the program write the
 host's own storage through `*name = v`.
 
@@ -111,8 +111,9 @@ function.
 
 One per-run block of memory holding a program's named values. The
 compiler lays the frame out as a Go struct with one field per
-surviving slot, using `reflect.StructOf`, so the garbage collector
-scans it correctly. A program with no multi-use names has no frame.
+surviving slot, using `reflect.StructOf`. The garbage collector
+scans that struct correctly. A program with no multi-use names has
+no frame.
 
 ## frame pool
 
@@ -126,7 +127,7 @@ zero before the next run.
 The runtime table that backs a non-empty interface value: it pairs a
 concrete type with an interface type and lists the method addresses.
 The Go runtime builds itabs on demand during type assertions, and
-gozero obtains them the same way at compile time, so no itab work
+gozero obtains them the same way at compile time. No itab work
 happens per call.
 
 ## JIT
@@ -140,8 +141,8 @@ per-call reflection with direct calls through the shape table.
 
 The ABI category of a type: pointer-shaped (one word), string (two
 words), interface (two words), slice (three words), or one scalar
-class per width. Two types in the same layout class pass through
-registers identically, so one shape-table entry serves every
+class per width. Because two types in the same layout class pass
+through registers identically, one shape-table entry serves every
 function with the same class signature.
 
 ## mirror

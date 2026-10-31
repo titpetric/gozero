@@ -91,10 +91,10 @@ type jitPlan struct {
 // slot at all.
 //
 // The splice only happens when every argument the reader evaluates
-// before the spliced one has no side effects, which keeps the order of calls the
-// source wrote. A receiver is argument zero and always qualifies, so a
-// method chain written across statements collapses exactly as the same
-// chain written on one line does.
+// before the spliced one has no side effects, which keeps the order of
+// calls the source wrote. Because a receiver is argument zero and
+// always qualifies, a method chain written across statements collapses
+// exactly as the same chain written on one line does.
 func planInline(p *vmProgram) (*jitPlan, error) {
 	retSlot := -1
 	stmts := make([]plannedStmt, 0, len(p.stmts))
@@ -185,9 +185,9 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 		if stmts[i+1].call == nil {
 			continue // a literal assignment has no argument to splice into
 		}
-		// Only into the statement immediately after. Every statement
-		// runs a call, so moving a producer past one would reorder two
-		// calls the source wrote in the other order.
+		// Only into the statement immediately after. Because every
+		// statement runs a call, moving a producer past one would
+		// reorder two calls the source wrote in the other order.
 		arg := findSplice(stmts[i+1].call, s.out, splices)
 		if arg == nil {
 			continue
@@ -202,10 +202,10 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 	if retSlot >= 0 {
 		live[retSlot] = true
 	}
-	// A var declaration puts a name in scope even when nothing
-	// assigns it, so its slot is live from the start. The frame starts
-	// zeroed, matching the zero value the declaration promises, so
-	// there is nothing to run for it.
+	// Because a var declaration puts a name in scope even when no
+	// statement assigns it, its slot is live from the start. The frame
+	// starts zeroed, matching the zero value the declaration promises,
+	// which leaves the prologue no statement to emit for it.
 	for _, in := range p.inits {
 		live[in.slot] = true
 		writes[in.slot]++
@@ -214,8 +214,8 @@ func planInline(p *vmProgram) (*jitPlan, error) {
 		if s.fieldSet != nil {
 			live[s.fieldSet.base] = true
 			// Writing a field of a struct held by value mutates the
-			// slot an aliased interface may point at, so it counts as
-			// a write and the aliasing falls back to a copy.
+			// slot an aliased interface may point at. It counts as a
+			// write and the aliasing falls back to a copy.
 			if t := p.slotTypes[s.fieldSet.base]; t != nil && t.Kind() != reflect.Pointer {
 				writes[s.fieldSet.base]++
 			}
@@ -244,8 +244,8 @@ func countReads(reads map[int]int, c *vmCall) {
 	}
 }
 
-// countArgReads walks one argument for countReads. A composite
-// literal's elements read names like any argument does, so planInline
+// countArgReads walks one argument for countReads. Because a composite
+// literal's elements read names like any argument does, planInline
 // must keep a producer while an element still points at its slot.
 func countArgReads(reads map[int]int, a *vmArg) {
 	for a.kind == vaField {

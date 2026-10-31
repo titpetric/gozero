@@ -17,24 +17,24 @@ import (
 // Compile once and Exec/Scan many times.
 //
 // A binding borrows its arguments. The runtime pools the memory behind
-// packs, boxes and literal arguments and reuses it after the call returns,
-// so a binding that keeps a received any, slice or literal pointer copies
-// it first, the way a type assertion copies a value out of its box. Plain
+// packs, boxes and literal arguments and reuses it after the call returns.
+// A binding that keeps a received any, slice or literal pointer copies it
+// first, the way a type assertion copies a value out of its box. Plain
 // string and scalar parameters need no copy.
 type Runtime struct {
 	mu       sync.RWMutex
 	compiler Compiler
 	cache    map[string]CompiledFunc
 	// types is the registry a var statement resolves against. A walk
-	// over every binding fills it, so most types never need
-	// registering by hand.
+	// over every binding fills it. Most types never need registering
+	// by hand.
 	types map[string]reflect.Type
 	// log records what discovery found. Nil until SetLogger, and
-	// checked with no default so an unlogged runtime pays
-	// nothing.
+	// checked with no default so an unlogged runtime makes no slog
+	// call.
 	log *slog.Logger
-	// origin names the binding the current discovery walk started from,
-	// so the log says where a type came from.
+	// origin names the binding the current discovery walk started from.
+	// The log reports it as "via" on each type discovery.
 	origin string
 }
 
@@ -106,8 +106,8 @@ func (r *Runtime) bindValue(name string, v reflect.Value) error {
 	return nil
 }
 
-// BindScope is Bind in a loop over a map of functions under a dotted prefix,
-// so {"NewEncoder": json.NewEncoder} under "json" binds json.NewEncoder.
+// BindScope is Bind in a loop over a map of functions under a dotted prefix:
+// {"NewEncoder": json.NewEncoder} under "json" binds json.NewEncoder.
 func (r *Runtime) BindScope(prefix string, fns map[string]any) error {
 	for _, name := range slices.Sorted(maps.Keys(fns)) {
 		if err := r.Bind(prefix+"."+name, fns[name]); err != nil {
@@ -135,8 +135,9 @@ func guard(fn CompiledFunc) CompiledFunc {
 
 // Supports reports whether src compiles to the direct-call tier, and
 // why it does not when it does not. Call it in a benchmark, or in a
-// test that means to measure the JIT, so an accidental fall back to the
-// reflect evaluator fails the test and does not pass as a slow number.
+// test that means to measure the JIT. An accidental fall back to the
+// reflect evaluator then fails the test and does not pass as a slow
+// number.
 func (r *Runtime) Supports(src string) error {
 	prog, err := (&Parser{}).Parse(src)
 	if err != nil {

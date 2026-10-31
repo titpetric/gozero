@@ -13,15 +13,15 @@ import (
 //	rt.Bind("os.Args", &os.Args)     // a pointer, read and written through
 //
 // Bind copies the value into the runtime the way passing a value to a
-// function copies it, so the name is the program's own for the run:
+// function copies it. The name is the program's own for the run:
 // "label = x" writes the copy and the host's variable keeps what it
 // had. Binding an address opts into mutation without any API for it.
-// The name is then a *T, so "*os.Args" reads the host's slice and
+// The name is then a *T. "*os.Args" reads the host's slice and
 // "*os.Args = xs" writes it, exactly as the same spellings do in Go.
 //
 // Shallow copying is Go's too. A value binding of a slice or a map
-// copies the header, so the elements behind it stay shared and a
-// binding that writes them writes host memory.
+// copies the header. The elements behind it stay shared. A binding
+// that writes them writes host memory.
 
 // varBinding is one value binding: the value the name reads.
 type varBinding struct {
@@ -31,7 +31,7 @@ type varBinding struct {
 // Delete removes a key from a map held in an any, which the builtin
 // delete cannot do once the map has been through an interface. The
 // common key shapes are type-asserted and the rest takes the reflect
-// path, so a bound Delete costs a type switch on the paths a program
+// path. A bound Delete costs a type switch on the paths a program
 // actually takes.
 //
 // A missing key is not an error, as in Go, and neither is a nil map:

@@ -83,8 +83,8 @@ func (p *Parser) arg() (arg, error) {
 		return arg{kind: argAddr, path: path}, nil
 	case c == '[' && p.pos+1 < len(p.src) && p.src[p.pos+1] == ']':
 		// A slice literal. typeRef reads the type, the same call a
-		// var statement makes, so []string and [][]byte spell the
-		// same here as they do there.
+		// var statement makes. []string and [][]byte spell the same
+		// here as they do there.
 		typ, err := p.typeRef()
 		if err != nil {
 			return arg{}, err

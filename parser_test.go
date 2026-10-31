@@ -5,7 +5,7 @@ import (
 )
 
 // TestParser checks that one Parser value serves more than one parse: Parse resets
-// the position, so a second program does not see the first one's tail.
+// the position. A second program does not see the first one's tail.
 func TestParser(t *testing.T) {
 	p := &Parser{}
 	first, err := p.Parse(`return f("a"); return f("b");`)
@@ -60,7 +60,7 @@ func TestParser_Parse(t *testing.T) {
 	}
 
 	// A one-statement call is a flat call; a two-statement program is
-	// not, and that difference routes it to the VM.
+	// not. That difference routes it to the VM.
 	prog, err := (&Parser{}).Parse(`return f("x");`)
 	if err != nil {
 		t.Fatal(err)

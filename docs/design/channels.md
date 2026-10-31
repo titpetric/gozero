@@ -26,10 +26,9 @@ The implicit rules carry over from the rest of the language:
 
 - The `ok` of Go's two-value receive is implicit the way a trailing
   error is: never a value, checked after every receive. A receive
-  from a closed channel ends the program with `io.EOF`, so a host
-  loops `Exec` until `errors.Is(err, io.EOF)` and the program never
-  writes the check. `v, ok := <-c` is a compile error naming the
-  rule.
+  from a closed channel ends the program with `io.EOF`. A host loops
+  `Exec` until `errors.Is(err, io.EOF)` and the program never writes
+  the check. `v, ok := <-c` is a compile error naming the rule.
 - Both operations carry the execution context. A blocked
   receive or send ends the program with `ctx.Err()` when the
   `ExecContext` deadline passes or the host cancels the context, which

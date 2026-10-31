@@ -25,8 +25,8 @@ type Compiler struct {
 	bindings map[string]binding
 	// vars are the value bindings Bind registers for a non-func. They
 	// share the namespace with bindings, and the compiler resolves
-	// both by longest dotted prefix, so os.Args is one key in this
-	// map, dot and all.
+	// both by longest dotted prefix. A name like os.Args is one key in
+	// this map, dot and all.
 	vars map[string]varBinding
 	// types is the Runtime's registry, shared by reference so a Bind
 	// after a Compile is visible.
@@ -48,9 +48,9 @@ func (c *Compiler) varOf(path []string) (vb varBinding, rest []string, ok bool) 
 // Compile validates a program and builds the constructed func.
 //
 // A program that is one flat call keeps the original single-statement
-// path, so the shape table still applies to it and the JIT result
-// stands. Anything longer, or anything with a chained or nested call,
-// compiles to the multi-statement VM in vm.go, which is reflect only.
+// path. The shape table still applies to it and the JIT result stands.
+// Anything longer, or anything with a chained or nested call, compiles
+// to the multi-statement VM in vm.go, which is reflect only.
 func (c *Compiler) Compile(prog *program) (CompiledFunc, error) {
 	if call, ok := prog.flatCall(); ok && c.plainBinding(call.path[0]) {
 		s, err := c.compileStatement(call)
@@ -65,7 +65,7 @@ func (c *Compiler) Compile(prog *program) (CompiledFunc, error) {
 	}
 	// Every call in the shape table means the whole program runs
 	// without reflect.Value.Call. One call outside it and the reflect
-	// evaluator takes the program, so the two are never mixed.
+	// evaluator takes the program. The two are never mixed.
 	if jp, err := jitCompileProgram(p); err == nil {
 		return CompiledFunc(jp.run), nil
 	}

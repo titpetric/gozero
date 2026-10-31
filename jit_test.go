@@ -58,8 +58,8 @@ func TestJITMatchesReflect(t *testing.T) {
 }
 
 // TestJITFallback checks that a statement outside the shape table
-// compiles to the reflect path. The interface type here is not in
-// ifaceConvs, so the JIT cannot build its itab and declines.
+// compiles to the reflect path. Because the interface type here is
+// not in ifaceConvs, the JIT cannot build its itab and declines.
 func TestJITFallback(t *testing.T) {
 	rt := newRuntime(t)
 	if err := rt.Bind("Fprint", func(s fmt.Stringer) (*http.Request, error) {
@@ -173,7 +173,7 @@ func readBody(t *testing.T, req *http.Request) string {
 }
 
 // compileFlat parses a one-statement program and builds its Statement
-// directly, so a test can reach both tiers of the same compilation.
+// directly. A test can reach both tiers of the same compilation.
 func compileFlat(rt *Runtime, src string) (*Statement, error) {
 	prog, err := (&Parser{}).Parse(src)
 	if err != nil {

@@ -10,8 +10,9 @@ import (
 // exprNode compiles one call and its arguments. A call the shape table
 // cannot express compiles to a reflect bridge and the program still
 // compiles: one call pays reflect.Value.Call, its neighbours stay
-// direct. The program compiler type-checks the vmCall tree before this
-// runs, so a miss here is a capability gap, never a type error.
+// direct. Because the program compiler type-checks the vmCall tree
+// before this runs, a miss here is a capability gap, never a type
+// error.
 func (c *jitCompiler) exprNode(call *vmCall) (node, error) {
 	n, err := c.directNode(call)
 	if err == nil {
@@ -24,8 +25,8 @@ func (c *jitCompiler) exprNode(call *vmCall) (node, error) {
 // directNode is the in-table compilation.
 func (c *jitCompiler) directNode(call *vmCall) (node, error) {
 	if !call.fn.IsValid() {
-		// The callee is a value the program reads per run, so there
-		// is no funcval to cast at compile time.
+		// Because the callee is a value the program reads per run, no
+		// funcval exists to cast at compile time.
 		return node{}, fmt.Errorf("%s: the callee is a value, not a binding", call.name)
 	}
 	ft := call.ft
@@ -84,10 +85,10 @@ func (c *jitCompiler) directNode(call *vmCall) (node, error) {
 }
 
 // bridgeNode compiles a call to one reflect.Value.Call, its arguments
-// resolved against the same frame the direct calls use. The bridge
-// reads a slot argument in place through reflect.NewAt, so it shares
-// state with its JIT'd neighbours and needs no reflect evaluator slot
-// array.
+// resolved against the same frame the direct calls use. Because the
+// bridge reads a slot argument in place through reflect.NewAt, it
+// shares state with its JIT'd neighbours and needs no reflect
+// evaluator slot array.
 func (c *jitCompiler) bridgeNode(call *vmCall) (node, error) {
 	getters := make([]func(unsafe.Pointer, context.Context, map[string]any, any) (reflect.Value, error), len(call.args))
 	for i, a := range call.args {
@@ -270,7 +271,7 @@ func (c *jitCompiler) bridgeArg(a *vmArg) (func(unsafe.Pointer, context.Context,
 		if !st.AssignableTo(a.typ) {
 			return nil, fmt.Errorf("cannot use %s as %s", st, a.typ)
 		}
-		// The frame stores typed values, so the getter reads in place.
+		// Because the frame stores typed values, the getter reads in place.
 		return func(fr unsafe.Pointer, _ context.Context, _ map[string]any, _ any) (reflect.Value, error) {
 			return reflect.NewAt(st, unsafe.Add(fr, off)).Elem(), nil
 		}, nil

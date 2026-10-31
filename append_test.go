@@ -67,9 +67,9 @@ func TestAppend(t *testing.T) {
 // keeping a cell it shares with the caller: the direct tier pools
 // that cell and clears it when the statement finishes.
 //
-// Only read this for a value the compiler boxes, never a pointer: a
-// pointer-shaped value is its own data word, so two copies of one
-// pointer share it and nothing is wrong.
+// Only read this for a value the compiler boxes, never a pointer.
+// Because a pointer-shaped value is its own data word, two copies of
+// one pointer share it and nothing is wrong.
 func boxOf(v any) unsafe.Pointer {
 	return (*struct {
 		_    unsafe.Pointer
@@ -80,10 +80,9 @@ func boxOf(v any) unsafe.Pointer {
 // TestAppendCopiesABorrowedBox pins the binding contract on the two
 // paths that keep an element past the call. The store copies an
 // element of concrete type; an interface element would otherwise keep
-// the caller's box, and that box stays valid only for the length of
-// the call.
+// the caller's box, which stays valid only for the length of the call.
 func TestAppendCopiesABorrowedBox(t *testing.T) {
-	// A string, because that is the case the pool comment names, and
+	// A string, because that is the case the pool comment names and
 	// because a non-empty one always boxes into a cell of its own.
 	borrowed := any("needs a cell")
 

@@ -8,7 +8,7 @@ import (
 )
 
 // poolRuntime binds a formatter and a collector. The collector
-// follows the binding contract: it borrows its arguments, so it
+// follows the binding contract: because it borrows its arguments, it
 // copies what it keeps.
 func poolRuntime(t *testing.T) (*Runtime, *[][]any) {
 	t.Helper()

@@ -7,7 +7,7 @@ import (
 )
 
 // TestVarArgResolution covers the resolver directly: the longest
-// dotted prefix wins, field selectors continue from there, and an
+// dotted prefix wins and field selectors continue from there. An
 // address is legal on any of them because it addresses the program's
 // own cell and leaves the host's storage alone.
 func TestVarArgResolution(t *testing.T) {
@@ -23,8 +23,8 @@ func TestVarArgResolution(t *testing.T) {
 	c.vars["cfg"] = varBinding{val: reflect.ValueOf(val)}
 	c.vars["cfg.deep"] = varBinding{val: reflect.ValueOf(val)}
 
-	// The longest prefix wins, so cfg.deep is one name and not a field
-	// of cfg.
+	// Because the longest prefix wins, cfg.deep is one name and not a
+	// field of cfg.
 	if _, rest, ok := c.varOf([]string{"cfg", "deep", "Label"}); !ok || len(rest) != 1 || rest[0] != "Label" {
 		t.Errorf("varOf picked the wrong prefix: rest=%v ok=%v", rest, ok)
 	}

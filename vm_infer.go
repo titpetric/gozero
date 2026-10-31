@@ -5,10 +5,10 @@ import (
 	"reflect"
 )
 
-// Literal typing. A literal has no own type beyond the width
-// the parser produced, so the compiler works one out: a conversion
-// hint fixes it at the assignment, and inference reads it off the
-// first binding parameter the program passes the name to.
+// Literal typing. Because a literal has no own type beyond the width
+// the parser produced, the compiler works one out: a conversion hint
+// fixes it at the assignment, and inference reads it off the first
+// binding parameter the program passes the name to.
 
 // conversionType reports whether a call is a conversion hint: no
 // method chain, and a path that names a registered type. A binding
@@ -65,7 +65,7 @@ func (c *Compiler) inferLiteralType(prog *program, name string, lit arg) reflect
 		return reflect.TypeFor[bool]()
 	case argNil:
 		// nil alone names no type; the any it would infer to is never
-		// what the program meant, so the caller reports it.
+		// what the program meant. The caller reports it.
 		return nil
 	}
 	return reflect.TypeFor[int64]()
@@ -99,8 +99,8 @@ func (c *Compiler) useType(e *callExpr, name string) reflect.Type {
 				return nil
 			}
 			if a.kind == argVar && a.str == name {
-				// An empty interface accepts anything, so it says
-				// nothing about the name's type.
+				// An empty interface accepts anything and fixes no type
+				// for the name.
 				if pt.Kind() == reflect.Interface && pt.NumMethod() == 0 {
 					return nil
 				}

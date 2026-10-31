@@ -11,10 +11,10 @@ import (
 
 // TestStepJITReassignedSlotIsCopied pins the rule behind the aliasing.
 // An interface argument taken from a slot normally points at the slot
-// and skips a copy, and that reaches native's allocation count.
-// Aliasing is only legal while the slot takes one write: here the
-// program writes it twice, so the callee must receive a copy taken at
-// the call, not a window onto whatever the slot holds later.
+// and skips a copy. That reaches native's allocation count. Aliasing
+// is only legal while the slot takes one write: because the program
+// here writes it twice, the callee must receive a copy taken at the
+// call, not a window onto whatever the slot holds later.
 func TestStepJITReassignedSlotIsCopied(t *testing.T) {
 	rt := pairRuntime(t)
 	var kept any
@@ -100,8 +100,8 @@ func TestFieldReadNilBase(t *testing.T) {
 }
 
 // wantScalar binds a checker that asserts the callee received exactly
-// want, so a width or sign slip in the carrier shows up as the value
-// the callee saw.
+// want. A width or sign slip in the carrier shows up as the value the
+// callee saw.
 func wantScalar[T comparable](t *testing.T, rt *Runtime, name string, want T) {
 	t.Helper()
 	if err := rt.Bind(name, func(v T) error {
@@ -163,8 +163,8 @@ func TestStackScalarConvWidths(t *testing.T) {
 
 // TestHoistedStackNameSnapshot pins the documented semantics of the
 // hidden frame field: the program loads a stack name read more than
-// once a single time when it starts, so later uses of the same name
-// miss a binding's mid-run mutation of the stack.
+// once a single time when it starts. Later uses of the same name miss
+// a binding's mid-run mutation of the stack.
 func TestHoistedStackNameSnapshot(t *testing.T) {
 	rt := boxRuntime(t)
 	stack := map[string]any{"v": "before"}

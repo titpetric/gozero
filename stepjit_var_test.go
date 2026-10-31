@@ -25,8 +25,8 @@ func TestVarNodeTiers(t *testing.T) {
 		"dur":      time.Hour,
 		"sentinel": io.EOF,
 		"count":    &count,
-		// Shapes that are in the table, so a tier report turns on
-		// the argument alone.
+		// Because these shapes are in the table, a tier report
+		// turns on the argument alone.
 		"pair":    func(a, b string) error { return nil },
 		"countIn": func(p *int, s string) int64 { return int64(*p + len(s)) },
 		"takeAny": func(p *int, v any) error { return nil },
@@ -45,8 +45,8 @@ func TestVarNodeTiers(t *testing.T) {
 			t.Errorf("%q should be direct: %v", src, err)
 		}
 	}
-	// A write has no node, and the refusal names the table it falls
-	// outside, so the fallback is visible.
+	// A write has no node. The refusal names the table it falls
+	// outside, which makes the fallback visible.
 	err := rt.Supports(`label = "other"`)
 	if err == nil || !strings.Contains(err.Error(), "not in the table") {
 		t.Errorf("a write should report its fallback, got %v", err)
@@ -54,8 +54,8 @@ func TestVarNodeTiers(t *testing.T) {
 }
 
 // TestVarNodeReadsTheBoundValue pins the fixed-address load: the node
-// reads the value Bind registered, and a rebind does not reach a
-// program already compiled.
+// reads the value Bind registered. A rebind does not reach a program
+// already compiled.
 func TestVarNodeReadsTheBoundValue(t *testing.T) {
 	rt := NewRuntime()
 	seen := ""
@@ -83,8 +83,8 @@ func TestVarNodeReadsTheBoundValue(t *testing.T) {
 
 // TestVarCellSeedsTheFrame covers the direct tier's prologue for an
 // addressed value binding: the frame slot starts each run from the
-// bound value, so a program that appends through &name gets the same
-// answer every run and the appends of one run never reach the next.
+// bound value. A program that appends through &name gets the same
+// answer every run. The appends of one run never reach the next.
 func TestVarCellSeedsTheFrame(t *testing.T) {
 	rt := NewRuntime()
 	host := []string{"a"}
@@ -127,7 +127,7 @@ func TestVarCellSeedsTheFrame(t *testing.T) {
 }
 
 // TestVarCellFrameIsNotPooled pins the gate that keeps the per-run
-// copy honest: the cell's address goes to a callee, so the frame
+// copy honest: because the cell's address goes to a callee, the frame
 // escapes and the compiler leaves it out of the pool.
 func TestVarCellFrameIsNotPooled(t *testing.T) {
 	rt := NewRuntime()

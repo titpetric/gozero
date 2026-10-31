@@ -30,7 +30,7 @@ type (
 
 // nPE and the helpers beside it are the scalar call families. They are
 // generic over the parameter's Go type so one body covers every width:
-// the cast needs the exact type, but nothing else does.
+// the cast needs the exact type, but the body around it does not.
 func nPE[T any](fptr unsafe.Pointer, a0 nodeN, conv func(uint64) T) node {
 	f := castFn[func(T) (unsafe.Pointer, ifacePair)](fptr)
 	return node{class: lPtr, P: func(fr unsafe.Pointer, ctx context.Context, st map[string]any, d any) (unsafe.Pointer, error) {

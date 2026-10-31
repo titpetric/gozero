@@ -12,13 +12,13 @@ import (
 // methods, and the types those return. Only a type no binding mentions
 // needs a manual BindType call.
 //
-// Names are reflect.Type.String(), so "int64", "*http.Request",
+// Names are reflect.Type.String(): "int64", "*http.Request",
 // "http.Header". Two packages with the same base name would collide;
 // the later Bind wins, and BindType is the way out.
 
 // discoverDepth bounds the walk. A bound function is one level, its
 // results the next, the struct behind a result pointer the next, and
-// that struct's fields the one after: reaching http.Header from
+// the struct's fields the one after: reaching http.Header from
 // http.NewRequest takes five. Beyond that the walk starts pulling in
 // the transitive closure of the standard library for no gain.
 const discoverDepth = 5
@@ -41,13 +41,13 @@ func predeclared() map[string]reflect.Type {
 		out[t.String()] = t
 	}
 	// any prints as "interface {}", which is not a name a program can
-	// write, so it gets the spelling Go uses in source.
+	// write. It gets the spelling Go uses in source.
 	out["any"] = reflect.TypeFor[any]()
 	return out
 }
 
-// discover records t and the types reachable from it, so a var
-// statement can name anything the bindings imply.
+// discover records t and the types reachable from it. A var statement
+// can then name anything the bindings imply.
 func (r *Runtime) discover(t reflect.Type, depth int) {
 	if t == nil || depth > discoverDepth {
 		return
@@ -73,7 +73,7 @@ func (r *Runtime) discover(t reflect.Type, depth int) {
 		r.discover(t.Key(), depth+1)
 		r.discover(t.Elem(), depth+1)
 	case reflect.Struct:
-		// Field types matter because a program can read a field, so
+		// Field types matter because a program can read a field:
 		// req.Header has to make http.Header nameable.
 		for i := 0; i < t.NumField(); i++ {
 			if f := t.Field(i); f.PkgPath == "" {
@@ -88,8 +88,8 @@ func (r *Runtime) discover(t reflect.Type, depth int) {
 			r.discover(t.Out(i), depth+1)
 		}
 	}
-	// A method's signature names types the program can reach by calling
-	// it, so they belong in the registry too.
+	// Because a method's signature names types the program can reach by
+	// calling it, they belong in the registry too.
 	for i := 0; i < t.NumMethod(); i++ {
 		r.discover(t.Method(i).Type, depth+1)
 	}

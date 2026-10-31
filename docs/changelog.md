@@ -25,45 +25,45 @@ the research record.
 
 ## 2026-09-23 00:00 +02:00: Bind takes values
 
-`Bind` carried funcs, so data had no way into a program except as a
+`Bind` carried funcs. Data had no way into a program except as a
 literal or through a nullary getter, at the cost of a call per read.
 A host could not expose `time.Hour`, `io.EOF` or `os.Args` at all.
 
 `Bind` now takes either. A program calls a func; anything else is a
 value, read in argument position like any other name and
-type-checked against the parameter when the program compiles, so
-after `Bind("time.Hour", time.Hour)` a binding taking a
-`time.Duration` accepts it and one taking `int64` rejects it.
-`BindScope` loops over `Bind`, so it carries values for free.
+type-checked against the parameter when the program compiles. After
+`Bind("time.Hour", time.Hour)` a binding taking a `time.Duration`
+accepts it and one taking `int64` rejects it. `BindScope` loops over
+`Bind` and carries values for free.
 
 A value binding is also a receiver, with Go's method sets in full.
 It owns the longest dotted prefix of a path the way a func binding
-does, so `Bind("u", u)` with a `*url.URL` makes both `u.Path` and
+does. `Bind("u", u)` with a `*url.URL` makes both `u.Path` and
 `u.String()` compile; a pointer-receiver method is callable on a
 bound value, because a bound name is addressable the way a Go
-variable is. The address is the per-run cell, so the mutation is the
+variable is. The address is the per-run cell. The mutation is the
 program's and not the host's.
 
 A callee can be a value: a func-typed name, a func-typed field of
 one, or a func bound under a name. `f := getFn()` then `f()`
-compiles, and so does `cfg.Fn()`. The signature is static either
-way, so the compiler checks the arguments when the program compiles
-and each run reads only the func value. The call bridges, because
+compiles, as does `cfg.Fn()`. The signature is static either way.
+The compiler checks the arguments when the program compiles and each
+run reads only the func value. The call bridges, because
 there is no funcval to cast at compile time.
 
 Whether a program reaches the host is Go's rule and needs no API for
-it. Binding a value copies it in, so the name is the program's own
+it. Binding a value copies it in. The name is the program's own
 for the run: `label = x` and `&label` both reach a per-run copy,
 and the host's variable keeps what it had. Binding an address opts
-in. The name is then a `*T`, so `*os.Args` reads the host's slice,
+in. The name is then a `*T`. `*os.Args` reads the host's slice,
 `*os.Args = xs` writes it, and a binding taking a `*[]string` takes
-the name directly. The shallow copy is Go's too, so a slice or a
+the name directly. The shallow copy is Go's too. A slice or a
 map bound by value still shares its elements with the host.
 
 The copy is per run and the binding holds none: a compiled program
-keeps no per-run state, so two concurrent `Exec`s must not see each
+keeps no per-run state. Two concurrent `Exec`s must not see each
 other's writes and a second run must not start from what the first
-appended. One cell per name per program, so two `&label` address
+appended. One cell per name per program means two `&label` address
 the same storage the way two `&x` do in Go.
 
 `&` and `*` are the only operators the language gained. `&name`
@@ -91,7 +91,7 @@ binding's fixed address, with no frame slot and no boxing; an
 addressed one becomes a frame slot seeded per run, and `&name`
 filling an interface parameter carries a compile-time itab like any
 other interface argument. A write does not yet: `planInline`
-refuses the statement, so the program falls back to the reflect
+refuses the statement. The program falls back to the reflect
 evaluator whole and the write still lands. `testdata/vars.txt` runs
 the surface end to end.
 
@@ -140,12 +140,12 @@ which leaves pooling unimplemented:
 | unsafeNew                   | 62.57ns        |
 
 An indirectly aliased interface argument or an addressed receiver
-passes the callee a frame pointer it may keep, so those programs need
+passes the callee a frame pointer it may keep. Those programs need
 a fresh frame. The compiler marks exactly those nodes, and
 jitCompileProgram attaches a pool only when the build marks none. The
 pool clears a reused frame on the way out with the typed clear reflect performs
 (reflect.typedmemclr, a pull linkname like unsafe_New, with the same
-toolchain caveat), so every run still starts from the zero frame the
+toolchain caveat). Every run still starts from the zero frame the
 declarations and literal builders rely on.
 
 Verified with benchstat over four runs against the pre-pool tree.
@@ -167,8 +167,8 @@ rule and that a reused frame starts from zero.
 
 Verifying the counts with an allocation profile also found a
 benchmark defect: the native mirror built its context.WithValue per
-iteration where the vm side built one before the loop, so
-http/native measured one allocation that belonged to the harness.
+iteration where the vm side built one before the loop. One allocation
+in http/native belonged to the harness.
 The mirror builds its context once, and the http pair is
 symmetric.
 
@@ -209,9 +209,9 @@ var d chan string;      chan, <-chan and chan<- in a typeref
 
 The implicit rules carry over. The ok of Go's two-value receive is
 implicit the way a trailing error is: never a value, checked after
-every receive, and a closed channel ends the program with io.EOF, so
-a host loops Exec until errors.Is(err, io.EOF). The execution context arms
-both operations: a blocked receive or send ends the
+every receive, and a closed channel ends the program with io.EOF. A
+host loops Exec until errors.Is(err, io.EOF). The execution context
+arms both operations: a blocked receive or send ends the
 program with ctx.Err() when the ExecContext deadline passes, which
 also bounds a nil channel. A send on a closed channel panics as in
 Go, arriving as *PanicError. The channel itself must have a static
@@ -269,7 +269,7 @@ n := st.Add();          n is 2: both writes reached st
 
 Addressability is Go's rule: a name is a variable and has an
 address, a field of one does too, and the direct result of a call
-does not, so f().Bump() is a compile error naming the fix. The
+does not. f().Bump() is a compile error naming the fix. The
 receiver resolves to the variable's real address - on the direct
 tier the frame slot's offset, with no load at all, and a method that
 writes through its receiver writes the program's variable. The reflect
@@ -293,7 +293,7 @@ y := int32(7); y = 9;   the hint declares; the assignment converts
 var n int64; n = 7;     unchanged
 ```
 
-The initial prototype had no short declaration for literals, so
+The initial prototype had no short declaration for literals.
 `x = 5` declared `x` and the typo guard existed only for call
 results; a misspelled assignment target silently declared a second
 name while the later read of the real one saw a stale value. The
@@ -313,7 +313,7 @@ on an interface-typed name (`ctx.Err()`, a method on an `io.Reader`
 slot) hit it. The compiler
 now synthesizes the callable with `ifaceMethodFunc`: a
 `reflect.MakeFunc` whose first parameter is the interface and whose
-body dispatches on the dynamic value, so the call compiles like any
+body dispatches on the dynamic value. The call compiles like any
 method call on every tier. A method call on a nil interface panics
 the way it does in Go and arrives as `*PanicError` through the
 guard.
@@ -325,7 +325,7 @@ the program once the caller cancels the context - a one-line
 cancellation guard.
 
 The panic also exposed that `compileUncached` held the runtime's
-read lock without a defer, so a compile-time panic leaked it and the
+read lock without a defer. A compile-time panic leaked it and the
 next cache store deadlocked; the fix defers the release.
 
 ## 2026-09-09 10:44 +02:00: docs split, syntax reference, design research
@@ -358,13 +358,13 @@ range-over-func for iteration, operation bindings for math.
 
 A composite literal keeps the program off the reflect
 evaluator. The step JIT compiles a literal to typed stores at field
-offsets, the technique the frame already uses, so every element write
+offsets, the technique the frame already uses. Every element write
 keeps its write barrier and the block behind `&T{}` comes from the
 same allocator with the struct's own pointer map.
 
 A value literal assigned to a name builds in place in its frame slot
 and allocates nothing; the JIT clears a name assigned a second literal
-first, so the fresh value starts from zero the way Go's does. `&T{}`,
+first. The fresh value starts from zero the way Go's does. `&T{}`,
 a literal in argument position, and a literal filling an interface
 each get one fresh struct per evaluation, which is the allocation the
 Go compiler makes for a literal that escapes. A literal in return
@@ -412,8 +412,8 @@ r = &http.Request{URL: url.Parse("http://h/c")};  a call as a value
 The literal works wherever a value does: assigned to a name, passed
 as an argument, written to a field, returned. Every run of the compiled
 program builds the value fresh, matching Go's per-evaluation
-allocation. The value is addressable, so later statements can
-assign its fields:
+allocation. The value is addressable. Later statements can assign
+its fields:
 
 ```
 u := url.URL{};
@@ -443,7 +443,7 @@ u = url.URL{Path: 5};          field Path: cannot use a number as string
 
 Composite literals cover structs; there are no map or slice literal
 forms. A program using one runs on the reflect evaluator: no JIT node
-builds a struct, so the direct-call tier declines the whole program
+builds a struct. The direct-call tier declines the whole program
 and leaves it to the evaluator.
 
 ## 2026-09-08 10:18 +02:00: conversion hints
@@ -455,10 +455,10 @@ x = int32(0);
 ```
 
 The right-hand side parses as a call. At compile time a path that
-names a registered type and no binding has nothing to call, so the
-compiler reads it as a conversion hint: the literal takes the named type, the
-way a var declaration would fix it. The var form stays; the two
-spellings compile to the same statement:
+names a registered type and no binding has nothing to call. The
+compiler reads it as a conversion hint: the literal takes the named
+type, the way a var declaration would fix it. The var form stays; the
+two spellings compile to the same statement:
 
 ```
 var x int32;
@@ -501,15 +501,15 @@ x = int32(5);         cannot use int32 as int64
 ```
 
 The hint wraps exactly one literal. A name or a call already has a
-type, so converting one is a compile error, never a guess:
+type. Converting one is a compile error, never a guess:
 
 ```
 y = 5;
 x = int32(y);         a conversion takes a literal
 ```
 
-A binding wins over a same-named type, so no program that
-compiled before hints existed changed meaning. Hydration and the
-three inference rules in [types.md](types.md) stay as they are; the hint
+A binding wins over a same-named type. No program that compiled
+before hints existed changed meaning. Hydration and the three
+inference rules in [types.md](types.md) stay as they are; the hint
 slots in ahead of them, as an explicit declaration on the assignment
 itself.

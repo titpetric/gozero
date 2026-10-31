@@ -5,10 +5,10 @@ date: "2026-09-09T00:00:00+02:00"
 
 Every gozero program terminates today: n statements run at most n
 calls, and the first error stops them. A loop is the first construct
-that breaks that guarantee, so this document weighs both the
-machinery and what the language stops being able to promise. The
-constraints stand: Go syntax, no operator expressions in the AST, no
-userland control flow, stdlib only.
+that breaks that guarantee. This document weighs both the machinery
+and what the language stops being able to promise. The constraints
+stand: Go syntax, no operator expressions in the AST, no userland
+control flow, stdlib only.
 
 ## How it would look
 
@@ -48,8 +48,8 @@ stride walk over a `sliceHdr` the closure tree already produces;
 ranging a func is a shape-cast of `func(yield func(T) bool)` and a
 real Go closure as the callback. `for cond { }` with a bool-returning
 call as the condition also parses as Go, but inherits every problem
-in [conditions.md](conditions.md) plus non-termination, and adds
-nothing range does not.
+in [conditions.md](conditions.md) plus non-termination. Range already
+covers every iteration it would express.
 
 ## What it costs the design
 
@@ -61,18 +61,18 @@ an iterator binding can be infinite by intent. The runtime would owe
 a `ctx.Err()` check so `ExecContext` deadlines end a spinning
 program. That check lands on every iteration.
 
-**Loop-carried slots lose the aliasing win.** A name assigned each
-iteration takes more than one write by definition, so the write-once
-rule that lets interface arguments alias the frame
+**Loop-carried slots lose the aliasing win.** Because a name assigned
+each iteration takes more than one write by definition, the
+write-once rule that lets interface arguments alias the frame
 (stepjit_arg.go) turns off for everything the loop body touches. A
-loop body also multiplies per-iteration allocations, so the
-optimization turns off where the allocation count is highest.
+loop body also multiplies per-iteration allocations. The optimization
+turns off where the allocation count is highest.
 
 **One frame, many iterations.** Each run allocates the frame once
 and the loop variable is one slot, reused. Go moved to per-iteration
 variables in 1.22 because captures of the shared variable observed
-the wrong iteration; without closures nothing can capture the slot,
-so sharing it holds up today and stops holding up the day
+the wrong iteration; without closures nothing can capture the slot.
+Sharing it holds up today and stops holding up the day
 [closures](closures.md) can capture it. The two features interact:
 each is simpler without the other.
 
@@ -119,8 +119,8 @@ decision. Cons:
 
 - Still needs blocks, a body statement list, and the break/continue
   signal - most of the grammar cost of full loops for one form.
-- The loop body cannot produce a value without multi-write slots, so
-  the aliasing loss stands.
+- Because the loop body cannot produce a value without multi-write
+  slots, the aliasing loss stands.
 - An `iter.Seq` binding is a closure the host wrote; a program that
   needs a custom iteration order pushes that code back into the
   host.
@@ -135,7 +135,7 @@ rows - which is the range-over-func cut above. Shell makes the same
 split: `for f in *.txt` ranges over data the filesystem lists.
 The imperative way to process a stream in Go is increasingly an
 iterator someone else wrote, consumed by range; a gozero with loops
-would be that consumer and nothing more.
+would be that consumer.
 
 ## Verdict
 

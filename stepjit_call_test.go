@@ -17,8 +17,8 @@ import (
 // bridged call still runs correctly.
 func TestBridgedCallStaysInTheTree(t *testing.T) {
 	rt := pairRuntime(t)
-	// Five string parameters is a shape the table does not carry, so
-	// the call bridges while its neighbours stay direct.
+	// Because five string parameters is a shape the table does not
+	// carry, the call bridges while its neighbours stay direct.
 	if err := rt.Bind("join5", func(a, b, c, d, e string) (*url.URL, error) {
 		return &url.URL{Path: "/" + a + b + c + d + e}, nil
 	}); err != nil {
@@ -62,7 +62,7 @@ func TestBridgedCallStaysInTheTree(t *testing.T) {
 }
 
 // TestAllocationBudget pins the allocation count of the compiled
-// program against the native code it stands for, so a regression fails
+// program against the native code it stands for. A regression fails
 // the suite and does not only show up in a benchmark.
 func TestAllocationBudget(t *testing.T) {
 	rt := pairRuntime(t)
@@ -194,8 +194,8 @@ func TestBridgedResultClasses(t *testing.T) {
 }
 
 // TestBridgedSpread pins a variadic spread through the bridge, which is
-// the one path that reaches reflect's CallSlice: []int is not a
-// pack the table special-cases, so the call bridges, and the spread
+// the one path that reaches reflect's CallSlice: because []int is not
+// a pack the table special-cases, the call bridges and the spread
 // slice arrives as the variadic parameter.
 func TestBridgedSpread(t *testing.T) {
 	rt := pairRuntime(t)

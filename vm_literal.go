@@ -6,13 +6,13 @@ import (
 )
 
 // The multi-statement VM. A program is a list of calls that bind their
-// results to names; there are no operators, so every value is a
+// results to names. Because there are no operators, every value is a
 // literal, a name, or the result of another call.
 //
 // Two rules shape the compiled form:
 //
-// A trailing error result is never a value. The compiler strips it from
-// the result list and checks it after every call, so
+// A trailing error result is never a value. Because the compiler strips
+// it from the result list and checks it after every call,
 // "req := http.NewRequest(...)" binds one name to a two-result call and
 // a failure returns from Exec or Scan at that statement. No program text
 // mentions an error.
@@ -21,8 +21,9 @@ import (
 // takes the zero value of its type; http.NewRequest with two arguments
 // receives a nil body that way.
 //
-// Names the program binds carry a static type, so the compiler resolves
-// methods on them against that type when the statement compiles.
+// Because names the program binds carry a static type, the compiler
+// resolves methods on them against that type when the statement
+// compiles.
 // json.NewEncoder is a binding; Encode is not, and the program reaches
 // it through the *json.Encoder the binding returns. Names coming from
 // the caller's stack, including dest, are opaque and the VM checks them
@@ -67,10 +68,10 @@ func literalValue(t reflect.Type, a arg) (reflect.Value, error) {
 }
 
 // literalAs converts a numeric literal to the parameter type it fills.
-// The parser only produces int64 and float64, so without this a
-// binding taking int, int32 or float32 could not receive a literal at
-// all. The value must be representable: a literal that does not fit is
-// a compile error, and never wraps.
+// The parser only produces int64 and float64. Without this, a binding
+// taking int, int32 or float32 could not receive a literal at all. The
+// value must be representable: a literal that does not fit is a
+// compile error, and never wraps.
 //
 // An empty interface parameter takes the literal at its written width,
 // int64 or float64, as the parser produced it.

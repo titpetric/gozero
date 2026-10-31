@@ -31,8 +31,8 @@ once per source string with `reflect.StructOf`, registers it in a
 program-local table under the declared name, and everything
 downstream already works: composite literals, field reads and
 writes, frame storage for value slots, method-set resolution (there
-are no methods to find), and json encoding. Field types resolve
-through the same typeref grammar a `var` statement uses, so a
+are no methods to find), and json encoding. Because field types
+resolve through the same typeref grammar a `var` statement uses, a
 declared struct can hold any type the registry knows, including
 another declared struct and channels. With tag syntax admitted, the
 json output is fully shaped:
@@ -74,15 +74,15 @@ shape budget the runtime cannot enforce for it.
 
 **Declared types are records, not objects.** A method needs a func
 body, which is [closures.md](closures.md) territory, and
-`StructOf` does not generate wrapper methods for embedded fields,
-so embedding does not promote behaviour either. Declared structs
+`StructOf` does not generate wrapper methods for embedded fields.
+Embedding does not promote behaviour either. Declared structs
 carry data between bindings and into encoders; anything with
 behaviour stays a host type. This is a hard boundary that a later
 version keeps in place.
 
-**Structural assignability cuts both ways.** An unnamed struct with
-the same fields is assignable to a named host parameter, so a
-program can build a value for a binding without the host exporting
+**Structural assignability cuts both ways.** Because an unnamed
+struct with the same fields is assignable to a named host parameter,
+a program can build a value for a binding without the host exporting
 a constructor. The capability is not new - the registry already
 lets a program write `T{}` for any discovered host type - but
 declarations widen it from types the host mentioned to any shape
@@ -145,6 +145,6 @@ has. The real costs are structural: a block form in a line-oriented
 grammar, names reflect can never see, and a type universe that
 grows with program text for the life of the process - the first
 resource the binding set would not control. Methods stay out
-regardless, so the feature is records for output shaping and
-nothing more. Until that pressure outweighs a host-side type and a
-`BindType` call, host-declared types remain the recorded position.
+regardless. The feature is records for output shaping. Until that
+pressure outweighs a host-side type and a `BindType` call,
+host-declared types remain the recorded position.

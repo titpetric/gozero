@@ -12,7 +12,7 @@ import (
 // keys or positions but never mix the two, as in Go; a positional list
 // fills the fields in declaration order and may stop early, the rest
 // staying zero, matching how a call fills missing arguments. Each
-// value compiles against its field's type, so a numeric literal
+// value compiles against its field's type. A numeric literal then
 // converts the way it does at a call.
 func (c *Compiler) compileStructLit(slots map[string]int, env map[string]reflect.Type, a arg) (*vmArg, reflect.Type, error) {
 	name := joinPath(a.path)

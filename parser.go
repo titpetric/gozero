@@ -29,12 +29,12 @@ import (
 //	term    := ";" | EOL | EOF
 
 // Parser turns a program into a list of statements. The compiler
-// resolves a path, and the parser does not: http.NewRequest is one bound name,
-// req.Cookies is a method on the value held by req, and req.Header is
-// a struct field on it; the parser cannot tell the three apart without
-// the bindings and the types. Strings are single- or double-quoted,
-// and numbers map to int64 without a decimal point and float64 with
-// one; no other numeric types exist.
+// resolves a path. The parser does not: http.NewRequest is one bound
+// name, req.Cookies is a method on the value held by req, and
+// req.Header is a struct field on it; the parser cannot tell the three
+// apart without the bindings and the types. Strings are single- or
+// double-quoted, and numbers map to int64 without a decimal point and
+// float64 with one; no other numeric types exist.
 type Parser struct {
 	src string
 	pos int
@@ -141,8 +141,8 @@ type stmt struct {
 	call   *callExpr
 
 	// lit holds a literal right-hand side, one with no
-	// call, "x = 123". There is no call to take a type from, so the
-	// compiler infers one.
+	// call, "x = 123". With no call to take a type from, the compiler
+	// infers one.
 	lit *arg
 
 	// varName and varType come from a var statement, which puts the
@@ -178,8 +178,8 @@ type program struct {
 // just argCall and argStruct would let "return f(true);" and
 // "return f(nil);" reach the single-statement compiler, which calls
 // Type on an invalid reflect.Value for a kind outside its switch, and
-// Compile would panic with no error returned. The program compiler
-// covers every kind, so anything else routes there.
+// Compile would panic with no error returned. Because the program
+// compiler covers every kind, anything else routes there.
 func (p *program) flatCall() (*callExpr, bool) {
 	if len(p.stmts) != 1 {
 		return nil, false
@@ -268,8 +268,8 @@ func (p *Parser) stmt() (stmt, error) {
 	}
 
 	// "*p = v" writes through a pointer. The parser tries this form
-	// before everything else because nothing else in the grammar
-	// starts a statement with '*'.
+	// before everything else because no other statement form in the
+	// grammar starts with '*'.
 	if p.peek() == '*' {
 		derefSave := p.pos
 		p.pos++
@@ -309,9 +309,9 @@ func (p *Parser) stmt() (stmt, error) {
 				if err != nil {
 					return stmt{}, err
 				}
-				// A name on the right is legal for either target: a
-				// value binding takes one ("os.Args = xs"), and so
-				// does a field write, which compiles it against the
+				// A name on the right is legal for either target. A
+				// value binding takes one ("os.Args = xs"). A field
+				// write takes one too, and compiles it against the
 				// field's type in assignedValue.
 				if !p.terminated() {
 					return stmt{}, fmt.Errorf("parse: expected ';' or end of line at offset %d", p.pos)
@@ -327,7 +327,7 @@ func (p *Parser) stmt() (stmt, error) {
 
 	// A statement is a call, optionally preceded by the names its
 	// results bind to. The names only count as names once the parser
-	// meets the assignment operator, so it saves the position and
+	// meets the assignment operator. The parser saves the position and
 	// restarts the scan as a bare call when the operator is absent.
 	save := p.pos
 	lhs, define, ok := p.assignList()

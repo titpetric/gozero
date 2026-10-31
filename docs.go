@@ -28,25 +28,25 @@
 // that names a binding. Binding "os.Args" makes os.Args one name, and
 // whatever follows such a prefix is fields and methods.
 //
-// BindScope binds in sorted order, so which entry a failure reports does not
+// BindScope binds in sorted order. Which entry a failure reports does not
 // move with a map iteration. The first failure stops the loop, and the
 // entries bound before it stay bound.
 //
 // A rebind is a new binding and not an update. A program that has already
 // compiled captured the binding as it stood then, and Runtime.Compile caches
-// a compilation per source string, so a later Bind under the same name
-// reaches neither.
+// a compilation per source string. A later Bind under the same name reaches
+// neither.
 //
 // # Results
 //
-// Eval and CompiledFunc.Exec return the program's result as T. T appears
-// only in the result, where Go has nothing to infer it from, so every call
-// instantiates it explicitly:
+// Eval and CompiledFunc.Exec return the program's result as T. Because T
+// appears only in the result, where Go has nothing to infer it from, every
+// call instantiates it explicitly:
 //
 //	req, err := rt.Eval[*http.Request](src, stack)
 //
 // CompiledFunc.Scan takes a pointer the caller allocated and infers T from
-// it. It dereferences a *T result, so a *http.Request scans into an
+// it. Because it dereferences a *T result, a *http.Request scans into an
 // http.Request the caller owns, without an interface in the way.
 //
 // dest travels in both directions. A program that ends in a value assigns it
@@ -59,15 +59,15 @@
 //
 // A var statement names a type, and the names it may use are the registry's.
 // Binding a function registers every type its signature mentions, along with
-// what the methods of those types reach, so most types never need
-// registering by hand. Runtime.BindType covers the rest: it takes a value of
-// the type, and a nil pointer to it for an interface.
+// what the methods of those types reach. Most types never need registering
+// by hand. Runtime.BindType covers the rest: it takes a value of the type,
+// and a nil pointer to it for an interface.
 //
 //	rt.BindType("io.Closer", (*io.Closer)(nil))
 //
-// Runtime.Types lists what the registry holds, so a host can diagnose a
+// Runtime.Types lists what the registry holds. A host reads it to diagnose a
 // lookup that failed. Runtime.SetLogger is the other half of that: it
 // reports each registration at debug level, with the binding the walk
-// started from, so a host can see which names a var statement may use and
-// where each one came from.
+// started from. The log shows which names a var statement may use and where
+// each one came from.
 package gozero

@@ -8,9 +8,9 @@ import (
 )
 
 // itabFor returns the interface table for holding a value of concrete
-// type ct in interface type it. The pair of types fixes the table, so
-// this runs once per argument at compile time and only the data word
-// varies per call. For an empty interface the word is the concrete
+// type ct in interface type it. Because the pair of types fixes the
+// table, this runs once per argument at compile time and only the data
+// word varies per call. For an empty interface the word is the concrete
 // type's rtype, which is the same position in the same two words.
 func itabFor(ct, it reflect.Type) (unsafe.Pointer, bool) {
 	if ct.Kind() == reflect.Interface || !ct.Implements(it) {
@@ -121,11 +121,11 @@ func smallBox(bits uint64, width uintptr) (unsafe.Pointer, bool) {
 	return p, true
 }
 
-// scalarIface boxes a scalar into an interface. The data word has to
-// point at a value of the concrete width, so each class materialises
-// one of its own type; that escape is the allocation the Go compiler
-// makes at the same place, except for the small values staticBoxes
-// already holds.
+// scalarIface boxes a scalar into an interface. Because the data word
+// has to point at a value of the concrete width, each class
+// materialises one of its own type; that escape is the allocation the
+// Go compiler makes at the same place, except for the small values
+// staticBoxes already holds.
 func scalarIface(tab unsafe.Pointer, sub node) (node, error) {
 	mk := func(width uintptr, box func(uint64) unsafe.Pointer) (node, error) {
 		f := sub.N

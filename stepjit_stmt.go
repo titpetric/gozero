@@ -38,8 +38,8 @@ func (c *jitCompiler) stmtNode(s plannedStmt, jp *jitProgram) (nodeE, error) {
 		}
 	}
 	if s.out < 0 {
-		// Nothing keeps the result, but the call still runs and its error
-		// still ends the program.
+		// No slot keeps the result, but the call still runs and its
+		// error still ends the program.
 		return c.dropped(n)
 	}
 

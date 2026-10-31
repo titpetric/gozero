@@ -72,8 +72,8 @@ func TestStatement_Func(t *testing.T) {
 // place races.
 func TestReflectTierIsConcurrent(t *testing.T) {
 	rt := NewRuntime()
-	// The shape table has no bool parameter, so this flat call cannot
-	// JIT and Statement.call carries it.
+	// Because the shape table has no bool parameter, this flat call
+	// cannot JIT and Statement.call carries it.
 	if err := rt.Bind("f", func(s string, b bool) (*url.URL, error) {
 		return &url.URL{Path: s}, nil
 	}); err != nil {

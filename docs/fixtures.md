@@ -43,9 +43,9 @@ Each subtest:
 
 A failing assertion inside the program calls `tb.Errorf` through the
 bound helper, which fails the subtest the ordinary way. The runner adds
-nothing: the program is the test. `TestAssertFailurePropagates` pins
-that a failing assertion actually reaches the TB, so the suite cannot
-pass vacuously.
+no assertions of its own; the program is the test. Because
+`TestAssertFailurePropagates` pins that a failing assertion actually
+reaches the TB, the suite cannot pass vacuously.
 
 Adding a test is adding a file. Scope it like the existing ones, one
 concern per file: `http.txt`, `url.txt`, `json.txt`,
@@ -62,8 +62,8 @@ runtime binds a fixed shape instead:
 "Equal": assertEqual // func(tb any, want, got any, message string)
 ```
 
-Every parameter has a layout class, so an assertion is one direct call.
-The message stays optional because every trailing argument is:
+Because every parameter has a layout class, an assertion is one direct
+call. The message stays optional because every trailing argument is:
 `assert.Equal(tb, want, got)` zero-fills it to `""`. `tb` has type
 `any`, and the helper asserts it to `testing.TB`, which keeps
 `testing` out of the runtime's own types.
@@ -122,17 +122,17 @@ allocation, the trick runtime.staticuint64s plays, which removes one
 allocation from fmt and types. A stack name the program reads more
 than once, tb in every fixture, loads into a hidden frame field once
 when the program starts; each use then reads an offset from the frame
-and skips the map lookup, so later uses of the same name do not see a
+and skips the map lookup. Later uses of the same name do not see a
 binding that mutates the stack mid-run.
 
 ## Structs by value
 
 `types.txt` declares `var u url.URL` and reads `u.Path`. A struct held
-by value has no layout class, so it cannot travel between calls as a
-closure return value; what it can do is live in the frame. The frame is
-one `reflect.StructOf` allocation, so the struct is a field in it, the
-declaration's zero value is the zeroed frame, and a field read or write
-is an offset from the frame pointer. A whole-struct value needs
+by value has no layout class. It cannot travel between calls as a
+closure return value; what it can do is live in the frame. Because the
+frame is one `reflect.StructOf` allocation, the struct is a field in
+it, the declaration's zero value is the zeroed frame, and a field read
+or write is an offset from the frame pointer. A whole-struct value needs
 transport only when a binding receives it; it travels through the
 interface alias or, when the program writes the slot more than once,
 through a copy: `TestValueStructIntoInterface` pins that a binding that
@@ -145,8 +145,8 @@ what a later field write put in the slot.
   once: compiled hot inside the test process against live bindings,
   making its own assertions through a bound assert, with the subtest's
   `testing.TB` travelling on the stack.
-- Adding a test is adding a file. Nothing regenerates and nothing
-  relinks; the same binary runs new programs as long as the APIs they
+- Adding a test is adding a file. No generator runs and no linker
+  runs; the same binary runs new programs as long as the APIs they
   call are already bound.
 - A variadic API binds into the hot path by wrapping it at the arity
   the scripts use and letting zero-fill make the tail optional; the

@@ -60,8 +60,8 @@ func TestConversionHint(t *testing.T) {
 }
 
 // TestConversionHintErrors checks that a hint reports the same
-// mismatches a var declaration does, and that a hint is only for
-// literals.
+// mismatches a var declaration does. It also checks that a hint is
+// only for literals.
 func TestConversionHintErrors(t *testing.T) {
 	rt, _ := typeRuntime(t)
 	for _, tc := range []struct{ name, src string }{

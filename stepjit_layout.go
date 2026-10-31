@@ -56,9 +56,9 @@ func layoutOf(t reflect.Type) layout {
 	case reflect.Float64:
 		return lF64
 	case reflect.Int:
-		// int and uint are int64 and uint64 on a 64 bit platform and
-		// int32 and uint32 on a 32 bit one, so the class follows the
-		// size and ignores the kind.
+		// Because int and uint are int64 and uint64 on a 64 bit
+		// platform and int32 and uint32 on a 32 bit one, the class
+		// follows the size and ignores the kind.
 		if t.Size() == 8 {
 			return lI64
 		}

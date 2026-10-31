@@ -6,8 +6,8 @@ date: "2026-09-09T00:00:00+02:00"
 gozero is a subset of Go's statement syntax: every gozero snippet in
 this document is legal Go, minus the declarations Go would need
 around it. What the language removes it replaces with an implicit
-rule, so the same behaviour runs a line shorter than the Go it
-mirrors in the common case. Each section pairs the two side by side,
+rule. The same behaviour runs a line shorter than the Go it mirrors
+in the common case. Each section pairs the two side by side,
 Go on the left; the gozero fences carry the Go tag, because gozero is Go. How the compiled form
 runs is [DESIGN.md](DESIGN.md); this document is the surface.
 
@@ -43,8 +43,7 @@ pointer read, or the result of a call; a condition, a loop or an
 arithmetic expression is a Go function the host binds
 ([design/](design/) records why). The end of
 a line closes a statement; the semicolon is a delimiter between
-statements sharing one, so both spellings below are the same
-program:
+statements sharing one. Both spellings below are the same program:
 
 ```
 u := url.Parse("https://example.com"); assert.Equal(tb, "https", u.Scheme)
@@ -67,10 +66,10 @@ statement could read the name back.
 The rule is Go's. `:=` declares a new name, `var` declares one with
 an explicit type, and `=` assigns to a name one of those declared. A
 plain `=` on an undeclared name is a compile error
-(`x is not defined, use := or var`), and a `:=` that declares
-nothing new is too (`no new variables on left side of :=`). The
+(`x is not defined, use := or var`), and a `:=` that declares no
+new name is too (`no new variables on left side of :=`). The
 initial prototype let a literal define its name with `=`; the
-language drops that form, so a typo in an assignment target is an
+language drops that form. A typo in an assignment target is an
 error and never a silent second name.
 
 <table>
@@ -169,10 +168,10 @@ language's only conditional.
 ## Implicit context passing
 
 A binding parameter of type `context.Context` the program does not
-pass receives the execution context, so cancellation and
-deadlines flow from `ExecContext` into the bindings without the
-program mentioning them. A written argument that is statically a
-context overrides the fill, so a program can pass one it made itself.
+pass receives the execution context. Cancellation and deadlines flow
+from `ExecContext` into the bindings without the program mentioning
+them. Because a written argument that is statically a context
+overrides the fill, a program can pass one it made itself.
 
 <table>
 <tr>
@@ -251,7 +250,7 @@ method sets in full: value receivers, pointer receivers, and methods
 promoted from embedded types, on both value- and pointer-typed
 names. A pointer-receiver method on a value needs the value's
 address, and a name or a field of one has an address the way a Go
-variable does; only the direct result of a call does not, so
+variable does; only the direct result of a call does not.
 `f().Bump()` is a compile error where `o := f(); o.Bump()` mutates
 `o`. Reads chain through pointers, and writes require an addressable
 base - a pointer, or a value declared with `var` or built by a
@@ -292,7 +291,7 @@ u.Path = "/rewritten"
 
 `T{}` and `&T{}` build structs, keyed or positional, nested, with
 calls as elements and a trailing comma allowed, as in Go. Every run
-builds the value fresh. The value is addressable, so its fields assign
+builds the value fresh. The value is addressable. Its fields assign
 afterwards. The type name is any type discovery registered
 (`testdata/structs.txt`):
 
@@ -332,7 +331,7 @@ w.Path = "/w"
 </table>
 
 Identical columns again. A numeric element converts to its field's
-width, so `ProtoMajor: 1` is an int without a hint.
+width. `ProtoMajor: 1` is an int without a hint.
 
 ## Variadic calls
 
@@ -386,10 +385,10 @@ rt.Bind("os.Args", &os.Args)      // an address
 
 A value binding is also a receiver, with Go's method sets in full:
 it owns the longest dotted prefix of a path the way a func binding
-does, so `Bind("u", u)` with a `*url.URL` makes `u.Path` and
+does. `Bind("u", u)` with a `*url.URL` makes `u.Path` and
 `u.String()` both compile, and a pointer-receiver method is callable
 on a bound value because a bound name is addressable. The address is
-the per-run cell, so the mutation is the program's.
+the per-run cell. The mutation is the program's.
 
 A callee can be a value too: a func-typed name, a func-typed field,
 or a func bound under a name.
@@ -401,9 +400,9 @@ t := cfg.Fn()
 ```
 
 Whether a program reaches the host is Go's rule, and the `&` at the
-`Bind` call site is the whole of the opt-in. Binding a value
-copies it in, so the name is the program's own for the run; an
-address makes the name a `*T`, and the program writes through it:
+`Bind` call site is the whole of the opt-in. Binding a value copies
+it in. The name is the program's own for the run. An address makes
+the name a `*T` that the program writes through:
 
 <table>
 <tr>
@@ -445,9 +444,9 @@ sort.Strings(*os.Args)
 
 The copy is per run: the next run starts from the bound value again,
 and two concurrent `Exec`s cannot see each other. One cell per name
-per program, so a write, an `&` and every read reach the same
-storage. The shallow copy is Go's, so a slice or a map bound by
-value still shares its elements with the host.
+per program means a write, an `&` and every read reach the same
+storage. The shallow copy is Go's. A slice or a map bound by value
+still shares its elements with the host.
 
 `&` and `*` are the only operators besides the channel arrow.
 `&name` takes the address of a program name, a field of one, or a
@@ -461,9 +460,9 @@ n := *p
 *p = 8
 ```
 
-Nothing auto-references an argument. The one address the compiler
-takes implicitly is the receiver of a pointer-method call, which is
-the only place Go takes one too: `o := f(); o.Bump()` addresses `o`,
+The compiler auto-references no argument. The one address it takes
+implicitly is the receiver of a pointer-method call, which is the
+only place Go takes one too: `o := f(); o.Bump()` addresses `o`,
 and `Mutate(o)` against a `*T` parameter is a compile error until
 the program writes `Mutate(&o)`.
 
@@ -483,8 +482,8 @@ assert.Equal(tb, "a/b", path.Join(xs...))
 
 A slice literal takes no element keys: an index key would need the
 compiler to size the slice, and nothing in the language needs one.
-A literal spells its type the way a `var` statement spells one, so
-it must name a type discovery registered.
+A literal spells its type the way a `var` statement spells one. It
+must name a type discovery registered.
 
 The program in [`testdata/vars.txt`](../testdata/vars.txt) runs the
 whole surface.
@@ -494,9 +493,8 @@ whole surface.
 Names the program never binds resolve against the stack map the host
 passes to `Exec`; an unset or nil entry reads as the parameter's zero
 value, and the program type-checks a set entry on read, because its
-type exists only then. `dest` names the pointer passed to `Scan`, so
-a program writes its output into a variable the host
-owns:
+type exists only then. `dest` names the pointer passed to `Scan`. A
+program writes its output into a variable the host owns:
 
 <table>
 <tr>

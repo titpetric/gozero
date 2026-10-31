@@ -60,15 +60,15 @@ directions.
 
 The compiled program is a graph of closures called through function
 pointers. The compiler can never inline across those calls, in either
-build, so the vm column changes only by what the standard library
-loses. The native column additionally loses the inlining of its own
+build. The vm column changes only by what the standard library loses.
+The native column additionally loses the inlining of its own
 statements. http moves furthest, 1.1x to 1.3x: its mirror's
 statements inline away in the default build where the vm's closures
 cannot. fmt holds 1.3x in both builds since argument pooling: two
 allocations of remaining vm work leave little for either build to
 fold away. variadic sits between 1.1x and 1.3x: its work is one
 spread call, and the vm and the mirror make the same calls once
-nothing inlines.
+inlining is off.
 
 Inlining also feeds escape analysis, which shows in the alloc columns.
 With inlining, json/native drops two allocations, from 16 to 14, and
@@ -107,6 +107,6 @@ three runs comparable.
   with it on, the vm's counts do not move, because its values travel
   through closures the compiler cannot see through.
 - A fixture whose work is one call runs near native parity once
-  nothing inlines: variadic reads 1.1x-1.3x across sweeps, which
+  inlining is off: variadic reads 1.1x-1.3x across sweeps, which
   locates the interpreter's overhead in the statements around a call,
   outside the call itself.

@@ -68,9 +68,9 @@ func Append(slice any, v any) error {
 		ev = ev.Convert(et)
 	}
 	// The store copies an element of concrete type. An interface
-	// element would keep the box the argument arrived in, and that box
-	// stays valid only for the length of the call, so the slice takes a
-	// box of its own.
+	// element would keep the box the argument arrived in, which stays
+	// valid only for the length of the call. The slice takes a box of
+	// its own.
 	if et.Kind() == reflect.Interface {
 		ev = reflect.ValueOf(copyBoxed(ev.Interface()))
 		if !ev.IsValid() {

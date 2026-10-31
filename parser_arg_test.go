@@ -5,8 +5,8 @@ import (
 )
 
 // TestParseTypeRef checks the pointer and slice spellings a var
-// statement reads, matching reflect.Type.String, and that the retired
-// channel syntax fails to parse.
+// statement reads, matching reflect.Type.String. It also checks that
+// the retired channel syntax fails to parse.
 func TestParseTypeRef(t *testing.T) {
 	for src, want := range map[string]string{
 		`var u *url.URL;`:  "*url.URL",

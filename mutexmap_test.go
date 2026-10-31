@@ -72,8 +72,8 @@ func TestMutexMap_Get(t *testing.T) {
 	}
 }
 
-// concurrencyRuntime binds one MutexMap behind a nullary constructor,
-// so the program is one constructor call, one write, one read.
+// concurrencyRuntime binds one MutexMap behind a nullary constructor.
+// The program is one constructor call, one write, one read.
 func concurrencyRuntime(tb testing.TB) *Runtime {
 	tb.Helper()
 	rt := NewRuntime()
@@ -87,7 +87,7 @@ func concurrencyRuntime(tb testing.TB) *Runtime {
 const mutexProgram = `m := store(); m.Set("k", 42); v := m.Get("k"); return v`
 
 // TestConcurrencyPrograms pins that the benchmark program runs on the
-// direct tier and produces the value it stored, so the benchmark
+// direct tier and produces the value it stored. The benchmark
 // compares the tiers it claims to compare.
 func TestConcurrencyPrograms(t *testing.T) {
 	rt := concurrencyRuntime(t)

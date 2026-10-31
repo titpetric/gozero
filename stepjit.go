@@ -10,9 +10,9 @@ import (
 )
 
 // unsafeNew is the allocator reflect.New itself calls. Going straight
-// to it skips reflect.New's pointer-type lookup. The argument is the
-// frame struct's rtype, so the returned block has the right size and
-// pointer map and the collector scans the slots correctly.
+// to it skips reflect.New's pointer-type lookup. Because the argument
+// is the frame struct's rtype, the returned block has the right size
+// and pointer map and the collector scans the slots correctly.
 //
 //go:linkname unsafeNew reflect.unsafe_New
 func unsafeNew(rtype unsafe.Pointer) unsafe.Pointer
@@ -36,14 +36,14 @@ func typedmemclr(rtype unsafe.Pointer, ptr unsafe.Pointer)
 // statement.
 //
 // A value flows from the call that produces it to the call that
-// consumes it as the return value of a closure, so it lives in a Go
+// consumes it as the return value of a closure. It lives in a Go
 // local and needs no storage of its own. Only a name read by a later
 // statement gets a frame slot, and a program with no such name
 // adds no allocation beyond what its bindings make.
 //
-// Interface arguments carry a precomputed itab. Both the concrete type
-// and the interface type exist when the program compiles, and an
-// itab depends on nothing else, so reflect builds the pair once
+// Interface arguments carry a precomputed itab. Because both the
+// concrete type and the interface type exist when the program compiles,
+// and an itab depends on only those two, reflect builds the pair once
 // and only the data word varies per call.
 //
 // A program JITs whole or not at all. One call outside the table sends
@@ -121,8 +121,8 @@ type jitProgram struct {
 	// after proving no pointer into the frame leaves a run: an
 	// aliased interface argument or an addressed receiver passes the
 	// callee a frame pointer it may keep, and such a program
-	// allocates fresh. getFrame clears a reused frame on the way out of
-	// the pool, so every run still starts from the zero frame the
+	// allocates fresh. getFrame clears a reused frame on the way out
+	// of the pool. Every run still starts from the zero frame the
 	// declarations and literal builders rely on.
 	pool *sync.Pool
 
@@ -152,8 +152,8 @@ func (p *jitProgram) run(ctx context.Context, stack map[string]any, dest any) (a
 		p.finish(f)
 		return nil, nil
 	}
-	// Interface copies the value into a fresh box, so the frame is
-	// dead once it returns and can go back to the pool.
+	// Interface copies the value into a fresh box. The frame is dead
+	// once it returns and can go back to the pool.
 	v := reflect.NewAt(p.retType, unsafe.Add(f, p.retOff)).Elem().Interface()
 	p.finish(f)
 	return v, nil
@@ -172,8 +172,8 @@ func (p *jitProgram) finish(f unsafe.Pointer) {
 // getFrame takes a frame from the pool or allocates one. The typed
 // clear wipes a pooled frame and keeps the write
 // barriers on its pointer fields; a fresh allocation comes back
-// zeroed already. An unsafe.Pointer is pointer-shaped, so boxing it
-// through the pool's any allocates nothing.
+// zeroed already. Because an unsafe.Pointer is pointer-shaped, boxing
+// it through the pool's any allocates nothing.
 func (p *jitProgram) getFrame() unsafe.Pointer {
 	if p.pool != nil {
 		if v := p.pool.Get(); v != nil {
@@ -231,7 +231,7 @@ type jitCompiler struct {
 	poolSites []*sitePool
 	// pendingStrBox carries a string-box site from argNode, which holds
 	// the argument's identity, to toIface, which builds the box.
-	// Compilation of one program is single-threaded, so a plain field
+	// Compilation of one program is single-threaded. A plain field
 	// carries it across the one call.
 	pendingStrBox *sitePool
 	// splices maps an argument that reads a name to the call that
@@ -239,20 +239,20 @@ type jitCompiler struct {
 	// return value and skip the slot. splices is a side table and leaves
 	// the call tree unedited, because the same tree is what the
 	// reflect evaluator runs when the JIT declines: rewriting it would
-	// leave the producer both spliced in and still a statement, and the
+	// leave the producer both spliced in and still a statement. The
 	// fallback would run it twice.
 	splices map[*vmArg]*vmCall
 	// stackFields maps a stack name read more than once to the hidden
 	// frame field the program loads its value into when it starts.
-	// Each read is then an offset from the frame pointer and no
-	// map lookup, so the program reads the name once per execution:
-	// later uses miss a binding's mid-run mutation of the stack.
+	// Each read is then an offset from the frame pointer and no map
+	// lookup. The program reads the name once per execution: later
+	// uses miss a binding's mid-run mutation of the stack.
 	stackFields map[string]int
 }
 
 // jitCompileProgram builds the all-JIT form of a compiled program, or
-// returns the reason it cannot. The error is what Runtime.Supports
-// reports, so it names the call and the shape that stopped it.
+// returns the reason it cannot. Because Runtime.Supports reports it,
+// the error names the call and the shape that stopped it.
 func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 	if p.polymorphic {
 		return nil, fmt.Errorf("a name is reassigned at a different type")
@@ -330,8 +330,8 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 	}
 
 	// A seeded slot starts each run from the bound value: the per-run
-	// copy of an addressed value binding. The frame arrives zero, so
-	// an unseeded init has nothing to run and the loop skips it.
+	// copy of an addressed value binding. The frame arrives zero. An
+	// unseeded init has nothing to run and the loop skips it.
 	for _, in := range plan.inits {
 		if !in.seed {
 			continue

@@ -11,9 +11,9 @@ import (
 
 // TestValueStructIntoInterface pins the aliasing rule for a struct
 // slot passed to an interface parameter: written once it aliases the
-// frame, and a later field write would be visible behind a retained
-// interface, so a field write counts as a write and the compiler
-// drops the alias in favour of the bridge.
+// frame. Because a later field write would be visible behind a
+// retained interface, a field write counts as a write and the
+// compiler drops the alias in favour of the bridge.
 func TestValueStructIntoInterface(t *testing.T) {
 	rt := pairRuntime(t)
 	var kept any

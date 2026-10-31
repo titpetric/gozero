@@ -19,9 +19,9 @@ if status == 200 && attempts < 3 {
 }
 ```
 
-On the JIT tier, operators are cheap. The node types
+On the JIT tier, operators are cheap. Because the node types
 already carry every scalar as `uint64` bits (`nodeN`) or `float64`
-(`nodeF`), so an operator is a combinator: two `nodeN` in, one
+(`nodeF`), an operator is a combinator: two `nodeN` in, one
 `nodeN` out, a native `+` in the middle. No shape table growth, no
 reflect, no new layout classes - arithmetic keeps every scalar class
 within itself. String concatenation is `nodeS x nodeS -> nodeS`.
@@ -42,7 +42,7 @@ compiler must now own:
 - Overflow and truncation across 12 scalar widths, signed and
   unsigned, matching what compiled Go does - the equivalence suite
   can only compare the two tiers against each other, not against the
-  Go compiler, so a shared misunderstanding passes.
+  Go compiler. A shared misunderstanding passes.
 - Shifts (untyped left operand rules), integer division and its
   panics, float NaN ordering in comparisons, `==` on interfaces
   (panics on uncomparable dynamic types), `==` on structs
@@ -120,7 +120,7 @@ and evaluator. Rejected:
 and correct by construction for constant expressions (`x := 3 * 60`
 folded at compile, no runtime operators). Cons: crosses the recorded
 no-go/types gate; constant-only folding satisfies almost no real
-condition, so the pressure for runtime operators remains; and it
+condition, which leaves the pressure for runtime operators; and it
 adds a type checker to a compiler whose premise is that the bindings
 are the type checker.
 

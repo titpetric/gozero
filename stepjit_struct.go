@@ -8,10 +8,11 @@ import (
 )
 
 // The composite literal on the direct tier. A literal compiles to
-// stores at field offsets, the technique the frame already uses: each
-// store writes through a typed pointer, so a pointer store keeps its
-// write barrier, and the block behind &T{} comes from unsafeNew with
-// the struct's own rtype, so the collector scans it correctly.
+// stores at field offsets, the technique the frame already uses.
+// Because each store writes through a typed pointer, a pointer store
+// keeps its write barrier; because the block behind &T{} comes from
+// unsafeNew with the struct's own rtype, the collector scans it
+// correctly.
 //
 // A value literal assigned to a name builds in place in the frame slot
 // and allocates nothing. Everything else - &T{}, a literal in argument
@@ -136,16 +137,16 @@ func fillNode(n node, off uintptr) fillFunc {
 }
 
 // structNode compiles a literal that leaves the frame: one fresh T per
-// evaluation, filled at offsets, carried as the pointer to it. Two runs
-// of the same program must not share the struct, so the allocation is
-// per evaluation, never a prototype.
+// evaluation, filled at offsets, carried as the pointer to it. Because
+// two runs of the same program must not share the struct, the
+// allocation is per evaluation, never a prototype.
 func (c *jitCompiler) structNode(a *vmArg) (node, error) {
 	fills, err := c.structFills(a, 0)
 	if err != nil {
 		return node{}, err
 	}
-	// A literal in argument position reuses a pooled block:
-	// the block is dead when the call returns, release clears it, so
+	// A literal in argument position reuses a pooled block. Because
+	// the block is dead when the call returns and release clears it,
 	// a reused block starts from the zero value like a fresh one.
 	if site, ok := c.blockOf[a]; ok {
 		off := c.offs[site.field]
@@ -174,7 +175,8 @@ func (c *jitCompiler) structNode(a *vmArg) (node, error) {
 
 // structIfaceNode wraps a value literal as an interface. The data word
 // aliases the fresh T the literal builds and skips the copy, which is
-// sound because nothing else can reach it.
+// sound because the literal builds that T per evaluation and no other
+// node can reach it.
 func (c *jitCompiler) structIfaceNode(pt reflect.Type, a *vmArg) (node, error) {
 	n, err := c.structNode(a)
 	if err != nil {
@@ -218,8 +220,8 @@ func (c *jitCompiler) structAssignNode(s plannedStmt) (nodeE, error) {
 	a := s.assign
 	field, ok := c.slotOf[s.out]
 	if !ok {
-		// Nothing reads the name, but the element calls still run and
-		// their errors still end the program.
+		// No later statement reads the name, but the element calls
+		// still run and their errors still end the program.
 		n, err := c.structNode(a)
 		if err != nil {
 			return nil, err
@@ -233,11 +235,12 @@ func (c *jitCompiler) structAssignNode(s plannedStmt) (nodeE, error) {
 		if err != nil {
 			return nil, err
 		}
-		// The frame comes back zeroed, so the first write into the slot
-		// starts from the zero value the literal promises. A slot
-		// written more than once still holds the previous value, which
-		// a fresh literal must not see, so the fill clears it first; SetZero
-		// is a typed clear, so the pointer fields keep their barriers.
+		// Because the frame comes back zeroed, the first write into the
+		// slot starts from the zero value the literal promises. A slot
+		// written more than once still holds the previous value, which a
+		// fresh literal must not see: the fill clears it first. SetZero
+		// is a typed clear, which keeps the barriers on the pointer
+		// fields.
 		var zero func(unsafe.Pointer)
 		if c.writes[s.out] > 1 {
 			zt := st

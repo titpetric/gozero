@@ -20,11 +20,11 @@ import (
 // frame. The node writes the block it took from the site's pool into
 // that scratch field, run releases every site after the statements
 // finish, and the release clears the block before returning it so a
-// pooled block carries no references and comes back zeroed. The
-// plan is a side table keyed by call and argument identity, so a
-// site the node builder does not reach (a call that bridges, an
-// argument that aliases and skips boxing) leaves its scratch unused,
-// which costs one idle pointer field and nothing else.
+// pooled block carries no references and comes back zeroed. The plan
+// is a side table keyed by call and argument identity. A site the
+// node builder does not reach (a call that bridges, an argument that
+// aliases and skips boxing) leaves its scratch unused, which costs
+// one idle pointer field and no more.
 
 // poolSite is one pooled allocation: the scratch field's offset and
 // the release that clears and repools the block behind it.
@@ -43,8 +43,8 @@ type sitePool struct {
 }
 
 // take returns a cleared block: fresh from the allocator, or reused
-// from the pool. Release clears every block, so both paths return
-// zeroed memory.
+// from the pool. Because release clears every block, both paths
+// return zeroed memory.
 func (s *sitePool) take() unsafe.Pointer {
 	if v := s.pool.Get(); v != nil {
 		return v.(unsafe.Pointer)
@@ -77,11 +77,11 @@ func (c *jitCompiler) newPoolSite(t reflect.Type) *sitePool {
 
 // planPools walks the planned statements and records every pooled
 // site of every call: pack slices by call, literal blocks and
-// certain string boxes by argument. The walk mirrors the
-// node builders loosely: a site recorded here that the
-// builder never uses is an idle scratch field, and a boxing site the
-// plan misses allocates fresh, so a mismatch in either direction
-// skips the pool and stays sound.
+// certain string boxes by argument. The walk mirrors the node
+// builders loosely: a site recorded here that the builder never uses
+// is an idle scratch field, and a boxing site the plan misses
+// allocates fresh. A mismatch in either direction skips the pool and
+// stays sound.
 func (c *jitCompiler) planPools(plan *jitPlan) {
 	var walkCall func(*vmCall)
 	var walkArg func(a *vmArg, pt reflect.Type)

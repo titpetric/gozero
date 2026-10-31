@@ -9,13 +9,13 @@ import (
 )
 
 // The multi-statement VM. A program is a list of calls that bind their
-// results to names; there are no operators, so every value is a
+// results to names. Because there are no operators, every value is a
 // literal, a name, or the result of another call.
 //
 // Two rules shape the compiled form:
 //
-// A trailing error result is never a value. The compiler strips it from
-// the result list and checks it after every call, so
+// A trailing error result is never a value. Because the compiler strips
+// it from the result list and checks it after every call,
 // "req := http.NewRequest(...)" binds one name to a two-result call and
 // a failure returns from Exec or Scan at that statement. No program text
 // mentions an error.
@@ -24,8 +24,9 @@ import (
 // takes the zero value of its type; http.NewRequest with two arguments
 // receives a nil body that way.
 //
-// Names the program binds carry a static type, so the compiler resolves
-// methods on them against that type when the statement compiles.
+// Because names the program binds carry a static type, the compiler
+// resolves methods on them against that type when the statement
+// compiles.
 // json.NewEncoder is a binding; Encode is not, and the program reaches
 // it through the *json.Encoder the binding returns. Names coming from
 // the caller's stack, including dest, are opaque and the VM checks them
@@ -54,11 +55,11 @@ var ctxType = reflect.TypeFor[context.Context]()
 // assign is an inline cache for the assignability check on vaStack and
 // vaDest, the only two kinds whose type stays unknown until the VM reads
 // the value. reflect.Type.AssignableTo against an interface parameter
-// walks the method tables comparing names, and it dominated the profile
-// at 29% of samples; the same program almost always receives the same
-// concrete type, so one entry removes it. The cache is an atomic.Pointer
-// and a plain field would race, because concurrent runs share a
-// compiled program.
+// walks the method tables comparing names. It dominated the profile at
+// 29% of samples. Because the same program almost always receives the
+// same concrete type, one entry removes it. The cache is an
+// atomic.Pointer and a plain field would race, because concurrent runs
+// share a compiled program.
 type vmArg struct {
 	kind   vmArgKind
 	val    reflect.Value // vaConst
@@ -211,9 +212,9 @@ type slotInit struct {
 	seed bool
 }
 
-// vmProgram is a compiled program. It holds no per-call state: each
-// execution allocates its own slots, so a compiled program is safe for
-// concurrent use.
+// vmProgram is a compiled program. Because each execution allocates
+// its own slots, it holds no per-call state and a compiled program is
+// safe for concurrent use.
 type vmProgram struct {
 	stmts   []vmStmt
 	nslots  int
@@ -227,15 +228,15 @@ type vmProgram struct {
 	slotTypes   []reflect.Type
 	polymorphic bool
 
-	// addrTaken marks the slots whose address the program takes, so
-	// run stores their values through an addressable cell. The step
+	// addrTaken marks the slots whose address the program takes; run
+	// stores a marked slot's value through an addressable cell. The step
 	// JIT reads it too: an addressed slot cannot back an aliased
 	// interface argument or have its producer spliced away.
 	addrTaken map[int]bool
 
 	// inits are the var declarations, applied before the first
-	// statement so a name reads as its type's zero value even when
-	// nothing assigned it.
+	// statement so a name reads as its type's zero value even when no
+	// statement assigns it.
 	inits []slotInit
 
 	// varCells names the value bindings the program addresses or
@@ -274,12 +275,14 @@ func (fs *vmFieldSet) apply(ctx context.Context, slots, frame []reflect.Value, i
 	return nil
 }
 
-// run executes the program. Each execution allocates its own slots, so
-// concurrent runs of the same compiled program do not share state.
+// run executes the program. Because each execution allocates its own
+// slots, concurrent runs of the same compiled program do not share
+// state.
 func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (any, error) {
 	// One allocation per run for both the named slots and every call's
-	// argument window. Each call owns a disjoint range, so a nested
-	// call never overwrites the arguments its parent is still filling.
+	// argument window. Because each call owns a disjoint range, a
+	// nested call never overwrites the arguments its parent is still
+	// filling.
 	mem := make([]reflect.Value, p.nslots+p.frame)
 	slots, frame := mem[:p.nslots], mem[p.nslots:]
 	var ifaces []ifacePair
@@ -287,7 +290,7 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 		ifaces = make([]ifacePair, p.nifaces)
 	}
 	for _, in := range p.inits {
-		// New, and not Zero, so a field of a var-declared struct is
+		// New, and not Zero. A field of a var-declared struct is then
 		// settable in place.
 		cell := reflect.New(in.zero.Type()).Elem()
 		if in.seed {
@@ -359,10 +362,9 @@ func (p *vmProgram) run(ctx context.Context, stack map[string]any, dest any) (an
 }
 
 // addrCell stores v into a fresh addressable cell when the program
-// takes the slot's address somewhere. A call result and the
-// prebuilt literal value are not addressable, and runs also share the
-// literal, so both take the copy; every other slot keeps the value
-// unchanged.
+// takes the slot's address somewhere. A call result and the prebuilt
+// literal value are not addressable, and runs also share the literal.
+// Both take the copy; every other slot keeps the value unchanged.
 func (p *vmProgram) addrCell(v reflect.Value, slot int) reflect.Value {
 	if !p.addrTaken[slot] {
 		return v
@@ -465,7 +467,7 @@ func (a *vmArg) get(ctx context.Context, slots, frame []reflect.Value, ifaces []
 		}
 		return v, nil
 	case vaStruct:
-		// New, with no copied prototype, so every evaluation is its
+		// New, with no copied prototype. Every evaluation is then its
 		// own allocation and the result is addressable: a later
 		// statement can assign a field of the value a slot holds.
 		pv := reflect.New(a.styp)
@@ -484,8 +486,8 @@ func (a *vmArg) get(ctx context.Context, slots, frame []reflect.Value, ifaces []
 	case vaSlice:
 		return a.buildSlice(ctx, slots, frame, ifaces, stack, dest)
 	case vaVar:
-		// materializeVarCells rewrites every occurrence of a binding
-		// the program addresses or assigns into a slot, so a vaVar
+		// Because materializeVarCells rewrites every occurrence of a
+		// binding the program addresses or assigns into a slot, a vaVar
 		// reaching here only reads the bound value.
 		return a.varv, nil
 	case vaDeref:

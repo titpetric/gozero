@@ -150,7 +150,7 @@ func TestDiscardedResults(t *testing.T) {
 
 // TestInterfaceSlotStore pins an interface value written into a frame
 // slot: reading the name twice stops planInline splicing the producer
-// away, so the program really stores and loads the pair.
+// away. The program really stores and loads the pair.
 func TestInterfaceSlotStore(t *testing.T) {
 	rt := boxRuntime(t)
 	var got []any

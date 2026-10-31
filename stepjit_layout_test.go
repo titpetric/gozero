@@ -48,12 +48,12 @@ func TestStepJITFrameSurvivesGC(t *testing.T) {
 	}
 }
 
-// TestVariadicSliceABI pins the ABI fact behind spread and pack: a
-// variadic function is ABI-identical to the same signature with the
-// variadic parameter as a plain slice, so casting the funcval and
-// passing a slice header is a correct call. Covers a top-level func, a
-// closure with captured state and mixed parameters, an empty slice,
-// and ...any elements.
+// TestVariadicSliceABI pins the ABI fact behind spread and pack:
+// because a variadic function is ABI-identical to the same signature
+// with the variadic parameter as a plain slice, casting the funcval
+// and passing a slice header is a correct call. Covers a top-level
+// func, a closure with captured state and mixed parameters, an empty
+// slice, and ...any elements.
 func TestVariadicSliceABI(t *testing.T) {
 	parts := []string{"a", "b", "c"}
 	h := *(*sliceHdr)(unsafe.Pointer(&parts))

@@ -6,9 +6,9 @@ import (
 )
 
 // TestNumericLiteralConversion checks that a literal takes the
-// parameter type it fills. The parser only produces int64 and float64,
-// so without the conversion a program could not call a binding taking
-// int at all.
+// parameter type it fills. The parser only produces int64 and float64.
+// Without the conversion a program could not call a binding taking int
+// at all.
 func TestNumericLiteralConversion(t *testing.T) {
 	rt, seen := typeRuntime(t)
 	for _, tc := range []struct {

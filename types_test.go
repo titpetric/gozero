@@ -198,8 +198,8 @@ func TestScalarsJIT(t *testing.T) {
 // function that takes an interface.
 //
 // net/http has no NewClient. Its only exported constructors are
-// NewRequest and NewRequestWithContext, so the types those reach
-// stand for the client side.
+// NewRequest and NewRequestWithContext. The types those reach stand
+// for the client side.
 var constructors = map[string]any{
 	"http.NewRequest":            http.NewRequest,
 	"http.NewRequestWithContext": http.NewRequestWithContext,
@@ -289,8 +289,8 @@ func TestDiscovery(t *testing.T) {
 	printLogFor(logBuf.String(), "http.NewRequest", "pprof.Handler")
 }
 
-// discovered lists the registry minus the predeclared seed, so the
-// count is what the bindings actually contributed.
+// discovered lists the registry minus the predeclared seed. The count
+// is what the bindings actually contributed.
 func discovered(rt *Runtime) []string {
 	seed := predeclared()
 	var out []string

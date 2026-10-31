@@ -6,13 +6,13 @@ import (
 )
 
 // The multi-statement VM. A program is a list of calls that bind their
-// results to names; there are no operators, so every value is a
+// results to names. Because there are no operators, every value is a
 // literal, a name, or the result of another call.
 //
 // Two rules shape the compiled form:
 //
-// A trailing error result is never a value. The compiler strips it from
-// the result list and checks it after every call, so
+// A trailing error result is never a value. Because the compiler strips
+// it from the result list and checks it after every call,
 // "req := http.NewRequest(...)" binds one name to a two-result call and
 // a failure returns from Exec or Scan at that statement. No program text
 // mentions an error.
@@ -21,8 +21,9 @@ import (
 // takes the zero value of its type; http.NewRequest with two arguments
 // receives a nil body that way.
 //
-// Names the program binds carry a static type, so the compiler resolves
-// methods on them against that type when the statement compiles.
+// Because names the program binds carry a static type, the compiler
+// resolves methods on them against that type when the statement
+// compiles.
 // json.NewEncoder is a binding; Encode is not, and the program reaches
 // it through the *json.Encoder the binding returns. Names coming from
 // the caller's stack, including dest, are opaque and the VM checks them
@@ -37,7 +38,7 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 		methods  []string
 	)
 
-	// The longest prefix of the path that names a binding wins, so
+	// Because the longest prefix of the path that names a binding wins,
 	// http.NewRequest is one name while req.Cookies is a method on req.
 	base := -1
 	for i := len(e.path); i >= 1; i-- {
@@ -55,10 +56,10 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 		slot, ok := slots[e.path[0]]
 		if !ok {
 			// Not a program name either: a value binding can be the
-			// receiver, and it owns the longest dotted prefix of the
-			// path the way a func binding does. Everything after that
-			// prefix is fields and methods, which the link loop below
-			// already tells apart.
+			// receiver. It owns the longest dotted prefix of the path
+			// the way a func binding does. Everything after that prefix
+			// is fields and methods, which the link loop below already
+			// tells apart.
 			vb, rest, found := c.varOf(e.path)
 			if !found {
 				return nil, nil, fmt.Errorf("compile: unknown binding %q", joinPath(e.path))
@@ -133,8 +134,8 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 			if !fn.IsValid() {
 				// An interface type's Method carries no Func: there is
 				// no concrete code to point at until a dynamic value is
-				// behind the receiver. The wrapper dispatches on it, so
-				// ctx.Err() compiles like any method call.
+				// behind the receiver. Because the wrapper dispatches on
+				// it, ctx.Err() compiles like any method call.
 				fn = ifaceMethodFunc(currType, m)
 			}
 			call, err := c.compileCall(slots, env, fn, currType.String()+"."+l.name, recv, l.args)
@@ -179,7 +180,7 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 			continue
 		}
 		if last(links, l) {
-			// The source wrote parentheses, so the error names the
+			// Because the source wrote parentheses, the error names the
 			// non-func field as the mistake: the chain ends here.
 			return nil, nil, fmt.Errorf("compile: %s.%s is a %s field, not a method", currType, l.name, f.Type)
 		}
@@ -199,15 +200,15 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 	return curr, currType, nil
 }
 
-// last reports whether l is the final link. The source wrote arguments
-// for that link alone, so a func-typed value is the callee there and a
-// receiver at any earlier link.
+// last reports whether l is the final link. Because the source wrote
+// arguments for that link alone, a func-typed value is the callee
+// there and a receiver at any earlier link.
 func last(links []link, l link) bool {
 	return len(links) > 0 && links[len(links)-1].name == l.name
 }
 
 // callThrough compiles a call whose callee is a value: a func-typed
-// name, value binding, or field. The signature is static, so the
+// name, value binding, or field. Because the signature is static, the
 // compiler checks the arguments exactly as it checks a call to a
 // binding; each run reads only the func value itself.
 func (c *Compiler) callThrough(slots map[string]int, env map[string]reflect.Type, fv *vmArg, ft reflect.Type, name string, src []arg) (*vmCall, error) {
@@ -225,9 +226,9 @@ func (c *Compiler) callThrough(slots map[string]int, env map[string]reflect.Type
 // those are variables and have an address, where a call's result does
 // not, which is Go's addressability rule for pointer-receiver calls.
 //
-// A value binding's address is the address of the program's per-run
-// cell, so a pointer method mutates the copy and not the host, the
-// same storage "&name" and "name = v" reach.
+// Because a value binding's address is the address of the program's
+// per-run cell, a pointer method mutates the copy and not the host,
+// the same storage "&name" and "name = v" reach.
 func addrOf(t reflect.Type, a *vmArg) (*vmArg, error) {
 	root := a
 	for root.kind == vaField {
@@ -246,8 +247,8 @@ func addrOf(t reflect.Type, a *vmArg) (*vmArg, error) {
 }
 
 // ifaceMethodFunc builds a callable func value for a method of an
-// interface type. MethodByName on an interface returns the signature
-// without a receiver and a zero Func, so the call site gets a
+// interface type. Because MethodByName on an interface returns the
+// signature without a receiver and a zero Func, the call site gets a
 // synthesized func whose first parameter is the interface and whose
 // body dispatches on the dynamic value, exactly what the compiled
 // method call on a concrete receiver gets from Method.Func. A nil
@@ -283,7 +284,7 @@ func (c *Compiler) compileCall(slots map[string]int, env map[string]reflect.Type
 }
 
 // compileCallOf is compileCall with the callee split from its
-// signature, so a call through a func value checks its arguments the
+// signature. A call through a func value then checks its arguments the
 // same way a call to a binding does. Exactly one of fn and fnArg holds
 // the callee; ft is the signature either way.
 func (c *Compiler) compileCallOf(slots map[string]int, env map[string]reflect.Type, fn reflect.Value, fnArg *vmArg, ft reflect.Type, name string, recv *vmArg, src []arg) (*vmCall, error) {
@@ -513,8 +514,9 @@ func (c *Compiler) compileArg(slots map[string]int, env map[string]reflect.Type,
 			}
 			return &vmArg{kind: vaSlot, slot: slot, name: a.str, typ: pt, iface: -1}, nil
 		}
-		// The program does not bind it, so it comes off the caller's
-		// stack and its type stays unknown until the VM reads it.
+		// Because the program does not bind the name, the value comes
+		// off the caller's stack and its type stays unknown until the
+		// VM reads it.
 		return &vmArg{kind: vaStack, name: a.str, typ: pt, iface: -1}, nil
 	}
 	if !v.IsValid() {

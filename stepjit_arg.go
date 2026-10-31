@@ -26,8 +26,8 @@ func (c *jitCompiler) argNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 
 	case vaSlot:
 		if a.addrOf {
-			// The frame is the variable's storage, so the address of a
-			// name is an offset from the frame pointer: no load at all.
+			// Because the frame is the variable's storage, the address of
+			// a name is an offset from the frame pointer: no load at all.
 			field, ok := c.slotOf[a.slot]
 			if !ok {
 				return node{}, fmt.Errorf("an addressed name has no slot")
@@ -73,8 +73,8 @@ func (c *jitCompiler) argNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 				return node{}, fmt.Errorf("%s does not implement %s", st, pt)
 			}
 			if layoutOf(st) == lPtr {
-				// Stored directly: the data word is the pointer itself,
-				// read out of the slot, so nothing aliases the frame.
+				// Stored directly: because the data word is the pointer
+				// itself, read out of the slot, nothing aliases the frame.
 				return node{class: lIface, I: func(fr unsafe.Pointer, ctx context.Context, _ map[string]any, _ any) (ifacePair, error) {
 					return ifacePair{tab: tab, data: *(*unsafe.Pointer)(unsafe.Add(fr, off))}, nil
 				}}, nil
@@ -109,8 +109,8 @@ func (c *jitCompiler) argNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 		return c.varNode(a, pt, cl)
 
 	case vaCtx:
-		// The execution context is already the exact interface type the
-		// parameter wants, so the two words copy straight through.
+		// Because the execution context is already the exact interface
+		// type the parameter wants, the two words copy straight through.
 		return node{class: lIface, I: func(_ unsafe.Pointer, ctx context.Context, _ map[string]any, _ any) (ifacePair, error) {
 			return *(*ifacePair)(unsafe.Pointer(&ctx)), nil
 		}}, nil
@@ -128,13 +128,13 @@ func (c *jitCompiler) argNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 	return node{}, fmt.Errorf("argument kind %d has no node", a.kind)
 }
 
-// fieldNode reads one struct field out of a pointer. The compiler
-// computes the offset, so the load is an add and a move
-// and needs no call.
+// fieldNode reads one struct field out of a pointer. Because the
+// compiler computes the offset, the load is an add and a move and
+// needs no call.
 //
 // Only a single field of a pointer to a struct is in the table. A
 // deeper index reaches through embedded types whose offsets do not
-// simply add when one of them is itself a pointer, so those go to the
+// simply add when one of them is itself a pointer. Those go to the
 // reflect evaluator.
 func (c *jitCompiler) fieldNode(a *vmArg, pt reflect.Type, cl layout) (node, error) {
 	if len(a.index) != 1 {
@@ -163,7 +163,7 @@ func (c *jitCompiler) fieldNode(a *vmArg, pt reflect.Type, cl layout) (node, err
 			return unsafe.Add(p, off), nil
 		}
 	case !a.deref && a.src.kind == vaSlot && srcType != nil && srcType.Kind() == reflect.Struct:
-		// The struct lives in the frame, so the field is at a fixed
+		// Because the struct lives in the frame, the field is at a fixed
 		// offset from the frame pointer: no load, no nil to check.
 		field, ok := c.slotOf[a.src.slot]
 		if !ok {
@@ -179,7 +179,7 @@ func (c *jitCompiler) fieldNode(a *vmArg, pt reflect.Type, cl layout) (node, err
 	}
 	// An addressed field is the address load itself: the receiver of a
 	// pointer method on a field value. A field behind a pointer is not
-	// frame memory, but the frame-resident case is, so both mark the
+	// frame memory, but the frame-resident case is. Both mark the
 	// escape conservatively.
 	if a.addrOf {
 		if cl != lPtr {
@@ -349,8 +349,8 @@ func (c *jitCompiler) dynamicNode(a *vmArg, pt reflect.Type, cl layout) (node, e
 	return node{}, fmt.Errorf("a stack value cannot fill a %s parameter", cl)
 }
 
-// stackScalarNode reads a scalar off the caller's stack. The stack
-// holds any, so the read is one type assertion against the exact
+// stackScalarNode reads a scalar off the caller's stack. Because the
+// stack holds any, the read is one type assertion against the exact
 // parameter type; a named scalar type would need reflect to check and
 // stays on the reflect evaluator. An unset or nil entry is the zero
 // value, like every other stack read.
@@ -386,8 +386,8 @@ func stackScalarNode(name string, pt reflect.Type, cl layout) (node, error) {
 }
 
 // intBits asserts a stack any to the signed type T and reports its
-// bits. Sign-extension past T's width is invisible: storeN writes the
-// parameter's width, so only the low bits are ever read back.
+// bits. Sign-extension past T's width is invisible: because storeN
+// writes the parameter's width, only the low bits are ever read back.
 func intBits[T int | int8 | int16 | int32 | int64]() func(any) (uint64, float64, bool) {
 	return func(v any) (uint64, float64, bool) {
 		n, ok := v.(T)
@@ -414,7 +414,8 @@ func floatBits[T float32 | float64]() func(any) (uint64, float64, bool) {
 }
 
 // stackScalarConvs asserts a stack any to each predeclared scalar type
-// and reports its bits. Keyed by exact type, so a named type misses.
+// and reports its bits. Because the keys are exact types, a named
+// type misses.
 var stackScalarConvs = map[reflect.Type]func(any) (uint64, float64, bool){
 	reflect.TypeFor[bool](): func(v any) (uint64, float64, bool) {
 		b, ok := v.(bool)

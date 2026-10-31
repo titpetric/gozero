@@ -11,8 +11,8 @@ import (
 // width and a name's static type honest.
 
 // compileFieldSet compiles req.Method = value. The base is a
-// program-bound name, every selector is an exported field, and the
-// value is a literal or a call whose result is assignable to the field.
+// program-bound name, every selector an exported field, and the value
+// a literal or a call whose result is assignable to the field.
 func (c *Compiler) compileFieldSet(slots map[string]int, env map[string]reflect.Type, s stmt) (*vmFieldSet, error) {
 	base := s.fieldLhs[0]
 	slot, ok := slots[base]
@@ -61,7 +61,7 @@ func (c *Compiler) compileRetVal(slots map[string]int, env map[string]reflect.Ty
 		return nil, fmt.Errorf("compile: return nil returns no value, use return;")
 	case argPath, argStruct:
 		// compileArg resolves these and checks assignability against
-		// pt, so any is what lets the value keep its own type.
+		// pt. Because pt is any, the value keeps its own type.
 	}
 	return c.compileArg(slots, env, "return", 0, pt, a)
 }

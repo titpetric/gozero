@@ -220,7 +220,7 @@ func (c *fixtureCounter) Bump() { c.N++ }
 type fixtureCfg struct{ Fn func() string }
 
 // fixtureRuntime binds the standard library surface the fixtures use,
-// plus the assert bindings. tb travels on the stack, so a fixture
+// plus the assert bindings. Because tb travels on the stack, a fixture
 // makes its own test assertions: assert.Equal(tb, want, got). It takes
 // a testing.TB so the fixture tests and the fixture benchmarks share
 // one binding set.
@@ -241,10 +241,10 @@ func fixtureRuntime(tb testing.TB) *Runtime {
 		"fmt":     {"Sprintf": fmt.Sprintf, "Sprint": fmt.Sprint},
 		"strings": {"Fields": strings.Fields},
 		"path":    {"Join": path.Join},
-		// Equal has no variadic tail, (tb, want, got, message): every
-		// parameter has a shape, so an assertion is a direct call. The
-		// message is optional the way every trailing argument is,
-		// zero-filled to "".
+		// Equal has no variadic tail, (tb, want, got, message):
+		// because every parameter has a shape, an assertion is a
+		// direct call. The message is optional the way every trailing
+		// argument is, zero-filled to "".
 		"assert": {
 			"Equal": assertEqual,
 			"True":  assertTrue,
@@ -263,11 +263,11 @@ func fixtureRuntime(tb testing.TB) *Runtime {
 		tb.Fatal(err)
 	}
 	// The values the vars fixture reads and writes. The loop binds
-	// argv and cursor by address, so the fixture writes them through
-	// "*name = v" and reads the writes back; they are per-runtime, so
-	// the writes reach this subtest and nothing else. It binds
-	// time.Hour, io.EOF and frozen by value: a program reads them and
-	// writes its own copy for the run.
+	// argv and cursor by address. The fixture writes them through
+	// "*name = v" and reads the writes back. Because they are
+	// per-runtime, the writes reach this subtest and no other subtest.
+	// It binds time.Hour, io.EOF and frozen by value: a program reads
+	// them and writes its own copy for the run.
 	argv := []string{"prog", "-v"}
 	cursor := 0
 	for name, v := range map[string]any{

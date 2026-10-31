@@ -37,7 +37,7 @@ strips a trailing error result, the runtime checks it after every call,
 and a non-nil one ends the program.
 
 Two rules cover the gaps that leaves. Every argument is optional and a
-missing one is the zero value of its parameter type, so a three
+missing one is the zero value of its parameter type. A three
 parameter function accepts a call with two arguments. `dest` is a
 reserved name holding the pointer passed to `Scan`; the program writes
 its output through it.
@@ -61,8 +61,8 @@ Run with `var dest bytes.Buffer` and `fn.Scan(&dest, nil)`, it leaves
 - Neither error has a name. When `http.NewRequest` fails, `Scan`
   returns that error, and nothing after it runs.
 - The program binds neither `Cookies` nor `Encode`. The compiler finds
-  them on the result types of the two bindings, so an unknown method is
-  a compile error and not an execution one.
+  them on the result types of the two bindings. An unknown method is a
+  compile error and not an execution one.
 - Chaining and nesting compile to the same four steps. The one line
   form is `json.NewEncoder(dest).Encode(http.NewRequest("GET", "/").Cookies());`.
 
@@ -84,7 +84,7 @@ path.
 - An interface argument fed from the stack needs its type in
   `ifaceConvs`, which holds `any`, `io.Writer` and `io.Reader`. Hand
   code cannot assemble the interface table for a pair of concrete and
-  interface types, so each entry obtains it with a type assertion.
+  interface types. Each entry obtains it with a type assertion.
 - A slot written more than once cannot back an interface argument,
   because the argument aliases the slot and does not copy it.
 
@@ -108,7 +108,7 @@ that names a binding. `Compile` returns a `CompiledFunc`, a defined
 
 `Eval`, `Exec` and `Scan` are generic methods, which need the go1.27
 language version the `go` line in go.mod selects. `T` appears only in
-the results of `Eval` and `Exec`, so callers instantiate both explicitly;
+the results of `Eval` and `Exec`. Callers instantiate both explicitly;
 `Scan` infers `T` from `dest`.
 
 ## Overhead
@@ -144,7 +144,7 @@ the four statement program above.
   allocations over native, the argument frame and results slice
   `reflect.Value.Call` builds per call.
 - Read the spread before the medians. A cost figure is a difference of
-  two numbers around 650n or 1.4us, so a few percent of drift in the
+  two numbers around 650n or 1.4us. A few percent of drift in the
   baseline moves it by a large fraction of itself. The ordering of the
   tiers holds; the JIT figures land in the tens to low hundreds of
   nanoseconds, and the measurement resolves them no further.
@@ -190,17 +190,17 @@ Notes on each:
 
 - The assignability cache is the largest single win. `AssignableTo`
   against an interface walks method tables comparing names and took
-  29% of the profile; the runtime passes the same concrete type to the
-  same program every time, so one entry removes it.
+  29% of the profile; because the runtime passes the same concrete
+  type to the same program every time, one entry removes it.
 - `reflect.Value.Call` runs its own `assignTo` per argument, which the
-  cache above cannot reach, so the argument needs pre-typing. A type
+  cache above cannot reach. The argument needs pre-typing. A type
   assertion produces the interface table, and the value arrives
   already typed as the parameter.
 - The step JIT is the shape table from `jit.go`, applied to every call
   and not to one statement alone. `reflect.StructOf` builds the slots
   as one allocation with a correct pointer map and a stable address per
-  field, so the JIT reads and writes raw words at offsets and every
-  store keeps its write barrier. A program JITs whole or not at all.
+  field. The JIT reads and writes raw words at offsets. Every store
+  keeps its write barrier. A program JITs whole or not at all.
 - Aliasing buys the allocation parity. An interface argument taken
   from a slot points at the slot and not at a copy, which is legal only
   because the frame outlives the call and the program writes the slot
@@ -213,7 +213,7 @@ Notes on each:
 Approaches tested and rejected:
 
 - Pooling frames. The aliasing above means an interface passed to a
-  callee can outlive the run, so the runtime cannot reuse a frame.
+  callee can outlive the run. The runtime cannot reuse a frame.
 - Boxing a slice result into an `any` through `reflect.New` per call.
   Correct, and one allocation more than native.
 - Carrying slot values as `reflect.Value`. Every JIT'd step then pays
@@ -224,7 +224,7 @@ closures.
 
 `TestStepJITMatchesReflect` runs the same program down both tiers and
 compares output, errors, and what each callee received through the
-interface it got, so a toolchain that changes the runtime layouts the
+interface it got. A toolchain that changes the runtime layouts the
 JIT encodes fails the suite ahead of any benchmark.
 
 ## Is the frame allocation avoidable
@@ -269,7 +269,7 @@ with none recycles its frame through a `sync.Pool`, cleared on reuse
 with the typed clear reflect performs, while every other program
 allocates fresh. The retention annotation this chapter lists below
 under approaches not tried became the binding contract instead: a
-binding borrows its arguments for the duration of the call, so the pack
+binding borrows its arguments for the duration of the call. The pack
 slices, string boxes and literal blocks behind every call repool
 after the run, and a binding that keeps an argument copies it
 ([changelog](changelog.md)).
@@ -303,8 +303,8 @@ Approaches not tried:
   and pooling could then coexist, at the cost of an annotation the
   compiler cannot check.
 
-Stack allocation is out. Opaque closures receive the frame pointer, so
-escape analysis moves it to the heap whatever its size.
+Stack allocation is out. Because opaque closures receive the frame
+pointer, escape analysis moves it to the heap whatever its size.
 Removing that means fusing a whole program into a single closure, which
 is the same combinatorial problem as fusing pairs.
 

@@ -50,22 +50,22 @@ closures capture variables, not values; a captured name must observe
 later writes. The frame supports that almost for free - capture the
 slot's address - but an address into the frame is precisely the
 aliasing that stepjit_arg.go only permits for write-once slots.
-Every captured slot is potentially written after capture, so capture
-is aliasing without the write-once proof.
+Every captured slot is potentially written after capture. Capture is
+aliasing without the write-once proof.
 
 **The frame escapes, permanently.** A closure handed to a binding may
 outlive the run: `HandleFunc` keeps it forever. The frame it points
-into must live as long, so frame pooling - already foreclosed by
+into must live as long. Frame pooling - already foreclosed by
 interface aliasing, per [overheads.md](../overheads.md) - goes from
 foreclosed to impossible, and a long-lived closure pins the whole
 frame including slots it never reads.
 
 **Construction moves into the run.** A compiled program is immutable
-and cached per source string; a closure closes over a per-run frame,
-so every execution builds the func value. One allocation
-per closure per run - the same cost the Go compiler emits for an
-escaping func literal, so parity survives, but the "compile once,
-zero construction at exec" story does not.
+and cached per source string; a closure closes over a per-run frame.
+Every execution builds the func value. One allocation per closure per
+run matches the cost the Go compiler emits for an escaping func
+literal. Parity survives; the "compile once, zero construction at
+exec" story does not.
 
 **The grammar grows blocks and parameter lists.** Same nesting cost
 as [conditions.md](conditions.md), plus parameters. Inferring
@@ -116,9 +116,9 @@ adapter is Go. Cons:
 
 - One program per func value: a program cannot define two handlers,
   or pass a comparator to a sort it also calls.
-- The program captures nothing: the closure's inputs travel through
-  the stack map by name, dynamically checked, with no statically
-  typed capture.
+- The program captures no variable: the closure's inputs travel
+  through the stack map by name, dynamically checked, with no
+  statically typed capture.
 - The adapter is host code per signature, though `reflect.MakeFunc`
   could generalize it as a `BindProgram(sig, src)` helper without any
   language change - the closure feature minus the syntax.

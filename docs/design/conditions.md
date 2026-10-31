@@ -32,7 +32,7 @@ if strings.EqualFold(method, "GET") {
 }
 ```
 
-`bool` is already a layout class (`lBool` in stepjit.go), so the
+Because `bool` is already a layout class (`lBool` in stepjit.go), the
 condition costs nothing new on any tier: the JIT evaluates a `nodeN`
 and branches on its bits, the reflect evaluator calls `Bool()`. An
 if-node holds two statement lists and runs one of them; the machinery
@@ -60,7 +60,7 @@ shape for the feature's least common case.
 optimization in stepjit_arg.go is legal only for a slot written
 exactly once; that single write lets an interface argument point into
 the frame with no copy. A slot assigned inside a branch is
-maybe-written, so the planner must count it conservatively and the
+maybe-written. The planner must count it conservatively and the
 aliasing that produces allocation parity turns off for any name a
 branch touches. The cost is silent: programs keep working and
 make more allocations.
@@ -88,9 +88,9 @@ if eq(status, 200) { ... }
 if strings.Contains(host, ":") { ... }
 ```
 
-This stays inside the current design: `eq` is a binding, typed by its
-signature, so the AST holds a call it already knows how to compile.
-The cons:
+This stays inside the current design. `eq` is a binding, typed by its
+signature; the AST holds a call the compiler already knows how to
+compile. The cons:
 
 - `eq(x, 5)` is legal Go, but Go writes `x == 5`; every comparison
   site reads differently from the Go it mirrors.
@@ -118,7 +118,7 @@ missing; the program stops at that line, exactly as `Scan` and `Exec`
 already behave for a failed `http.NewRequest`. Cons:
 
 - Only one arm. The form has no else; the other branch is "the rest of
-  the program", so two-way branching needs two programs or a binding
+  the program". Two-way branching needs two programs or a binding
   that takes both continuations, which needs
   [closures](closures.md).
 - The branch policy lives in the host: the program cannot express a
@@ -128,7 +128,7 @@ already behave for a failed `http.NewRequest`. Cons:
 
 **Branch combinators (`iff(cond, then)`).** Pure abstraction of the
 request into userland: the binding receives a bool and something to
-run. Without closures there is nothing to pass as the something;
+run. Without closures there is no something to pass;
 with closures this is Tcl, where control flow is a library and
 evaluation order is whatever the binding does. Both halves are
 userland control flow, the stated non-goal. Rejected.
@@ -141,7 +141,7 @@ contract is the same shape with `set -e` built in. testify is the
 same move inside Go tests: `assert.Equal(t, want, got)` is a
 comparison as a call, and the fixture suite under `testdata/` already
 runs on it. An `http.Handler` body is imperative and close to
-condition-free (build, encode, write), so handlers fit the current
+condition-free (build, encode, write). Handlers fit the current
 language. Middleware is where the conditions are
 (header equality, path prefixes, status classes), and the guard
 binding covers the abort-or-continue half of it today; the half it

@@ -14,8 +14,8 @@ are the investigations that produced both.
 
 ## The imperative principle
 
-The language has statements and nothing else: a call, a name bound to
-a call's results, a var declaration, a field read or write, a return.
+Statements are the whole language: a call, a name bound to a call's
+results, a var declaration, a field read or write, a return.
 The language has no operators, no conditionals, no loops and no
 standard library. Everything a program can do, it does by calling a
 Go function the host bound:
@@ -36,16 +36,16 @@ to maintain, and the host controls exactly what a program can reach:
 the binding set is the sandbox boundary. A program cannot open a file
 unless the host binds a function that opens files.
 
-`Bind` takes data as readily as funcs, and the boundary holds there
-too. Binding a value copies it in, so a program writing the name
-writes its own storage; an address is the host saying the variable
-is the program's to write, and the program does it through `*name = v`.
+`Bind` takes data as readily as funcs. The boundary holds there too.
+Binding a value copies it in. A program writing the name writes its
+own storage. An address is the host saying the variable is the
+program's to write, which the program does through `*name = v`.
 [syntax.md](syntax.md) has the rules.
 
 Methods extend the reach without extending the bindings. `Cookies` and
 `Encode` are not bindings; the compiler resolves them on the static
-result types of the two calls, so an unknown method is a compile
-error and never an execution one. Resolution covers Go's
+result types of the two calls. An unknown method is a compile error
+and never an execution one. Resolution covers Go's
 method sets in full - value and pointer receivers, methods promoted
 from embedded types - with Go's addressability rule: a pointer
 receiver method needs a named value or a field of one, never the
@@ -103,8 +103,8 @@ checks everything checkable before the program ever runs:
   because path resolution prefers the binding and no statement could
   read the name back.
 - Declaration is Go's rule: `:=` or `var` declares, `=` assigns to a
-  declared name and errors otherwise, and a `:=` that declares
-  nothing new errors too.
+  declared name and errors otherwise, and a `:=` that declares no new
+  name errors too.
 - A name declared `:=` with a literal takes its type from the first
   binding parameter the program passes it to, falling back to the
   literal's own width.
@@ -189,11 +189,11 @@ frame struct allocated per run - typed storage the collector scans -
 and a program with no such name allocates nothing beyond its
 bindings' own allocations. Interface arguments carry itabs computed
 at compile time; only a type assertion reaches the itab for a
-(concrete, interface) pair, so a small table of converters performs
+(concrete, interface) pair. A small table of converters performs
 exactly that assertion.
 
 `Runtime.Supports(src) error` is the observable gate: it reports which
-call keeps a program off the direct tier and why, so a benchmark or a
+call keeps a program off the direct tier and why. A benchmark or a
 test asserts its tier and never discovers a fallback through a slow
 number.
 

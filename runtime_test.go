@@ -287,7 +287,7 @@ func TestRuntime_Supports(t *testing.T) {
 	if err := rt.Supports(`return NewRequest("GET", "https://example.com");`); err != nil {
 		t.Errorf("NewRequest should reach the direct-call tier: %v", err)
 	}
-	// fmt.Stringer is not in ifaceConvs, so this signature cannot JIT.
+	// Because ifaceConvs lacks fmt.Stringer, this signature cannot JIT.
 	if err := rt.Bind("Fprint", func(s fmt.Stringer) (*http.Request, error) {
 		return nil, nil
 	}); err != nil {
@@ -318,8 +318,8 @@ func benchRuntime(b *testing.B) *Runtime {
 // reportVsNative runs after the measured loop, with the timer stopped:
 // it times b.N iterations of the native baseline with its own stopwatch
 // and reports it as native-ns/op, and the statement's cost over native
-// as cost-ns/op. Both cost benchmarks carry their baseline inline, so
-// the derived number survives on its own line of output.
+// as cost-ns/op. Because both cost benchmarks carry their baseline
+// inline, the derived number survives on its own line of output.
 func reportVsNative(b *testing.B) {
 	b.Helper()
 	vm := b.Elapsed()
@@ -362,8 +362,8 @@ func BenchmarkCostWithoutCaching(b *testing.B) {
 // Statement.call, the reflect fallback the compiler builds for
 // bindings outside the shape table. It takes the same
 // func(map[string]any) (any, error) shape and reads its variable off
-// whatever stack it receives, so the only difference between the two
-// is reflect.Value.Call against the direct call. cost-ns/op is
+// whatever stack it receives. The only difference between the two is
+// reflect.Value.Call against the direct call. cost-ns/op is
 // (naive - native).
 func BenchmarkCostNaive(b *testing.B) {
 	rt := benchRuntime(b)
