@@ -107,7 +107,7 @@ func (c *jitCompiler) planPools(plan *jitPlan) {
 		}
 	}
 	walkCall = func(call *vmCall) {
-		ft := call.fn.Type()
+		ft := call.ft
 		fixed := ft.NumIn()
 		if ft.IsVariadic() && !call.spread {
 			fixed--

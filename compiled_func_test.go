@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestCompiledFunc calls the closure directly, the way Exec and Scan
@@ -202,22 +204,20 @@ func assertTrue(tb any, value bool, message string) {
 	t.Error("condition is false")
 }
 
-// copyBoxed is the binding contract's copy for a borrowed any of
-// unknown type: a fresh cell, a typed move into it, and a new box.
-// A plain reflect.ValueOf(v).Interface() is not a copy: for a
-// non-addressable value it returns an interface sharing the same
-// box.
-func copyBoxed(v any) any {
-	rv := reflect.ValueOf(v)
-	if !rv.IsValid() {
-		return nil
-	}
-	nv := reflect.New(rv.Type()).Elem()
-	nv.Set(rv)
-	return nv.Interface()
-}
+// copyBoxed, the binding contract's copy for a borrowed any, is in
+// append.go: Append needs it for an interface element, and a recorder
+// that keeps what it was handed needs the same thing.
 
 type fixtureCtxKey struct{}
+
+// fixtureCounter and fixtureCfg are the receivers the vars fixture
+// calls: a pointer-receiver method on a bound value, and a func-typed
+// field called through.
+type fixtureCounter struct{ N int }
+
+func (c *fixtureCounter) Bump() { c.N++ }
+
+type fixtureCfg struct{ Fn func() string }
 
 // fixtureRuntime binds the standard library surface the fixtures use,
 // plus the assert bindings. tb travels on the stack, so a fixture
@@ -261,6 +261,36 @@ func fixtureRuntime(tb testing.TB) *Runtime {
 		return v
 	}); err != nil {
 		tb.Fatal(err)
+	}
+	// The values the vars fixture reads and writes. argv and cursor
+	// are bound by address, so the fixture writes them through "*name
+	// = v" and reads the writes back; they are per-runtime, so the
+	// writes are visible to this subtest and nothing else. time.Hour,
+	// io.EOF and frozen are bound by value: a program reads them and
+	// writes its own copy for the run.
+	argv := []string{"prog", "-v"}
+	cursor := 0
+	for name, v := range map[string]any{
+		"os.Args":   &argv,
+		"cursor":    &cursor,
+		"time.Hour": time.Hour,
+		"io.EOF":    io.EOF,
+		"frozen":    []string{"kept"},
+		"counter":   fixtureCounter{N: 1},
+		"cfg":       fixtureCfg{Fn: func() string { return "from a field" }},
+		"append":    Append,
+		"first":     func(v []string) string { return v[0] },
+		"second":    func(v []string) string { return v[1] },
+		"third":     func(v []string) string { return v[2] },
+		"argc":      func(v []string) int { return len(v) },
+		"bump":      func(p *int) { *p++ },
+		"ptrTo":     func(n int) *int { return &n },
+		"seconds":   func(d time.Duration) int64 { return int64(d / time.Second) },
+		"message":   func(e error) string { return e.Error() },
+	} {
+		if err := rt.Bind(name, v); err != nil {
+			tb.Fatal(err)
+		}
 	}
 	return rt
 }
