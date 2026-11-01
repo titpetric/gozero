@@ -75,12 +75,12 @@ path.
   `(*json.Encoder).Encode` are ordinary funcs and bind directly,
   although this program does not need them.
 - The compiler rejects variadic functions.
-- Names a program binds carry a static type, and the compiler resolves
-  methods against it. Names read from the caller's stack are opaque,
-  and the runtime checks them on each read.
+- Names a program binds have a static type. The compiler resolves
+  methods against it. Names read from the caller's stack are opaque.
+  The runtime checks them on each read.
 - The JIT understands four layout classes: pointer-shaped, string,
-  interface and slice. A parameter or result outside them, an `int`
-  for example, keeps the whole program on the reflect tier.
+  interface and slice. A parameter or result of any other class, an
+  `int` for example, keeps the whole program on the reflect tier.
 - An interface argument fed from the stack needs its type in
   `ifaceConvs`, which holds `any`, `io.Writer` and `io.Reader`. Hand
   code cannot assemble the interface table for a pair of concrete and
@@ -102,8 +102,8 @@ req, err := rt.Eval[*http.Request](src, stack)
 ```
 
 `Bind` registers one name, `BindScope` a dotted group; a dotted name is
-one key in the binding map, and a path resolves to the longest prefix
-that names a binding. `Compile` returns a `CompiledFunc`, a defined
+one key in the binding map. A path resolves to the longest prefix that
+names a binding. `Compile` returns a `CompiledFunc`, a defined
 `func(map[string]any, any) (any, error)`.
 
 `Eval`, `Exec` and `Scan` are generic methods, which need the go1.27
@@ -147,7 +147,7 @@ the four statement program above.
   two numbers around 650n or 1.4us. A few percent of drift in the
   baseline moves it by a large fraction of itself. The ordering of the
   tiers holds; the JIT figures land in the tens to low hundreds of
-  nanoseconds, and the measurement resolves them no further.
+  nanoseconds. The measurement resolves them no further.
 
 Benchmarks must run one per process. In a single binary the program
 benchmarks and the parser inflate the shared heap, and everything
@@ -168,8 +168,8 @@ The first line is a discarded warmup. Prefix each `go test` with
 `taskset -c 3 nice -n -20` to pin it, which needs root for the nice
 level; unpinned on a shared machine the same native call read 509n to
 913n between sweeps. The benchmarks require `-gcflags=all=-l`: without
-it the compiler inlines the native baseline into the loop body, and the
-baseline measures nothing.
+it the compiler inlines the native baseline into the loop body. The
+baseline then measures nothing.
 
 ## Optimisation
 
@@ -194,8 +194,8 @@ Notes on each:
   type to the same program every time, one entry removes it.
 - `reflect.Value.Call` runs its own `assignTo` per argument, which the
   cache above cannot reach. The argument needs pre-typing. A type
-  assertion produces the interface table, and the value arrives
-  already typed as the parameter.
+  assertion produces the interface table. The value arrives already
+  typed as the parameter.
 - The step JIT is the shape table from `jit.go`, applied to every call
   and not to one statement alone. `reflect.StructOf` builds the slots
   as one allocation with a correct pointer map and a stable address per
@@ -216,7 +216,7 @@ Approaches tested and rejected:
   callee can outlive the run. The runtime cannot reuse a frame.
 - Boxing a slice result into an `any` through `reflect.New` per call.
   Correct, and one allocation more than native.
-- Carrying slot values as `reflect.Value`. Every JIT'd step then pays
+- Holding slot values as `reflect.Value`. Every JIT'd step then pays
   the conversion at both ends.
 
 The remaining 197n is the frame allocation and the loop over four

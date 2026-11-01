@@ -63,7 +63,7 @@ func runProgram(t *testing.T, rt *Runtime, src string) (string, error) {
 }
 
 // TestVarDeclaration checks that var puts the zero value of a named
-// type in scope and fixes the type that later assignments to it carry.
+// type in scope and fixes the type later assignments to it take.
 func TestVarDeclaration(t *testing.T) {
 	rt, seen := typeRuntime(t)
 	for _, tc := range []struct{ name, src, want string }{
@@ -93,7 +93,7 @@ func TestVarDeclaration(t *testing.T) {
 	}
 }
 
-// TestTypeRegistry checks what a var statement can name. Almost
+// TestRuntime_BindType checks what a var statement can name. Almost
 // everything comes from walking the bindings; BindType covers the rest.
 func TestRuntime_BindType(t *testing.T) {
 	rt, _ := typeRuntime(t)
@@ -118,8 +118,8 @@ func TestRuntime_BindType(t *testing.T) {
 	}
 }
 
-// TestRuntime_Types checks that the listing carries both the
-// predeclared names and what discovery found.
+// TestRuntime_Types checks that Types lists both the predeclared
+// names and what discovery found.
 func TestRuntime_Types(t *testing.T) {
 	rt, _ := typeRuntime(t)
 	names := map[string]bool{}
@@ -133,7 +133,7 @@ func TestRuntime_Types(t *testing.T) {
 	}
 }
 
-// TestVarPointerAndSliceTypes checks the prefixes a type name can carry.
+// TestVarPointerAndSliceTypes checks the prefixes a type name can have.
 func TestVarPointerAndSliceTypes(t *testing.T) {
 	rt, _ := typeRuntime(t)
 	for _, src := range []string{

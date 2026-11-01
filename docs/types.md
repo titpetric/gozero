@@ -151,7 +151,7 @@ var u url.URL;
 json.NewEncoder(dest).Encode(u.Path);
 ```
 
-The type name can carry `*` and `[]` prefixes, matching how
+The type name can take `*` and `[]` prefixes, matching how
 `reflect.Type.String()` spells them. An unknown name is a compile error
 naming the fix: `unknown type "nope.Thing", register it with BindType`.
 
@@ -162,7 +162,7 @@ already its zero value with no instruction; the reflect tier uses a
 
 ### Inference
 
-A short declaration carries no type. `x := 123` has to work out
+A short declaration names no type. `x := 123` has to work out
 what `x` is. Three rules, in order:
 
 1. A `var` statement fixes it.
@@ -221,7 +221,7 @@ either the zeroed frame or a `reflect.Value` recorded once.
 
 Scalars reach the direct-call tier. Each width is its own layout class,
 because the cast that makes a direct call needs the exact Go type: an
-`int32` parameter is four bytes where an `int64` is eight, and a float
+`int32` parameter is four bytes where an `int64` is eight; a float
 travels in a different register file from an integer of the same width.
 `int` and `uint` follow their size and not their kind. They share
 a class with `int64` and `uint64` on a 64 bit platform.

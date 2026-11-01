@@ -18,9 +18,9 @@ import (
 //
 // Each pooled site gets one hidden unsafe.Pointer field in the
 // frame. The node writes the block it took from the site's pool into
-// that scratch field, run releases every site after the statements
-// finish, and the release clears the block before returning it so a
-// pooled block carries no references and comes back zeroed. The plan
+// that scratch field. Once the statements finish, run releases every
+// site. The release clears the block before returning it so a
+// pooled block holds no references and comes back zeroed. The plan
 // is a side table keyed by call and argument identity. A site the
 // node builder does not reach (a call that bridges, an argument that
 // aliases and skips boxing) leaves its scratch unused, which costs

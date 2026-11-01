@@ -25,7 +25,7 @@ the research record.
 
 ## 2026-09-23 00:00 +02:00: Bind takes values
 
-`Bind` carried funcs. Data had no way into a program except as a
+`Bind` took funcs. Data had no way into a program except as a
 literal or through a nullary getter, at the cost of a call per read.
 A host could not expose `time.Hour`, `io.EOF` or `os.Args` at all.
 
@@ -34,7 +34,7 @@ value, read in argument position like any other name and
 type-checked against the parameter when the program compiles. After
 `Bind("time.Hour", time.Hour)` a binding taking a `time.Duration`
 accepts it and one taking `int64` rejects it. `BindScope` loops over
-`Bind` and carries values for free.
+`Bind` and passes values for free.
 
 A value binding is also a receiver, with Go's method sets in full.
 It owns the longest dotted prefix of a path the way a func binding
@@ -89,7 +89,7 @@ slice are no-ops, as in Go.
 Reading a value reaches the direct tier as one load from the
 binding's fixed address, with no frame slot and no boxing; an
 addressed one becomes a frame slot seeded per run, and `&name`
-filling an interface parameter carries a compile-time itab like any
+filling an interface parameter holds a compile-time itab like any
 other interface argument. A write does not yet: `planInline`
 refuses the statement. The program falls back to the reflect
 evaluator whole and the write still lands. `testdata/vars.txt` runs
@@ -105,7 +105,7 @@ A call borrows its arguments. A binding receives values that are valid for
 the duration of the call, and a binding that keeps a received `any`,
 slice or literal pointer copies it first - a type assertion copies a
 value out of its box, where a plain interface assignment copies only
-the box's address. Plain string and scalar parameters carry their
+the box's address. Plain string and scalar parameters hold their
 values directly and need no copy. The Bind documentation states
 the contract, the [glossary](GLOSSARY.md) defines it under borrowed
 argument, and TestBindingContractCopy pins it from the caller's
@@ -207,7 +207,7 @@ c <- "sent";            send
 var d chan string;      chan, <-chan and chan<- in a typeref
 ```
 
-The implicit rules carry over. The ok of Go's two-value receive is
+The implicit rules apply. The ok of Go's two-value receive is
 implicit the way a trailing error is: never a value, checked after
 every receive, and a closed channel ends the program with io.EOF. A
 host loops Exec until errors.Is(err, io.EOF). The execution context
@@ -448,7 +448,7 @@ and leaves it to the evaluator.
 
 ## 2026-09-08 10:18 +02:00: conversion hints
 
-A literal assignment can now carry its type at the assignment:
+A literal assignment can now state its type at the assignment:
 
 ```
 x = int32(0);

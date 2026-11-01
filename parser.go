@@ -6,7 +6,7 @@ import (
 
 // The grammar has no binary operators: a statement is a call, and
 // every value is a literal, a name, or the result of another call.
-// The two unary forms it does carry are Go's reference operators, &
+// The two unary forms it does declare are Go's reference operators, &
 // and *, which exist because a value binding and a *T parameter are
 // only reachable through them.
 //
@@ -46,7 +46,7 @@ type Parser struct {
 
 // terminated consumes a statement end. The semicolon is a delimiter
 // between statements sharing a line, not something every line has to
-// carry: the end of the line and the end of the source both close a
+// hold: the end of the line and the end of the source both close a
 // statement.
 func (p *Parser) terminated() bool {
 	if p.consume(';') {
@@ -336,8 +336,8 @@ func (p *Parser) stmt() (stmt, error) {
 		lhs, define = nil, false
 	}
 
-	// The right-hand side is one arg: a call is the statement, a
-	// literal assigns, and the parser rejects a bare name here with its
+	// The right-hand side is one arg: a call is the statement and a
+	// literal assigns. The parser rejects a bare name here with its
 	// own message, which reads better than "expected '('".
 	if len(lhs) > 0 {
 		save := p.pos

@@ -144,7 +144,7 @@ func (p *Parser) arg() (arg, error) {
 }
 
 // sliceLit reads the elements of a slice literal after the opening
-// brace. The elements carry no keys: an index key would need the
+// brace. The elements have no keys: an index key would need the
 // compiler to size the slice, and nothing in the language needs one.
 func (p *Parser) sliceLit(typ string) (arg, error) {
 	a := arg{kind: argSlice, typ: typ}

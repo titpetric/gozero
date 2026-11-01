@@ -19,7 +19,7 @@ func unsafeNew(rtype unsafe.Pointer) unsafe.Pointer
 
 // typedmemclr is the typed clear reflect.Value.SetZero performs,
 // without building the Value: the pointer fields keep their write
-// barriers because the rtype carries the pointer map. Used to reset
+// barriers because the rtype holds the pointer map. Used to reset
 // a pooled frame. Like unsafeNew, typedmemclr is a pull linkname to an
 // internal symbol and a toolchain bump can break it.
 //
@@ -41,10 +41,10 @@ func typedmemclr(rtype unsafe.Pointer, ptr unsafe.Pointer)
 // statement gets a frame slot, and a program with no such name
 // adds no allocation beyond what its bindings make.
 //
-// Interface arguments carry a precomputed itab. Because both the
-// concrete type and the interface type exist when the program compiles,
-// and an itab depends on only those two, reflect builds the pair once
-// and only the data word varies per call.
+// Interface arguments hold a precomputed itab. Because an itab depends
+// on only the concrete type and the interface type, both of which
+// exist when the program compiles, reflect builds the pair once and
+// only the data word varies per call.
 //
 // A program JITs whole or not at all. One call outside the table sends
 // it to the reflect evaluator in vm.go, which stays the general
@@ -62,7 +62,7 @@ const (
 
 	// Scalars. Each width is its own class because the cast that makes
 	// a direct call needs the exact Go type: an int32 parameter is four
-	// bytes where an int64 is eight, and a float travels in a different
+	// bytes where an int64 is eight. A float travels in a different
 	// register file from an integer of the same width.
 	lBool
 	lI8
@@ -87,7 +87,7 @@ type (
 	nodeL func(f unsafe.Pointer, ctx context.Context, stack map[string]any, dest any) (sliceHdr, error)
 	nodeE func(f unsafe.Pointer, ctx context.Context, stack map[string]any, dest any) error
 
-	// nodeN carries every integer and bool class as the bits of its own
+	// nodeN returns every integer and bool class as the bits of its own
 	// width, zero-extended. One closure type covers every one of them because
 	// only the call site needs the exact Go type, and the
 	// shape case there casts back. nodeF does the same for floats.
@@ -96,7 +96,7 @@ type (
 )
 
 // node is one compiled expression. Exactly one closure holds a value, named by
-// class; lNone marks a call with no result, which only E carries.
+// class; lNone marks a call with no result, which only E holds.
 type node struct {
 	class layout
 	P     nodeP
@@ -229,10 +229,10 @@ type jitCompiler struct {
 	blockOf   map[*vmArg]*sitePool
 	strboxOf  map[*vmArg]*sitePool
 	poolSites []*sitePool
-	// pendingStrBox carries a string-box site from argNode, which holds
+	// pendingStrBox passes a string-box site from argNode, which holds
 	// the argument's identity, to toIface, which builds the box.
 	// Compilation of one program is single-threaded. A plain field
-	// carries it across the one call.
+	// holds it across the one call.
 	pendingStrBox *sitePool
 	// splices maps an argument that reads a name to the call that
 	// produced it, where planInline decided the value can travel as a
@@ -279,7 +279,7 @@ func jitCompileProgram(p *vmProgram) (*jitProgram, error) {
 		}
 		// A type with no layout class, a struct held by value, still
 		// gets a frame field: the frame, as storage with a type, holds
-		// anything. Only the uses that must carry the value between
+		// anything. Only the uses that must pass the value between
 		// calls need a class, and those fail per use, where the call
 		// bridges. A field read is an offset and needs no class.
 		c.slotOf[slot] = len(c.types)

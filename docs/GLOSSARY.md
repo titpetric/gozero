@@ -52,8 +52,9 @@ var w any = p     // no boxing: w = {type: *Request, data: p}
 
 Boxing appears in benchmark output as one allocation per boxed
 value. gozero avoids boxing where it can: constants box once at
-compile time, small integers point into a static table and need no
-fresh cell, and an argument aliases an eligible frame slot and skips the copy.
+compile time; small integers point into a static table and need no
+fresh cell; and an argument aliases an eligible frame slot and skips
+the copy.
 
 ## borrowed argument
 
@@ -63,7 +64,7 @@ runtime relies on the contract to recycle the memory behind
 arguments - the pack slice, the boxed values, the literal blocks -
 once the call returns. A type assertion copies a value out of its
 box; a plain interface assignment copies only the box's address and
-is not a copy in this sense. String and scalar parameters carry
+is not a copy in this sense. String and scalar parameters hold
 their values directly and need no copy.
 
 ## value binding
@@ -71,8 +72,8 @@ their values directly and need no copy.
 Data the host registers with `Bind`, as opposed to the func a
 `binding` holds: `Bind` takes either, and the kind of argument
 decides what the name does. A program reads a value binding in
-argument position. The name carries the static type the host bound
-it with and can be the receiver of a field read or a method call.
+argument position. The name has the static type the host bound it
+with and can be the receiver of a field read or a method call.
 
 ## per-run cell
 
@@ -97,8 +98,8 @@ bridge and the reflect evaluator.
 A pointer escapes when it outlives the scope that created it, which
 forces the pointed-to memory onto the heap and blocks reuse. The
 frame pool depends on an escape proof: the compiler marks every node
-that passes a frame pointer to a callee, and the pool recycles only
-a frame with no such node.
+that passes a frame pointer to a callee. The pool recycles only a
+frame with no such node.
 
 ## fixture
 
@@ -187,14 +188,14 @@ such slots before the compiler lays out the frame.
 
 The planner optimization that removes a slot: when the next statement
 reads a statement's single result exactly once, the planner moves
-the producing call into the consuming call's argument tree, and
-the value travels as a closure return value.
+the producing call into the consuming call's argument tree. The
+value travels as a closure return value.
 
 ## stack map
 
 The `map[string]any` a host passes to `Exec`. Names a program never
-binds resolve against the stack map at execution time; the runtime checks
-their types on read, because the map's values carry no static
+binds resolve against the stack map at execution time; the runtime
+checks their types on read, because the map's values have no static
 type. The stack map has no relation to the call stack.
 
 ## tier
@@ -208,5 +209,5 @@ direct-call tier and why.
 
 The value every Go type holds before assignment: `0`, `""`, `nil`,
 or a struct of zero fields. gozero fills omitted trailing arguments
-with the parameter's zero value, and the pool clears a pooled frame back
+with the parameter's zero value. The pool clears a pooled frame back
 to zero before reuse so declarations start from it.

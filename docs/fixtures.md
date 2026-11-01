@@ -20,11 +20,12 @@ assert.Equal(tb, "POST", req.Method);
 ```
 
 Hot evaluation means there is no build step between the text and the
-run. The runner reads the file, `Compile` turns it into a tree of typed
-closures over the live binding funcvals, and the program executes in
-the same process, in the same test, immediately. Editing a fixture and
-re-running `go test` is the whole loop; no generator runs, no linker
-runs, and the same text runs against changed bindings without an edit.
+run. The runner reads the file. `Compile` turns it into a tree of
+typed closures over the live binding funcvals. The program executes
+in the same process, in the same test, immediately. Editing a fixture
+and re-running `go test` is the whole loop; no generator runs, no
+linker runs, and the same text runs against changed bindings without
+an edit.
 
 ## How the runner works
 
@@ -65,8 +66,8 @@ runtime binds a fixed shape instead:
 Because every parameter has a layout class, an assertion is one direct
 call. The message stays optional because every trailing argument is:
 `assert.Equal(tb, want, got)` zero-fills it to `""`. `tb` has type
-`any`, and the helper asserts it to `testing.TB`, which keeps
-`testing` out of the runtime's own types.
+`any`. The helper asserts it to `testing.TB`, which keeps `testing`
+out of the runtime's own types.
 
 This is the pattern for binding any variadic API into the hot path:
 wrap it at the arity the scripts use and let zero-fill make the tail
@@ -77,9 +78,10 @@ with the reflect bridge as the floor for anything else.
 ## The context
 
 No fixture ever writes a context. Each call to
-`http.NewRequestWithContext` passes two arguments, and the runtime fills the `context.Context`
-parameter with the execution context, which the runner derives from
-`t.Context()`. The http fixture proves the plumbing end to end:
+`http.NewRequestWithContext` passes two arguments. The runtime fills
+the `context.Context` parameter with the execution context, which the
+runner derives from `t.Context()`. The http fixture proves the
+plumbing end to end:
 
 ```
 ctx := req.Context();
@@ -153,7 +155,7 @@ what a later field write put in the slot.
   fixed shape keeps an assertion a direct call.
 - Context plumbing is provable end to end from inside a fixture: the
   value attached by the runner comes back out of the request only if
-  the auto-filled parameter carried it.
+  the auto-filled parameter passed it on.
 - Against handwritten mirrors the fixtures run at 1.1x-1.6x with
   allocation parity on two of seven, and the assert helper's comparable
   fast path is worth an allocation per assertion.

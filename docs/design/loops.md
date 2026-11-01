@@ -40,7 +40,7 @@ Slices, maps, integers, and from go1.23 iterator functions:
 because it keeps the imperative principle intact - the loop still
 iterates a value a bound Go function produced.
 
-The tiers can carry it. The reflect evaluator gets range nearly free:
+The tiers can run it. The reflect evaluator gets range nearly free:
 `reflect.Value.Seq` and `Seq2` (go1.23 stdlib) return
 `iter.Seq[reflect.Value]` over slices, maps, integers, channels and
 funcs alike. On the JIT, ranging a slice is a length check and a

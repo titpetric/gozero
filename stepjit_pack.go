@@ -34,8 +34,8 @@ func (c *jitCompiler) packNode(call *vmCall, st reflect.Type, elems []*vmArg) (n
 	// The binding contract lets the pack reuse a pooled backing
 	// array and skip the per-call allocation; the slice the callee
 	// receives is dead when the call returns, and finish repools it.
-	// takeBacking is nil for an ordinary call, and the pack allocates
-	// fresh.
+	// Because takeBacking is nil for an ordinary call, the pack
+	// allocates fresh.
 	var takeBacking func(fr unsafe.Pointer) unsafe.Pointer
 	if site, ok := c.packOf[call]; ok && len(nodes) > 0 {
 		off := c.offs[site.field]

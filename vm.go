@@ -24,12 +24,12 @@ import (
 // takes the zero value of its type; http.NewRequest with two arguments
 // receives a nil body that way.
 //
-// Because names the program binds carry a static type, the compiler
+// Because names the program binds have a static type, the compiler
 // resolves methods on them against that type when the statement
 // compiles.
-// json.NewEncoder is a binding; Encode is not, and the program reaches
-// it through the *json.Encoder the binding returns. Names coming from
-// the caller's stack, including dest, are opaque and the VM checks them
+// json.NewEncoder is a binding; Encode is not. The program reaches it
+// through the *json.Encoder the binding returns. Names coming from the
+// caller's stack, including dest, are opaque and the VM checks them
 // when it reads them.
 
 type vmArgKind int
@@ -140,8 +140,8 @@ type vmCall struct {
 	fn reflect.Value
 	// fnArg produces the func value per run, for a call through a
 	// value: a func-typed name, or a func-typed field of one. fn is
-	// then invalid and ft carries the signature. A call through fn
-	// and a call through fnArg both have a static signature, and the
+	// then invalid and ft holds the signature. Because a call through
+	// fn and a call through fnArg both have a static signature, the
 	// compiler checks the arguments against ft.
 	fnArg  *vmArg
 	ft     reflect.Type
@@ -168,7 +168,7 @@ type vmStmt struct {
 
 	// assign is an assignment whose value each run builds, with nothing
 	// precomputed: a composite literal, "u = url.URL{...}". lit cannot
-	// carry it, because runs sharing one prebuilt value would share
+	// hold it, because runs sharing one prebuilt value would share
 	// the struct.
 	assign *vmArg
 

@@ -111,7 +111,7 @@ func TestCompilerFlatReturnArgKinds(t *testing.T) {
 		"struct":     {src: `return wantAny(url.URL{Path: "/x"});`, want: url.URL{Path: "/x"}},
 		"struct ptr": {src: `return wantAny(&url.URL{Path: "/x"});`, want: &url.URL{Path: "/x"}},
 		"spread":     {src: `return Join(xs...);`, want: "a/b"},
-		// A path needs a program-bound base, and a spread needs a
+		// A path needs a program-bound base. A spread needs a
 		// variadic parameter; both report at compile time.
 		"path":           {src: `return wantAny(a.b);`, wantErr: true},
 		"spread non-var": {src: `return wantAny(xs...);`, wantErr: true},

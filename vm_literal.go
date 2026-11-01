@@ -21,12 +21,12 @@ import (
 // takes the zero value of its type; http.NewRequest with two arguments
 // receives a nil body that way.
 //
-// Because names the program binds carry a static type, the compiler
+// Because names the program binds have a static type, the compiler
 // resolves methods on them against that type when the statement
 // compiles.
-// json.NewEncoder is a binding; Encode is not, and the program reaches
-// it through the *json.Encoder the binding returns. Names coming from
-// the caller's stack, including dest, are opaque and the VM checks them
+// json.NewEncoder is a binding; Encode is not. The program reaches it
+// through the *json.Encoder the binding returns. Names coming from the
+// caller's stack, including dest, are opaque and the VM checks them
 // when it reads them.
 // nilAs is the value the nil literal takes for a parameter type:
 // the zero value when the type can hold nil, an error when it cannot.

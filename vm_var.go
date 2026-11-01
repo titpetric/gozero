@@ -22,7 +22,7 @@ func (c *Compiler) varArg(path []string, addrOf bool) (a *vmArg, t reflect.Type,
 		return nil, nil, false, nil
 	}
 	t = vb.val.Type()
-	// The root carries the binding's own prefix as its name, with the
+	// The root holds the binding's own prefix as its name, with the
 	// field selectors stripped: that name is the map key of the per-run
 	// cell. "pv" and "pv.N" have to agree on it or a method call and a
 	// field read land on different storage.
@@ -81,7 +81,7 @@ func (p *vmProgram) argRoots() []*vmArg {
 // materializeVarCells rewrites every addressed or assigned value
 // binding into a per-run slot seeded from the bound value.
 //
-// The prologue of each run allocates the copy from p.inits, and the
+// The prologue of each run allocates the copy from p.inits. The
 // binding keeps the read-only value Bind registered. Because a
 // compiled program keeps no per-run state, two concurrent Execs must
 // not see each other's writes and a second run must not start from

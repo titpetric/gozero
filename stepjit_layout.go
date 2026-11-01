@@ -173,7 +173,7 @@ func storeF(cl layout, at unsafe.Pointer, v float64) {
 }
 
 // scalarBits turns a compile-time constant into the representation
-// nodeN and nodeF carry.
+// nodeN and nodeF return.
 func scalarBits(v reflect.Value, cl layout) (uint64, float64) {
 	switch cl {
 	case lBool:

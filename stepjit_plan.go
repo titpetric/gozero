@@ -80,7 +80,7 @@ type jitPlan struct {
 	// retSlot is the slot a "return name;" reads, -1 when the program
 	// returns through a trailing call or not at all.
 	retSlot int
-	// inits are the program's slot initialisers, carried through so
+	// inits are the program's slot initialisers, passed through so
 	// the compiler can emit a prologue for the seeded ones.
 	inits []slotInit
 }

@@ -251,7 +251,7 @@ func TestRuntime_BindScope(t *testing.T) {
 	if got != "ABC" {
 		t.Errorf("got %q, want ABC", got)
 	}
-	// A scope carries values as readily as funcs, since Bind does.
+	// A scope holds values as readily as funcs, since Bind does.
 	if err := rt.BindScope("cfg", map[string]any{"Retries": 3}); err != nil {
 		t.Errorf("a value entry should bind: %v", err)
 	}
@@ -318,7 +318,7 @@ func benchRuntime(b *testing.B) *Runtime {
 // reportVsNative runs after the measured loop, with the timer stopped:
 // it times b.N iterations of the native baseline with its own stopwatch
 // and reports it as native-ns/op, and the statement's cost over native
-// as cost-ns/op. Because both cost benchmarks carry their baseline
+// as cost-ns/op. Because both cost benchmarks time their baseline
 // inline, the derived number survives on its own line of output.
 func reportVsNative(b *testing.B) {
 	b.Helper()

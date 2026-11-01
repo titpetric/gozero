@@ -22,14 +22,14 @@ var d chan string;       chan, <-chan and chan<- in a typeref
 b.C <- "field";          the channel can live in a field
 ```
 
-The implicit rules carry over from the rest of the language:
+The implicit rules from the rest of the language apply:
 
 - The `ok` of Go's two-value receive is implicit the way a trailing
   error is: never a value, checked after every receive. A receive
   from a closed channel ends the program with `io.EOF`. A host loops
   `Exec` until `errors.Is(err, io.EOF)` and the program never writes
   the check. `v, ok := <-c` is a compile error naming the rule.
-- Both operations carry the execution context. A blocked
+- Both operations observe the execution context. A blocked
   receive or send ends the program with `ctx.Err()` when the
   `ExecContext` deadline passes or the host cancels the context, which
   also bounds a nil channel; without a deadline a blocked operation
@@ -89,8 +89,8 @@ documents. That decomposition held:
 - `select` is a multi-way conditional with blocking and per-arm
   bodies: block syntax, branch compilation and the early-exit signal
   from [conditions.md](conditions.md), plus readiness semantics of
-  its own. Every receive and send carries the context arm, its most
-  common use, as part of the operation.
+  its own. Every receive and send already has the context arm, its
+  most common use, as part of the operation.
 - `range` over a channel is [loops.md](loops.md) with a channel as
   the sequence. The host loops; a program handles one element.
 - `go` would put program-spawned concurrency inside the sandbox

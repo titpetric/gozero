@@ -142,7 +142,7 @@ through the adapter pattern above. Middleware is the case that needs
 full capture: its shape is a function that receives a continuation,
 and guard bindings cover the abort half only. Holding `next` and
 deciding when to call it takes a closure; the missing part is the
-continuation, and the branch exists.
+continuation. The branch already exists.
 
 ## Verdict
 

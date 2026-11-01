@@ -71,8 +71,8 @@ var strType = reflect.TypeOf("")
 // interface type, reporting whether the value implements it.
 //
 // Hand assembly of the words cannot work. An empty interface holds a
-// *rtype where a non-empty one holds an *itab, and the runtime builds
-// and caches the itab for a (concrete, interface) pair; there is no
+// *rtype where a non-empty one holds an *itab. The runtime builds and
+// caches the itab for a (concrete, interface) pair; there is no
 // exported way to reach it. Because a type assertion is that lookup,
 // each converter asserts to its own interface type in ordinary Go and
 // reinterprets the result. Since the assertion is the only part that

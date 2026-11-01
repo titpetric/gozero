@@ -31,8 +31,8 @@ req := http.NewRequest("GET", "/")
 json.NewEncoder(dest).Encode(req.Cookies())
 ```
 
-The consequence is that the language never grows a surface of its own
-to maintain, and the host controls exactly what a program can reach:
+Two consequences follow. The language never grows a surface of its
+own to maintain. The host controls exactly what a program can reach:
 the binding set is the sandbox boundary. A program cannot open a file
 unless the host binds a function that opens files.
 
@@ -177,9 +177,9 @@ The direct tier works because under Go's internal ABI, argument and
 result passing depends only on the layout classes of the types, not
 their names: `io.Reader` and `struct{ tab, data unsafe.Pointer }` are
 the same two words, `*http.Request` and `unsafe.Pointer` the same
-one. A compiled expression is one closure per class, and a value
-flows from the call that produces it to the call that consumes it as
-a closure's return value - a Go local, no storage of its own.
+one. A compiled expression is one closure per class. A value flows
+from the call that produces it to the call that consumes it as a
+closure's return value - a Go local, no storage of its own.
 
 Before compiling, a planner (`planInline`) drops every statement
 whose single result the statement after it reads exactly once,
@@ -187,7 +187,7 @@ splicing the producer into the reader's argument tree. Only the names
 that survive get slots, laid out as fields of a `reflect.StructOf`
 frame struct allocated per run - typed storage the collector scans -
 and a program with no such name allocates nothing beyond its
-bindings' own allocations. Interface arguments carry itabs computed
+bindings' own allocations. Interface arguments hold itabs computed
 at compile time; only a type assertion reaches the itab for a
 (concrete, interface) pair. A small table of converters performs
 exactly that assertion.
@@ -235,7 +235,7 @@ err = rt.Supports(src)      // nil when every call is direct
 
 `Eval`, `Exec` and `Scan` are generic methods, which needs the go1.27
 language version the go.mod selects. A panic inside a binding arrives
-as `*PanicError` carrying the value and a stack, on every tier,
+as `*PanicError` holding the value and a stack, on every tier,
 because `Compile` wraps what it returns.
 
 ## Costs

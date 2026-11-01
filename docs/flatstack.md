@@ -30,7 +30,7 @@ one import swaps the backend. The substance is
 | `compiler.go` |  1128 | model AST to bytecode                                 |
 | `vm.go`       |  1152 | the execution loop                                    |
 
-Two structural decisions carry the rest. `Host` is an interface of
+Two structural decisions shape the rest. `Host` is an interface of
 around thirty methods holding every PHP value semantic. The engine
 owns only compilation, operand and local storage, jumps and iteration.
 And `Program.localNames` is per program, not per function. A slot
@@ -130,8 +130,8 @@ neither of which the fast path intercepted.
 **What it changed.** This repository had no boundary at all. A binding panic
 unwound straight through the JIT's raw frame stores, on both tiers.
 `Compile` now wraps what it returns. One `defer recover()` covers
-both tiers by construction, with nothing to remember, and a panic
-arrives as `*PanicError` carrying the value and a stack.
+both tiers by construction, with nothing to remember. A panic arrives
+as `*PanicError` holding the value and a stack.
 
 ## Lesson 5: put an allocation ceiling in the test suite
 
@@ -160,7 +160,7 @@ about eleven concrete signatures, `func(any) any`, `func(string) string`
 and so on, falling through to reflection for the rest. No unsafe, no ABI
 dependence, no equivalence test needed.
 
-It does not carry over here. Because PHP values are already `any`, a
+It does not transfer here. Because PHP values are already `any`, a
 handful of literal cases covers nearly every binding. The bindings here
 are Go APIs with concrete types, where a type switch needs one case per
 concrete signature. That is why this repository went to layout classes:

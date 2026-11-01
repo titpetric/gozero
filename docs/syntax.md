@@ -8,8 +8,9 @@ this document is legal Go, minus the declarations Go would need
 around it. What the language removes it replaces with an implicit
 rule. The same behaviour runs a line shorter than the Go it mirrors
 in the common case. Each section pairs the two side by side,
-Go on the left; the gozero fences carry the Go tag, because gozero is Go. How the compiled form
-runs is [DESIGN.md](DESIGN.md); this document is the surface.
+Go on the left; the gozero fences use the Go tag, because gozero is
+Go. How the compiled form runs is [DESIGN.md](DESIGN.md); this
+document is the surface.
 
 The snippets run against the fixture bindings: `http.NewRequest`,
 `url.Parse`, `json.NewEncoder`, `fmt.Sprintf`, `assert.Equal` and
@@ -374,7 +375,7 @@ joined := path.Join(parts...)
 
 `Bind` takes a func or a value. A program calls a func; anything
 else is a value, read in argument position like any other name and
-carrying the static type the host bound it with:
+holding the static type the host bound it with:
 
 ```go
 rt.Bind("url.Parse", url.Parse)   // a func
@@ -569,7 +570,7 @@ assert.Equal(tb, "POST", req.Method)
 </tr>
 </table>
 
-The same shape carries to an `http.Handler` body, which is a straight
+The same shape applies to an `http.Handler` body, which is a straight
 line of build, encode, write; the host adapts the compiled program to
 the signature and passes the writer and request in on the stack:
 

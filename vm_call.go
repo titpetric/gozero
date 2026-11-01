@@ -21,12 +21,12 @@ import (
 // takes the zero value of its type; http.NewRequest with two arguments
 // receives a nil body that way.
 //
-// Because names the program binds carry a static type, the compiler
+// Because names the program binds have a static type, the compiler
 // resolves methods on them against that type when the statement
 // compiles.
-// json.NewEncoder is a binding; Encode is not, and the program reaches
-// it through the *json.Encoder the binding returns. Names coming from
-// the caller's stack, including dest, are opaque and the VM checks them
+// json.NewEncoder is a binding; Encode is not. The program reaches it
+// through the *json.Encoder the binding returns. Names coming from the
+// caller's stack, including dest, are opaque and the VM checks them
 // when it reads them.
 // compileExpr compiles a call and the methods chained onto it,
 // returning the outermost call and its first non-error result's
@@ -132,7 +132,7 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 		if m, ok := currType.MethodByName(l.name); ok {
 			fn := m.Func
 			if !fn.IsValid() {
-				// An interface type's Method carries no Func: there is
+				// An interface type's Method has no Func: there is
 				// no concrete code to point at until a dynamic value is
 				// behind the receiver. Because the wrapper dispatches on
 				// it, ctx.Err() compiles like any method call.
@@ -149,7 +149,7 @@ func (c *Compiler) compileExpr(slots map[string]int, env map[string]reflect.Type
 		// receiver method is callable on a value as long as the value
 		// is addressable, and a named value or a field of one is. This
 		// also resolves promoted pointer-receiver methods, which only
-		// *T's method set carries for an embedded value.
+		// *T's method set lists for an embedded value.
 		if currType.Kind() != reflect.Pointer && currType.Kind() != reflect.Interface {
 			if m, ok := reflect.PointerTo(currType).MethodByName(l.name); ok {
 				arecv, err := addrOf(currType, recv)
@@ -237,7 +237,7 @@ func addrOf(t reflect.Type, a *vmArg) (*vmArg, error) {
 	if root.kind != vaSlot && root.kind != vaVar {
 		return nil, fmt.Errorf("the value is not addressable, bind it to a name first")
 	}
-	// Built fresh, never copied: vmArg carries an atomic cache that a
+	// Built fresh, never copied: vmArg holds an atomic cache that a
 	// copy would break.
 	return &vmArg{
 		kind: a.kind, slot: a.slot, name: a.name, varv: a.varv,

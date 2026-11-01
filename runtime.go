@@ -60,13 +60,13 @@ func NewRuntime() *Runtime {
 }
 
 // Bind registers a Go function or a value under a name, and refuses a nil
-// value or a nil pointer: neither carries a type to take or a value to read.
+// value or a nil pointer: neither has a type to take or a value to read.
 //
 //	rt.Bind("url.Parse", url.Parse)  // a func, called
 //	rt.Bind("io.EOF", io.EOF)        // a value, read
 //	rt.Bind("os.Args", &os.Args)     // a pointer, read and written through
 //
-// A value read through its name carries the static type Bind recorded.
+// A value read through its name has the static type Bind recorded.
 func (r *Runtime) Bind(name string, fn any) error {
 	if fn == nil {
 		return fmt.Errorf("bind: %s: cannot bind a nil value, its type is unknown", name)

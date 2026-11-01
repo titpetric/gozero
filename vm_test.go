@@ -31,8 +31,8 @@ func vmRuntime(t *testing.T) *Runtime {
 }
 
 // TestProgramWritesThroughDest is the target program: four statements,
-// no error named anywhere, no return, and the output arrives through
-// the pointer passed to Scan. Cookies and Encode are not bindings; the
+// no error named anywhere, no return. The output arrives through the
+// pointer passed to Scan. Cookies and Encode are not bindings; the
 // program reaches them through the result types of http.NewRequest and
 // json.NewEncoder.
 func TestProgramWritesThroughDest(t *testing.T) {

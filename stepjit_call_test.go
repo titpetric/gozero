@@ -18,7 +18,7 @@ import (
 func TestBridgedCallStaysInTheTree(t *testing.T) {
 	rt := pairRuntime(t)
 	// Because five string parameters is a shape the table does not
-	// carry, the call bridges while its neighbours stay direct.
+	// list, the call bridges while its neighbours stay direct.
 	if err := rt.Bind("join5", func(a, b, c, d, e string) (*url.URL, error) {
 		return &url.URL{Path: "/" + a + b + c + d + e}, nil
 	}); err != nil {

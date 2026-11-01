@@ -137,7 +137,7 @@ func fillNode(n node, off uintptr) fillFunc {
 }
 
 // structNode compiles a literal that leaves the frame: one fresh T per
-// evaluation, filled at offsets, carried as the pointer to it. Because
+// evaluation, filled at offsets, returned as the pointer to it. Because
 // two runs of the same program must not share the struct, the
 // allocation is per evaluation, never a prototype.
 func (c *jitCompiler) structNode(a *vmArg) (node, error) {

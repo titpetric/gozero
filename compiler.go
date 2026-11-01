@@ -24,9 +24,9 @@ type binding struct {
 type Compiler struct {
 	bindings map[string]binding
 	// vars are the value bindings Bind registers for a non-func. They
-	// share the namespace with bindings, and the compiler resolves
-	// both by longest dotted prefix. A name like os.Args is one key in
-	// this map, dot and all.
+	// share the namespace with bindings. The compiler resolves both
+	// by longest dotted prefix. A name like os.Args is one key in this
+	// map, dot and all.
 	vars map[string]varBinding
 	// types is the Runtime's registry, shared by reference so a Bind
 	// after a Compile is visible.
@@ -64,8 +64,8 @@ func (c *Compiler) Compile(prog *program) (CompiledFunc, error) {
 		return nil, err
 	}
 	// Every call in the shape table means the whole program runs
-	// without reflect.Value.Call. One call outside it and the reflect
-	// evaluator takes the program. The two are never mixed.
+	// without reflect.Value.Call. One call outside the table and the
+	// reflect evaluator takes the program. The two are never mixed.
 	if jp, err := jitCompileProgram(p); err == nil {
 		return CompiledFunc(jp.run), nil
 	}

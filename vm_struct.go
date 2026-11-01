@@ -56,7 +56,7 @@ func (c *Compiler) compileStructLit(slots map[string]int, env map[string]reflect
 		}
 		va, err := c.compileArg(slots, env, name, i, f.Type, e.val)
 		if err != nil {
-			// compileArg speaks in call terms and carries the compile:
+			// compileArg speaks in call terms and writes the compile:
 			// prefix the caller adds again; reduce it to the mismatch.
 			return nil, nil, fmt.Errorf("field %s: %s", f.Name, strings.TrimPrefix(err.Error(), "compile: "))
 		}

@@ -20,7 +20,7 @@ if status == 200 && attempts < 3 {
 ```
 
 On the JIT tier, operators are cheap. Because the node types
-already carry every scalar as `uint64` bits (`nodeN`) or `float64`
+already hold every scalar as `uint64` bits (`nodeN`) or `float64`
 (`nodeF`), an operator is a combinator: two `nodeN` in, one
 `nodeN` out, a native `+` in the middle. No shape table growth, no
 reflect, no new layout classes - arithmetic keeps every scalar class
@@ -67,7 +67,7 @@ expression tree that every later feature must handle.
 **Panics become language behaviour.** Today a program's only
 non-call semantics is "an error ends it". Division by zero, shift
 overflow and uncomparable `==` add panic sites that belong to the
-language, not to a binding; `*PanicError` would start carrying
+language, not to a binding; `*PanicError` would start reporting
 gozero's own arithmetic faults, and the claim that a program can
 only do what a binding does would stop covering panics.
 
@@ -145,7 +145,7 @@ belongs in Go: write the computation as a binding and call it.
 ## Verdict
 
 The JIT can run operators as class-closed combinators at native
-cost. What the design cannot carry is the semantics: Go's expression
+cost. What the design cannot afford is the semantics: Go's expression
 rules reimplemented without go/types, and the operator-by-operator
 growth that follows the first `==`. Operation bindings keep the AST
 call-only, keep the types coming from signatures, keep the semantics

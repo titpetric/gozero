@@ -76,7 +76,7 @@ shape budget the runtime cannot enforce for it.
 body, which is [closures.md](closures.md) territory, and
 `StructOf` does not generate wrapper methods for embedded fields.
 Embedding does not promote behaviour either. Declared structs
-carry data between bindings and into encoders; anything with
+pass data between bindings and into encoders; anything with
 behaviour stays a host type. This is a hard boundary that a later
 version keeps in place.
 
@@ -106,7 +106,7 @@ the program can spell.
 ## Alternatives
 
 **Host-declared types, discovery, BindType.** Today's answer: the
-host declares the shape, binds anything that mentions it, and the
+host declares the shape and binds anything that mentions it; the
 program uses it. Cons:
 
 - A new shape means recompiling the host. The fixture story loses

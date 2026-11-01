@@ -49,7 +49,7 @@ func TestVarArgResolution(t *testing.T) {
 		t.Errorf("absent: ok=%v err=%v, want a clean miss", ok, err)
 	}
 
-	// An address is legal and carries the pointer type.
+	// An address is legal and varArg reports the pointer type.
 	pa, pt, _, err := c.varArg([]string{"cfg"}, true)
 	if err != nil {
 		t.Fatalf("&cfg: %v", err)

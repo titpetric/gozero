@@ -6,8 +6,8 @@ import (
 )
 
 // TestPackShapes covers the variadic pack on the direct tier: the two
-// element types the table carries, an empty tail, and an element type
-// outside it, which bridges and still runs.
+// element types the table lists, an empty tail, and an element type
+// outside the table, which bridges and still runs.
 func TestPackShapes(t *testing.T) {
 	rt, seen := bvRuntime(t)
 	for name, v := range map[string]any{

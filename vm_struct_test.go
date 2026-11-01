@@ -33,7 +33,7 @@ func TestStructLiteral(t *testing.T) {
 		}
 	}
 
-	// A literal in argument position carries its own type.
+	// A literal in argument position keeps its own type.
 	*seen = nil
 	if _, err := runProgram(t, rt, `takesAny(url.URL{Path: "/a"});`); err != nil {
 		t.Fatal(err)
@@ -69,8 +69,8 @@ func TestStructLiteral(t *testing.T) {
 // TestStructLiteralSupports checks that a composite literal reaches
 // the direct tier: assigned to a name, in argument position, and as a
 // field assignment's value. A literal in return position stays on the
-// reflect evaluator like every returned expression, and the JIT
-// declines it with a reason.
+// reflect evaluator like every returned expression. The JIT declines
+// it with a reason.
 func TestStructLiteralSupports(t *testing.T) {
 	rt, _ := typeRuntime(t)
 	for _, src := range []string{

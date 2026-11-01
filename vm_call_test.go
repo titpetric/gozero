@@ -33,7 +33,7 @@ func TestProgramChainedAndNested(t *testing.T) {
 }
 
 // TestProgramOmittedArgument checks that the third parameter of
-// http.NewRequest takes its zero value: the request carries a nil
+// http.NewRequest takes its zero value: the request holds a nil
 // body.
 func TestProgramOmittedArgument(t *testing.T) {
 	rt := vmRuntime(t)

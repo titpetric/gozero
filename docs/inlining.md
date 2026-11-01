@@ -8,15 +8,14 @@ default build, and `-gcflags=all=-l`, which disables inlining in every
 package including the standard library. Pinned core (`taskset -c 3`),
 Intel N150, go1.27; each figure is the best of three fixed-count
 runs (`-benchtime 100000x -count 3`), which holds steady against
-other load on the shared machine. The tables carry the 2026-09-10
+other load on the shared machine. The tables record the 2026-09-10
 measurements, taken after argument pooling landed
 ([changelog](changelog.md)).
 
 ## With inlining (default build)
 
 Table 1, the fixture suite in a default build; other chapters
-reference these measurements by table number and carry no
-copies:
+reference these measurements by table number and keep no copies:
 
 | fixture  | vm                        | native            | ratio |
 |----------|---------------------------|-------------------|-------|

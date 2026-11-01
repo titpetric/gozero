@@ -6,7 +6,7 @@ date: "2026-09-09T00:00:00+02:00"
 The language has one conditional today, an invisible one: a
 non-nil trailing error ends the program. Every call is an implicit
 `if err != nil { return }`. This document weighs what a visible `if`
-would cost, under the constraints the design already carries: Go
+would cost, under the constraints the design already sets: Go
 syntax only, no operator expressions in the AST, no userland
 evaluation, stdlib only.
 
@@ -95,7 +95,7 @@ compile. The cons:
 - `eq(x, 5)` is legal Go, but Go writes `x == 5`; every comparison
   site reads differently from the Go it mirrors.
 - A generic `eq(a, b any) bool` erases the type safety the bindings
-  carry: both sides box to `any`, scalars hit the allocator or the
+  have: both sides box to `any`, scalars hit the allocator or the
   static-cell path, and a type mismatch that `==` would reject at
   compile time becomes a runtime `false` from `reflect.DeepEqual`.
 - Typed variants (`eqInt`, `eqStr`, ...) restore the checking and

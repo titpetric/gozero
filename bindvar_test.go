@@ -62,7 +62,7 @@ func bvRun(t *testing.T, rt *Runtime, src string) error {
 }
 
 // TestBindValueRead pins that Bind takes a value as readily as a func.
-// The name carries the bound value's static type.
+// The name has the bound value's static type.
 func TestBindValueRead(t *testing.T) {
 	rt, seen := bvRuntime(t)
 	for name, v := range map[string]any{
@@ -120,7 +120,8 @@ func TestBindValueIsACopy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Writing the name writes the run's copy, and a read sees it.
+	// Writing the name writes the run's copy. A later read in the
+	// same run sees the write.
 	if err := bvRun(t, rt, "args = three()\nrecordL(args)"); err != nil {
 		t.Fatal(err)
 	}
