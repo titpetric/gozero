@@ -5,29 +5,6 @@ import (
 	"reflect"
 )
 
-// The multi-statement VM. A program is a list of calls that bind their
-// results to names. Because there are no operators, every value is a
-// literal, a name, or the result of another call.
-//
-// Two rules shape the compiled form:
-//
-// A trailing error result is never a value. Because the compiler strips
-// it from the result list and checks it after every call,
-// "req := http.NewRequest(...)" binds one name to a two-result call and
-// a failure returns from Exec or Scan at that statement. No program text
-// mentions an error.
-//
-// Every argument is optional. A parameter the statement does not supply
-// takes the zero value of its type; http.NewRequest with two arguments
-// receives a nil body that way.
-//
-// Because names the program binds have a static type, the compiler
-// resolves methods on them against that type when the statement
-// compiles.
-// json.NewEncoder is a binding; Encode is not. The program reaches it
-// through the *json.Encoder the binding returns. Names coming from the
-// caller's stack, including dest, are opaque and the VM checks them
-// when it reads them.
 // nilAs is the value the nil literal takes for a parameter type:
 // the zero value when the type can hold nil, an error when it cannot.
 func nilAs(pt reflect.Type) (reflect.Value, error) {

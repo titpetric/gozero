@@ -372,8 +372,8 @@ position stays on the reflect evaluator, like every returned
 expression.
 
 The structs fixture benchmark, the only fixture off the direct tier
-before this entry, moves from 4.6x native to 1.4x, in line with the
-other fixtures:
+before this entry, moves onto it and into line with the other
+fixtures:
 
 | structs fixture      | time per run | allocations |
 |----------------------|--------------|-------------|

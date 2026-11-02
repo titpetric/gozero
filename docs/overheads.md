@@ -231,7 +231,7 @@ JIT encodes fails the suite ahead of any benchmark.
 
 The remaining cost is the frame allocation and the loop over four
 closures. Running the same steps with the frame hoisted out of the loop
-measures the split, one 48 byte allocation apart:
+measures the split, which one frame allocation separates:
 
 | Measurement                             | Cost    |
 |-----------------------------------------|--------:|
