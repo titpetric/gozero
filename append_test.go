@@ -62,7 +62,7 @@ func TestAppend(t *testing.T) {
 	}
 }
 
-// boxOf answers the cell an any's value sits in. Two interfaces over
+// boxOf answers the cell holding an any's value. Two interfaces over
 // one cell share it, and the binding contract forbids a binding from
 // keeping a cell it shares with the caller: the direct tier pools
 // that cell and clears it when the statement finishes.
@@ -83,7 +83,7 @@ func boxOf(v any) unsafe.Pointer {
 // the caller's box, which stays valid only for the length of the call.
 func TestAppendCopiesABorrowedBox(t *testing.T) {
 	// A string, because that is the case the pool comment names and
-	// because a non-empty one always boxes into a cell of its own.
+	// because a non-empty one always boxes into a separate cell.
 	borrowed := any("needs a cell")
 
 	// The type-switched path.

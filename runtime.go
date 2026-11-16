@@ -60,7 +60,7 @@ func NewRuntime() *Runtime {
 }
 
 // Bind registers a Go function or a value under a name, and refuses a nil
-// value or a nil pointer: neither has a type to take or a value to read.
+// value or a nil pointer: a nil has no type to bind and no value to read.
 //
 //	rt.Bind("url.Parse", url.Parse)  // a func, called
 //	rt.Bind("io.EOF", io.EOF)        // a value, read

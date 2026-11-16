@@ -82,7 +82,7 @@ func TestCompiler_Compile(t *testing.T) {
 // numbers and names and called Type on an invalid reflect.Value for
 // anything else. The table walks every argument kind the parser
 // produces, plus the spread forms: each one either runs or reports a
-// compile error, and none may panic.
+// compile error, and no kind may panic.
 func TestCompilerFlatReturnArgKinds(t *testing.T) {
 	rt := NewRuntime()
 	for name, fn := range map[string]any{
@@ -136,7 +136,7 @@ func TestCompilerFlatReturnArgKinds(t *testing.T) {
 var bytesNewBufferString = bytes.NewBufferString
 
 // testFixtures is the handwritten side of the comparison: each method
-// is the Go a fixture program stands for, doing the same work and the
+// is the Go a fixture program denotes, doing the same work and the
 // same assertions. The benchmark builds ctx once before the measured
 // loop, the same way as the vm side's execution context: a per-iteration
 // context.WithValue on one side only showed up as a one-allocation
@@ -247,7 +247,7 @@ func (f *testFixtures) testStructs(tb testing.TB) {
 	assertEqual(tb, "https://h/p", p.String(), "")
 
 	// The fixture's positional url.URL{"https"} fills Scheme. Because
-	// Go requires every field positionally, the keyed form stands in.
+	// Go requires every field positionally, the keyed form replaces it.
 	s := url.URL{Scheme: "https"}
 	assertEqual(tb, "https", s.Scheme, "")
 

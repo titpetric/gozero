@@ -201,7 +201,7 @@ func (c *jitCompiler) structIfaceNode(pt reflect.Type, a *vmArg) (node, error) {
 
 // structArgNode compiles a literal in argument position to the class
 // its parameter wants. A value literal can only travel as an interface,
-// because a struct wider than a word has no transport class of its own.
+// because no transport class fits a struct wider than a word.
 func (c *jitCompiler) structArgNode(a *vmArg, pt reflect.Type, cl layout) (node, error) {
 	switch {
 	case cl == lPtr && a.addr:

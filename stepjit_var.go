@@ -98,7 +98,7 @@ func (c *jitCompiler) varNode(a *vmArg, pt reflect.Type, cl layout) (node, error
 }
 
 // varAddr returns the fixed address of a binding's storage. Because
-// a Value from reflect.ValueOf has no address of its own, varAddr
+// a Value from reflect.ValueOf has no address, varAddr
 // copies it into a cell once at compile time. No program writes that
 // storage: the read is the only user.
 func varAddr(a *vmArg) unsafe.Pointer {

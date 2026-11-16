@@ -341,8 +341,8 @@ func (p *vmProgram) assignFrame(c *vmCall) {
 }
 
 // assignArg walks one argument for assignFrame: a nested call needs
-// its own frame window whether it sits in an argument list, a struct
-// element, or a field assignment's value.
+// its own frame window, in an argument list, a struct element or a
+// field assignment's value alike.
 func (p *vmProgram) assignArg(a *vmArg) {
 	// An addressed argument pins the slot at its root: run stores the
 	// slot's value through an addressable cell, and the step JIT

@@ -123,7 +123,7 @@ func smallBox(bits uint64, width uintptr) (unsafe.Pointer, bool) {
 
 // scalarIface boxes a scalar into an interface. Because the data word
 // has to point at a value of the concrete width, each class
-// materialises one of its own type; that escape is the allocation the
+// materialises one at its own concrete type; that escape is the allocation the
 // Go compiler makes at the same place, except for the small values
 // staticBoxes already holds.
 func scalarIface(tab unsafe.Pointer, sub node) (node, error) {

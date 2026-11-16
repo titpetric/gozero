@@ -113,8 +113,8 @@ func (p *vmProgram) materializeVarCells(args []*vmArg) {
 				walk(sub)
 			}
 		case vaVar:
-			// A name the program only reads needs no storage of its
-			// own: it reads the binding.
+			// A name the program only reads needs no storage at all: it
+			// reads the binding.
 			if !p.varCells[a.name] {
 				return
 			}
@@ -146,7 +146,7 @@ func (p *vmProgram) materializeVarCells(args []*vmArg) {
 // markVarCells records which binding names the program addresses or
 // assigns anywhere. Every occurrence of a recorded name then shares
 // the cell, including the occurrences that only read it. A write is a
-// reason on its own: "os.Args = xs" needs the cell even when the
+// reason by itself: "os.Args = xs" needs the cell even when the
 // program never writes &os.Args.
 func (p *vmProgram) markVarCells(args []*vmArg) {
 	for i := range p.stmts {

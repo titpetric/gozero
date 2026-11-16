@@ -104,7 +104,7 @@ func TestSliceLiteralRejections(t *testing.T) {
 // slice, and its two elements are constants.
 //
 // The element call matters because a literal builds per evaluation.
-// The call standing in the literal runs on the same schedule as the
+// The call inside the literal runs on the same schedule as the
 // build. The spread matters because the literal and the variadic pack
 // are two allocations the direct tier treats separately.
 func TestSliceLiteralElementCall(t *testing.T) {

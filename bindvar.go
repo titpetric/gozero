@@ -34,7 +34,7 @@ type varBinding struct {
 // path. A bound Delete costs a type switch on the paths a program
 // actually takes.
 //
-// A missing key is not an error, as in Go, and neither is a nil map:
+// A missing key is not an error, as in Go. A nil map is not one either:
 // deleting from one is a no-op in Go and stays one here. A nil any
 // holds no map to delete from, and Delete reports that as an error.
 func Delete(m any, key any) error {

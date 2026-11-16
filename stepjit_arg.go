@@ -163,7 +163,7 @@ func (c *jitCompiler) fieldNode(a *vmArg, pt reflect.Type, cl layout) (node, err
 			return unsafe.Add(p, off), nil
 		}
 	case !a.deref && a.src.kind == vaSlot && srcType != nil && srcType.Kind() == reflect.Struct:
-		// Because the struct lives in the frame, the field is at a fixed
+		// Because the frame holds the struct, the field is at a fixed
 		// offset from the frame pointer: no load, no nil to check.
 		field, ok := c.slotOf[a.src.slot]
 		if !ok {

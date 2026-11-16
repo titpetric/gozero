@@ -276,7 +276,7 @@ func TestStatementsAcrossLines(t *testing.T) {
 		}
 	}
 	// A return followed by a newline is a bare return; the name on the
-	// next line is a statement of its own, which a name cannot be.
+	// next line is a separate statement, which a name cannot be.
 	if _, err := rt.Compile("u := url.Parse(\"/nl\")\nreturn\n\tu\n"); err == nil {
 		t.Error("expected the stranded name after a bare return to fail")
 	}

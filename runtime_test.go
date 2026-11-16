@@ -319,7 +319,7 @@ func benchRuntime(b *testing.B) *Runtime {
 // it times b.N iterations of the native baseline with its own stopwatch
 // and reports it as native-ns/op, and the statement's cost over native
 // as cost-ns/op. Because both cost benchmarks time their baseline
-// inline, the derived number survives on its own line of output.
+// inline, the derived number survives as a line of output by itself.
 func reportVsNative(b *testing.B) {
 	b.Helper()
 	vm := b.Elapsed()

@@ -40,7 +40,7 @@ func (c *Compiler) compileFieldSet(slots map[string]int, env map[string]reflect.
 
 // compileRetVal compiles the value of a "return x;" form. The value
 // compiles against its own type: a program-bound name uses its static
-// type, a stack name has none and returns unchanged, a literal keeps
+// type, a stack name has no static type and returns unchanged, a literal keeps
 // its natural width.
 func (c *Compiler) compileRetVal(slots map[string]int, env map[string]reflect.Type, a arg) (*vmArg, error) {
 	pt := reflect.TypeFor[any]()

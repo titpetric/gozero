@@ -4,9 +4,9 @@ import (
 	"fmt"
 )
 
-// The argument grammar: everything that can stand on the right of an
-// assignment or inside a call's parentheses, plus the type reference
-// a var statement reads. The statement level lives in parser.go.
+// The argument grammar: everything the right of an assignment takes, or
+// the inside of a call's parentheses, plus the type reference a var
+// statement reads. parser.go holds the statement level.
 
 // typeRef reads a type as written in a var statement: a dotted name,
 // with any number of pointer and slice prefixes. The spelling matches

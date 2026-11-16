@@ -190,8 +190,8 @@ type fieldStep struct {
 	deref bool
 }
 
-// vmFieldSet is a compiled field assignment: the slot the base name
-// lives in, the selectors to the field, and the value.
+// vmFieldSet is a compiled field assignment: the slot holding the base
+// name, the selectors to the field, and the value.
 type vmFieldSet struct {
 	base  int // slot of the base name
 	steps []fieldStep

@@ -120,7 +120,7 @@ func TestBindingContractCopy(t *testing.T) {
 
 // TestPoolSitesPlanned pins the plan: a program with packs and boxes
 // has pool sites, and a program whose arguments are all constants
-// and plain values has none.
+// and plain values has no site at all.
 func TestPoolSitesPlanned(t *testing.T) {
 	rt, _ := poolRuntime(t)
 	compile := func(src string) *jitProgram {

@@ -133,7 +133,7 @@ type callExpr struct {
 }
 
 // stmt is one statement of a program. Exactly one of call, lit and
-// varType describes what it does; a bare "return;" has none of them.
+// varType describes what it does; a bare "return;" sets none of the three.
 type stmt struct {
 	lhs    []string // names bound to the results, empty to discard
 	define bool     // ":=", and false for "="

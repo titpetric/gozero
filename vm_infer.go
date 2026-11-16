@@ -26,7 +26,7 @@ func (c *Compiler) conversionType(e *callExpr) (reflect.Type, bool) {
 }
 
 // conversionArg is the single literal a conversion hint wraps. Because
-// the hint exists to type a literal that has none, it rejects a name
+// the hint exists to type a literal with no type, it rejects a name
 // or a nested call: a value already has a type.
 func conversionArg(e *callExpr) (arg, error) {
 	if len(e.args) != 1 {

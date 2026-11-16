@@ -69,8 +69,8 @@ func Append(slice any, v any) error {
 	}
 	// The store copies an element of concrete type. An interface
 	// element would keep the box the argument arrived in, which stays
-	// valid only for the length of the call. The slice takes a box of
-	// its own.
+	// valid only for the length of the call. The slice takes a separate
+	// box.
 	if et.Kind() == reflect.Interface {
 		ev = reflect.ValueOf(copyBoxed(ev.Interface()))
 		if !ev.IsValid() {
@@ -81,7 +81,7 @@ func Append(slice any, v any) error {
 	return nil
 }
 
-// copyBoxed moves a borrowed any into a box of its own: a fresh cell,
+// copyBoxed moves a borrowed any into a separate box: a fresh cell,
 // a typed move into it, and a new interface over that cell. A plain
 // reflect.ValueOf(v).Interface() is not a copy, since for a
 // non-addressable value it returns an interface over the same box as

@@ -36,8 +36,8 @@ func typedmemclr(rtype unsafe.Pointer, ptr unsafe.Pointer)
 // statement.
 //
 // A value flows from the call that produces it to the call that
-// consumes it as the return value of a closure. It lives in a Go
-// local and needs no storage of its own. Only a name read by a later
+// consumes it as the return value of a closure. A Go local holds it
+// and it needs no storage anywhere else. Only a name read by a later
 // statement gets a frame slot, and a program with no such name
 // adds no allocation beyond what its bindings make.
 //
@@ -87,8 +87,8 @@ type (
 	nodeL func(f unsafe.Pointer, ctx context.Context, stack map[string]any, dest any) (sliceHdr, error)
 	nodeE func(f unsafe.Pointer, ctx context.Context, stack map[string]any, dest any) error
 
-	// nodeN returns every integer and bool class as the bits of its own
-	// width, zero-extended. One closure type covers every one of them because
+	// nodeN returns every integer and bool class as the bits of that
+	// class's width, zero-extended. One closure type covers every one of them because
 	// only the call site needs the exact Go type, and the
 	// shape case there casts back. nodeF does the same for floats.
 	nodeN func(f unsafe.Pointer, ctx context.Context, stack map[string]any, dest any) (uint64, error)

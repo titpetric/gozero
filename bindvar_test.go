@@ -32,9 +32,9 @@ func bvRuntime(t *testing.T) (*Runtime, *bvSeen) {
 			}
 			return nil
 		},
-		"append":  Append,
-		"delete":  Delete,
-		"lenM":    func(m map[string]int) error { seen.n = len(m); return nil },
+		"append": Append,
+		"delete": Delete,
+		"lenM":   func(m map[string]int) error { seen.n = len(m); return nil },
 	} {
 		if err := rt.Bind(name, v); err != nil {
 			t.Fatalf("bind %s: %v", name, err)

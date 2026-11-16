@@ -134,7 +134,7 @@ func (c *jitCompiler) fieldSetNode(fs *vmFieldSet) (nodeE, error) {
 		return nil, fmt.Errorf("only a single field is in the table")
 	}
 	var sf reflect.StructField
-	var direct bool // the struct lives in the frame itself
+	var direct bool // the frame itself holds the struct
 	switch {
 	case fs.steps[0].deref && bt.Kind() == reflect.Pointer && bt.Elem().Kind() == reflect.Struct:
 		sf = bt.Elem().Field(fs.steps[0].index[0])

@@ -62,7 +62,7 @@ func TestBridgedCallStaysInTheTree(t *testing.T) {
 }
 
 // TestAllocationBudget pins the allocation count of the compiled
-// program against the native code it stands for. A regression fails
+// program against the native code it compiles from. A regression fails
 // the suite and does not only show up in a benchmark.
 func TestAllocationBudget(t *testing.T) {
 	rt := pairRuntime(t)

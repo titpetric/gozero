@@ -198,8 +198,8 @@ func TestScalarsJIT(t *testing.T) {
 // function that takes an interface.
 //
 // net/http has no NewClient. Its only exported constructors are
-// NewRequest and NewRequestWithContext. The types those reach stand
-// for the client side.
+// NewRequest and NewRequestWithContext. The types those reach are the
+// client side.
 var constructors = map[string]any{
 	"http.NewRequest":            http.NewRequest,
 	"http.NewRequestWithContext": http.NewRequestWithContext,

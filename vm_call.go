@@ -275,8 +275,8 @@ func (c *Compiler) compileCallOf(slots map[string]int, env map[string]reflect.Ty
 
 	// Parameters and written arguments advance independently: a
 	// context.Context parameter takes the execution context and
-	// consumes no argument, unless the argument standing at that
-	// position is itself statically a context: a program passes a
+	// consumes no argument, unless the argument at that position is
+	// itself statically a context: a program passes a
 	// context it made that way.
 	fixed := ft.NumIn()
 	if ft.IsVariadic() {

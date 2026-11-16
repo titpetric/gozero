@@ -11,7 +11,7 @@ import (
 // TestPlanInlineLeavesTheTreeAlone guards the interaction between the
 // tiers. planInline decides a value can travel as a return value
 // and skip the slot, which drops the statement that produced
-// it. That decision lives in a side table: if it edited the call tree,
+// it. A side table records that decision: if it edited the call tree,
 // the reflect evaluator, which runs the same tree when the whole
 // program declines, would see the producer both spliced into its
 // reader and standing as its own statement, and run it twice. The
